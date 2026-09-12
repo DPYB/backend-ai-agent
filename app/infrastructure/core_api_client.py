@@ -83,11 +83,11 @@ class CoreApiClient:
 
         return [
             {
-                "book_id": f"core-book-{i+1}",
-                "title": f"{query} 관련 추천 도서 {i+1}",
-                "author": f"저자 {i+1}",
+                "book_id": f"core-book-{i + 1}",
+                "title": f"{query} 관련 추천 도서 {i + 1}",
+                "author": f"저자 {i + 1}",
                 "publisher": "DPYB 출판사",
-                "isbn": f"979110000000{i+1}",
+                "isbn": f"979110000000{i + 1}",
                 "cover_url": "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c",
                 "description": f"'{query}' 주제에 부합하는 추천 도서입니다.",
             }

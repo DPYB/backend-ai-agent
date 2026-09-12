@@ -131,7 +131,7 @@ async def seed_scraps(sample_member_id: str = "550e8400-e29b-41d4-a716-446655440
     results = await client.search_member_scraps(sample_member_id, search_emb, match_threshold=0.2)
     print(f"Found {len(results)} matching scraps:")
     for r in results:
-        print(f" - <{r.get('book_title')}>: \"{r.get('content')}\"")
+        print(f' - <{r.get("book_title")}>: "{r.get("content")}"')
     print("\nSeed completed successfully!")
 
 

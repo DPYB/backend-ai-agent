@@ -68,6 +68,7 @@ app.include_router(vision_router)
 async def health_check_root():
     """Root-level health check endpoint for Central .github Keep-Alive."""
     from app.api.router import health_check
+
     return await health_check()
 
 

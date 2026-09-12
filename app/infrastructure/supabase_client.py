@@ -78,11 +78,9 @@ class SupabaseVectorClient:
                 logger.error("Supabase RPC match_scraps failed: %s", e)
 
         # Fallback / mock search
-        return [
-            scrap
-            for scrap in self._mock_scraps
-            if scrap.get("member_id") == member_id
-        ][:match_count]
+        return [scrap for scrap in self._mock_scraps if scrap.get("member_id") == member_id][
+            :match_count
+        ]
 
     async def insert_scrap_vector(
         self,
@@ -112,7 +110,7 @@ class SupabaseVectorClient:
                 logger.error("Failed to insert scrap_vector into Supabase: %s", e)
 
         # In-memory storage for mock/local testing
-        mock_record = {"id": f"mock-{len(self._mock_scraps)+1}", **record}
+        mock_record = {"id": f"mock-{len(self._mock_scraps) + 1}", **record}
         self._mock_scraps.append(mock_record)
         return mock_record
 

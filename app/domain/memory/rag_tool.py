@@ -66,7 +66,7 @@ async def search_scrap_memory(member_id: str, query: str) -> str:
             book_title = scrap.get("book_title", "제목 미상")
             content = scrap.get("content", "").strip()
             memo = scrap.get("memo", "").strip()
-            item_str = f"[{i}] 책: <{book_title}>\n- 남긴 문장: \"{content}\""
+            item_str = f'[{i}] 책: <{book_title}>\n- 남긴 문장: "{content}"'
             if memo:
                 item_str += f"\n- 독자 메모: {memo}"
             results.append(item_str)

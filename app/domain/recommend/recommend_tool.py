@@ -108,7 +108,9 @@ async def recommend_books(query: str, count: int = 2) -> str:
                 "author": book_info.get("author", "저자 미상"),
                 "publisher": book_info.get("publisher", "출판사"),
                 "isbn": book_info.get("isbn", ""),
-                "curation_reason": candidate.get("snippet", "독자님의 요청에 맞춰 엄선한 도서입니다."),
+                "curation_reason": candidate.get(
+                    "snippet", "독자님의 요청에 맞춰 엄선한 도서입니다."
+                ),
             }
         )
 

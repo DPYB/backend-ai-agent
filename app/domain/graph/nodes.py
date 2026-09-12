@@ -53,9 +53,7 @@ class ResilientLLM:
                 content="서재에 남겨두신 스크랩 구절들을 살펴보았습니다. 삶의 고요한 순간을 기록해두셨군요."
             )
         if "추천" in last_msg:
-            return AIMessage(
-                content="요청하신 취향에 어울리는 책들을 서재에서 엄선해보았습니다."
-            )
+            return AIMessage(content="요청하신 취향에 어울리는 책들을 서재에서 엄선해보았습니다.")
         if "토론" in last_msg or "어떻게 생각해" in last_msg:
             return AIMessage(
                 content="그 쟁점은 매우 흥미롭습니다. 텍스트 이면에 숨겨진 다양한 층위를 함께 짚어봅시다."
@@ -262,7 +260,9 @@ async def summarizer_node(state: AgentState) -> Dict[str, Any]:
         fact_summary = str(summary_response.content).strip()
     except Exception as e:
         logger.warning("Summarizer LLM call failed (%s), using structured fallback.", e)
-        fact_summary = "- 사용자와 책에 대한 대화를 진행 중이었음.\n- 특정 취향과 질문에 대한 관심 표명."
+        fact_summary = (
+            "- 사용자와 책에 대한 대화를 진행 중이었음.\n- 특정 취향과 질문에 대한 관심 표명."
+        )
 
     logger.info("Sanitized fact summary: %s", fact_summary)
 
