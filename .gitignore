@@ -10,6 +10,7 @@ ENV/
 
 # Environment files (secrets)
 .env
+.env.*
 !.env.example
 
 # Pytest & Ruff cache
