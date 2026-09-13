@@ -118,21 +118,28 @@ async def chat_with_persona(request: ChatRequest) -> ChatResponse:
         # Add current user message
         history_messages.append(HumanMessage(content=request.message))
 
-        # 2. Fetch live weather context if coordinates are provided
-        weather_context = None
+        # 2. Fetch live weather context (user location or Seoul default fallback)
+        from app.infrastructure.weather_client import get_weather_client
+
+        weather_client = get_weather_client()
         location_coords = None
+
         if request.location:
             location_coords = {
                 "latitude": request.location.latitude,
                 "longitude": request.location.longitude,
             }
-            from app.infrastructure.weather_client import get_weather_client
-
-            weather_client = get_weather_client()
             weather_context = await weather_client.get_current_weather(
                 latitude=request.location.latitude,
                 longitude=request.location.longitude,
             )
+        else:
+            # Fallback to Seoul standard weather (37.5665, 126.9780)
+            seoul_weather = await weather_client.get_current_weather(37.5665, 126.9780)
+            if seoul_weather:
+                weather_context = f"[위치 권한 미허용 상태] 현재 서울 기준 날씨: {seoul_weather}"
+            else:
+                weather_context = "[위치 권한 미허용 상태]"
 
         # 3. Invoke LangGraph workflow
         initial_state = {

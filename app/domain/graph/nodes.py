@@ -153,7 +153,12 @@ async def _run_persona_node(state: AgentState, persona_id: str) -> Dict[str, Any
     # Inject real-time weather context if available
     weather_context = state.get("weather_context")
     if weather_context:
-        system_prompt += f"\n\n[사용자 주변 실시간 날씨 환경 정보]: {weather_context}"
+        system_prompt += (
+            f"\n\n[날씨 및 위치 환경 정보]\n{weather_context}\n"
+            "지침: 사용자의 위치 권한이 미허용된 상태라면 날씨를 아는 체 지어내지 마십시오. "
+            "날씨를 언급해야 할 때는 '위치 권한이 없어 정확한 동네 날씨는 알 수 없지만, 서울 기준으로...' "
+            "또는 '계절의 문맥'으로 정직하고 자연스럽게 언급해야 합니다."
+        )
 
     # Inject verified curated books if returned from curator_node
     curated_books = state.get("curated_books")
