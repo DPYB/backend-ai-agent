@@ -1,9 +1,10 @@
-"""Unit tests for National Library Client and Book Curator Sub-Agent."""
+from typing import cast
 
 import pytest
 from langchain_core.messages import HumanMessage
 
 from app.domain.graph.curator_node import book_curator_node
+from app.domain.graph.state import AgentState
 from app.domain.graph.workflow import create_agent_graph
 from app.infrastructure.national_library_client import (
     NationalLibraryClient,
@@ -54,7 +55,7 @@ async def test_book_curator_node_execution():
         "curated_books": None,
     }
 
-    result = await book_curator_node(state)  # type: ignore[arg-type]
+    result = await book_curator_node(cast(AgentState, state))
     assert "curated_books" in result
     curated = result["curated_books"]
     assert len(curated) >= 1
