@@ -4,7 +4,7 @@ import logging
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Query, status
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from app.api.schemas import (
     ChatRequest,
@@ -99,7 +99,7 @@ async def chat_with_persona(request: ChatRequest) -> ChatResponse:
     try:
         # 1. Retrieve session history from Redis if exists
         saved_session = await session_mgr.get_session(session_id)
-        history_messages = []
+        history_messages: List[BaseMessage] = []
         active_persona = target_persona
         context_summary = None
 

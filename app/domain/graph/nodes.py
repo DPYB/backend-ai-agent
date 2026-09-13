@@ -66,7 +66,7 @@ class ResilientLLM:
 def _get_llm(tools: Optional[List[Any]] = None) -> ResilientLLM:
     """Obtain LLM instance bound with tools or mock fallback."""
     key = settings.gemini_api_key.strip()
-    primary = None
+    primary: Any = None
 
     if key and not key.startswith("your_") and len(key) > 10:
         try:

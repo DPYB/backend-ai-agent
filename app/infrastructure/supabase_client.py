@@ -1,7 +1,7 @@
 """Supabase pgvector client for member personalized scrap vectors."""
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from supabase import Client, create_client
 
@@ -73,7 +73,9 @@ class SupabaseVectorClient:
                         "match_count": match_count,
                     },
                 ).execute()
-                return response.data or []
+                if response.data and isinstance(response.data, list):
+                    return cast(List[Dict[str, Any]], response.data)
+                return []
             except Exception as e:
                 logger.error("Supabase RPC match_scraps failed: %s", e)
 
@@ -103,9 +105,9 @@ class SupabaseVectorClient:
 
         if self._client:
             try:
-                response = self._client.table("scrap_vector").insert(record).execute()
-                if response.data:
-                    return response.data[0]
+                response = self._client.table("scrap_vector").insert(cast(Any, record)).execute()
+                if response.data and isinstance(response.data, list) and len(response.data) > 0:
+                    return cast(Dict[str, Any], response.data[0])
             except Exception as e:
                 logger.error("Failed to insert scrap_vector into Supabase: %s", e)
 

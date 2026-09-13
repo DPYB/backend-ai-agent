@@ -18,7 +18,7 @@ def generate_query_embedding(query: str, dimension: int = 768) -> List[float]:
         try:
             from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
-            embeddings = GoogleGenerativeAIEmbeddings(
+            embeddings = GoogleGenerativeAIEmbeddings(  # type: ignore[call-arg]
                 model=settings.gemini_embedding_model,
                 google_api_key=settings.gemini_api_key,
             )
