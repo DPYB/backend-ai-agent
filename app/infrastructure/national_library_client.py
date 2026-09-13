@@ -15,48 +15,55 @@ class NationalLibraryClient:
 
     def __init__(
         self,
-        api_key: str = settings.national_library_api_key,
-        api_url: str = settings.national_library_api_url,
+        cert_key: str = "",
+        api_url: str = "",
         timeout: float = 4.0,
     ):
-        self.api_key = api_key.strip()
-        self.api_url = api_url.strip()
+        self.cert_key = (
+            cert_key or settings.nl_api_cert_key or settings.national_library_api_key
+        ).strip()
+        self.api_url = (
+            api_url or settings.nl_api_search_url or settings.national_library_api_url
+        ).strip()
         self.timeout = timeout
 
     @property
     def is_configured(self) -> bool:
-        """Check if approved API key is properly configured."""
-        return bool(self.api_key) and not self.api_key.startswith("your_")
+        """Check if approved API cert_key is properly configured."""
+        return bool(self.cert_key) and not self.cert_key.startswith("your_")
 
     async def search_book(self, title: str, author: str = "") -> Optional[Dict[str, Any]]:
         """Search bibliography information by book title and optional author.
 
-        Returns:
-            Dict containing verified title, author, isbn, publisher, cover_url, description
-            or mock fallback record if API key is not yet approved.
+        Aligned with core-api https://www.nl.go.kr/seoji/SearchApi.do response format (docs).
         """
         if self.is_configured:
             try:
                 params: Dict[str, Any] = {
-                    "key": self.api_key,
-                    "f": "json",
-                    "kwd": title,
-                    "pageSize": "5",
+                    "cert_key": self.cert_key,
+                    "result_style": "json",
+                    "page_no": "1",
+                    "page_size": "3",
+                    "title": title,
                 }
+                if author:
+                    params["author"] = author
+
                 async with httpx.AsyncClient(timeout=self.timeout) as client:
                     response = await client.get(self.api_url, params=params)
                     if response.status_code == 200:
                         data = response.json()
-                        items = data.get("result", []) or data.get("item", [])
-                        if items:
-                            first = items[0]
+                        docs = data.get("docs", [])
+                        if docs:
+                            item = docs[0]
                             return {
-                                "title": first.get("title", title),
-                                "author": first.get("author", author or "저자 미상"),
-                                "publisher": first.get("publisher", "출판사 미상"),
-                                "isbn": first.get("isbn", ""),
-                                "cover_url": first.get("imageUrl", ""),
-                                "description": first.get("description", ""),
+                                "title": item.get("TITLE", title),
+                                "author": item.get("AUTHOR", author or "저자 미상"),
+                                "publisher": item.get("PUBLISHER", "출판사 미상"),
+                                "isbn": item.get("EA_ISBN") or item.get("SET_ISBN", ""),
+                                "cover_url": item.get("TITLE_URL", ""),
+                                "description": item.get("SUBJECT", "")
+                                or f"《{item.get('TITLE', title)}》 정식 서지정보",
                                 "source": "NATIONAL_LIBRARY_API",
                             }
             except Exception as e:

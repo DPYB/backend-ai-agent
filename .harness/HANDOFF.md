@@ -115,14 +115,49 @@
    - `AgentState` 내 `curator_request`, `curated_books`, `weather_context`, `location_coords` 상태 추가
    - 사서/토론자 마스터 에이전트 ➡️ `curator_node` 위임 ➡️ 실존 도서 바인딩 후 원래 사서 노드로 복귀하는 양방향 Handoff 조건부 엣지 등록
    - 사서 페르소나의 어조 오염 및 환각 원천 차단
-6. **품질 검증 및 테스트 전체 통과**:
-   - `tests/unit/test_curator_pipeline.py` 신규 작성 (날씨 폴백 테스트 포함)
+6. **국립중앙도서관 정식 서지정보 API(`SearchApi.do`) 규격 일치화**:
+   - `core-api`와 동일하게 공식 규격(`https://www.nl.go.kr/seoji/SearchApi.do`, `NL_API_CERT_KEY`) 및 `docs` 배열 표준(`TITLE`, `AUTHOR`, `EA_ISBN`, `TITLE_URL`)으로 1:1 완벽 정렬
+   - Naver Cloud Clova OCR General API V2 설정 가이드 주석 보강
+7. **품질 검증 및 테스트 전체 통과**:
+   - `tests/unit/test_curator_pipeline.py` 신규 작성 (날씨 및 국립도서관 공식 폴백 테스트 포함)
    - Pytest 41개 단위 테스트 100% 통과 (그린)
    - Ruff lint/format 및 Mypy 타입 체크 무결성 통과
 
 ### 다음 세션에서 할 일
-- 사용자의 커밋 및 PR 생성 승인 시 `feat/AI-14-curator-agent-pipeline` 커밋/푸시 및 PR 생성
+- Pull Request #4 리뷰 및 머지 완료 확인 (`https://github.com/DPYB/backend-ai-agent/pull/4`)
 - 로컬 서버 기동 후 Swagger UI(`http://localhost:8000/docs`)를 통한 위치/날씨 및 감정 기반 도서 추천 실제 동작 확인
+
+---
+
+## 세션 6 (2026-09-13)
+
+### 진행한 작업
+1. **로컬 Uvicorn 서버 기동 및 실시간 대화 파이프라인 검증**:
+   - `uv run uvicorn app.main:app --host 0.0.0.0 --port 8000` 백그라운드 기동.
+   - 루트 및 서비스 헬스체크 (`GET /health`, `GET /api/v1/health`) 200 OK 및 Supabase 연결 확인.
+2. **도서 추천 위임 최적화 및 OpenAI API 호환성 강화**:
+   - 사용자의 추천 의도(`추천`, `골라줘` 등) 감지 시 사서 노드에서 불필요하게 1차 LLM을 호출하지 않고 곧바로 `curator_node`로 선위임하도록 경로 최적화 (응답 지연 2~3초 및 LLM 토큰 비용 절감).
+   - 어시스턴트 메시지에 `tool_calls`가 있을 때 `ToolMessage` 응답 없이 LLM이 재호출되어 발생하는 OpenAI 400 Bad Request 에러를 방지하기 위해 `sanitized_messages` 메시지 정제 로직 구현.
+   - `langchain-openai` 의존성 명시 추가 및 `ChatOpenAI(api_key=SecretStr(...))` 타입 안정성 확보.
+3. **페르소나별 실제 대화 시연 검증**:
+   - **고양이 사서 '블루' (`CAT`)**: 서울 실시간 날씨(구름 조금, 20.2°C) 및 울적한 기분 입력 시, 큐레이터가 국립도서관 실존 도서 검증 후 《죽고 싶지만 떡볶이는 먹고 싶어》를 블루 특유의 다정한 어조로 추천 성공.
+   - **슈빌 사서 (`SHOEBILL`)**: "도대체 인생이 왜 이렇게 복잡하고 마음대로 안 되는 걸까?" 질문에 대해 직설적이고 명쾌한 3대 핵심(불확실성, 기대와 현실, 사회적 압박) 분석 답변 확인.
+   - **바다달팽이 사서 (`SEA_SLUG`)**: 직장 상사 스트레스 호소에 대해 깊은 바다의 물결과 평온함의 은유로 위로하는 시적 톤 확인.
+   - **문학 비평가 (`DEBATE_CRITIC`)**: 《노르웨이의 숲》 상실감 및 한강 《소년이 온다》 3연속 멀티턴 토론(동호의 죽음 ➡️ 은숙/선주의 죄책감 ➡️ 에필로그 작가 개입) 완벽 검증.
+4. **Gemini 3.6 Flash 연동 및 실측 벤치마크**:
+   - Google 공식 최신 정식 모델 `gemini-3.6-flash`로 환경 설정 및 프롬프트 규격 일치화.
+   - Gemini(8.5s, 찰떡 도서 매칭 & 유려한 한국어 감성) vs GPT-4o-mini(2.1s, 초고속 백업 폴백) 실측 비교 완료.
+5. **PR #4 최신 커밋 반영 및 CI All Checks Passed**:
+   - 커밋 `feat[agent]: 큐레이터 선위임 파이프라인 최적화 및 Gemini 3.6 Flash 모델 연동` (`ebfe639`) 푸시 완료.
+   - GitHub Actions CI (Python 3.12 Lint/Type/Test & PR Lint) 100% 그린 패스 확인.
+   - 로컬 테스트 서버 정상 종료 및 8000 포트 정리 완료.
+
+### 다음 세션에서 할 일
+- GitHub 웹에서 [PR #4](https://github.com/DPYB/backend-ai-agent/pull/4) Squash and merge 완료 확인 (사람 직접 클릭 원칙).
+- 로컬 `develop` 브랜치 체크아웃 및 최신 동기화 (`git checkout develop && git pull origin develop`).
+- LangGraph 실시간 스트리밍(SSE) 엔드포인트(`POST /api/v1/chat/stream`) 설계 및 구현 (`.harness/PLAN.md`).
+
+
 
 
 

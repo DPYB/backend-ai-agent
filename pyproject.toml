@@ -20,6 +20,7 @@ dependencies = [
     "pyzbar>=0.1.9",
     "pillow>=10.4.0",
     "python-multipart>=0.0.17",
+    "langchain-openai>=1.6.2",
 ]
 
 [dependency-groups]
