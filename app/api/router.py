@@ -118,7 +118,23 @@ async def chat_with_persona(request: ChatRequest) -> ChatResponse:
         # Add current user message
         history_messages.append(HumanMessage(content=request.message))
 
-        # 2. Invoke LangGraph workflow
+        # 2. Fetch live weather context if coordinates are provided
+        weather_context = None
+        location_coords = None
+        if request.location:
+            location_coords = {
+                "latitude": request.location.latitude,
+                "longitude": request.location.longitude,
+            }
+            from app.infrastructure.weather_client import get_weather_client
+
+            weather_client = get_weather_client()
+            weather_context = await weather_client.get_current_weather(
+                latitude=request.location.latitude,
+                longitude=request.location.longitude,
+            )
+
+        # 3. Invoke LangGraph workflow
         initial_state = {
             "messages": history_messages,
             "member_id": request.member_id,
@@ -128,6 +144,10 @@ async def chat_with_persona(request: ChatRequest) -> ChatResponse:
             "switch_suggestion": None,
             "context_summary": context_summary,
             "handoff_target": None,
+            "curator_request": None,
+            "curated_books": None,
+            "location_coords": location_coords,
+            "weather_context": weather_context,
         }
 
         result_state = await _graph.ainvoke(initial_state)

@@ -93,5 +93,37 @@
 - 로컬 서버 기동 후 Swagger UI(`http://localhost:8000/docs`)를 통한 실제 동작 시각적 확인
 - 2번 계획(LangGraph 스트리밍 SSE 엔드포인트) 검토 및 착수
 
+---
+
+## 세션 5 (2026-09-13)
+
+### 진행한 작업
+1. **`develop` 브랜치 동기화 및 작업 브랜치 생성**:
+   - `develop` 최신화 (PR #2 머지 반영)
+   - 작업 브랜치 `feat/AI-14-curator-agent-pipeline` 분기
+2. **국립중앙도서관 Open API 클라이언트 구현**:
+   - `app/infrastructure/national_library_client.py` 작성
+   - 승인 대기 중에도 실존 한국어 도서(데미안, 불편한 편의점, 어린 왕자, 바람이 분다 당신이 좋다 등)와 13자리 정식 ISBN을 보장하는 스마트 폴백 구현
+3. **Open-Meteo 무료 실시간 날씨 클라이언트 구현 및 위치 스키마 확장**:
+   - `app/infrastructure/weather_client.py` 작성 (WMO 20종 기상 코드 매핑 및 실시간 기온/날씨 파싱)
+   - `ChatRequest` 내 프론트엔드 위치 좌표(`location: { latitude, longitude }`) 수신 모델 정의
+   - 좌표 수신 시 실시간 날씨 정보를 조회하여 큐레이터 및 사서 컨텍스트에 자동 주입
+4. **도서 큐레이터 전문 서브에이전트 노드 구현**:
+   - `app/domain/graph/curator_node.py` 작성
+   - 실시간 날씨/감정/상황에 맞춘 도서 추론(`temperature=0.1` 팩트 중심) 후 국립중앙도서관 서지 정보로 100% 검증
+5. **LangGraph 양방향 Handoff 라우팅 완성**:
+   - `AgentState` 내 `curator_request`, `curated_books`, `weather_context`, `location_coords` 상태 추가
+   - 사서/토론자 마스터 에이전트 ➡️ `curator_node` 위임 ➡️ 실존 도서 바인딩 후 원래 사서 노드로 복귀하는 양방향 Handoff 조건부 엣지 등록
+   - 사서 페르소나의 어조 오염 및 환각 원천 차단
+6. **품질 검증 및 테스트 전체 통과**:
+   - `tests/unit/test_curator_pipeline.py` 신규 작성 (날씨 폴백 테스트 포함)
+   - Pytest 41개 단위 테스트 100% 통과 (그린)
+   - Ruff lint/format 및 Mypy 타입 체크 무결성 통과
+
+### 다음 세션에서 할 일
+- 사용자의 커밋 및 PR 생성 승인 시 `feat/AI-14-curator-agent-pipeline` 커밋/푸시 및 PR 생성
+- 로컬 서버 기동 후 Swagger UI(`http://localhost:8000/docs`)를 통한 위치/날씨 및 감정 기반 도서 추천 실제 동작 확인
+
+
 
 
