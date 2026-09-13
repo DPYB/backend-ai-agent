@@ -83,3 +83,21 @@ class HealthResponse(BaseModel):
     version: str
     redis_connected: bool
     supabase_connected: bool
+
+
+class ScrapVectorizeRequest(BaseModel):
+    """Request payload for vectorizing a reading scrap/memo."""
+
+    member_id: str = Field(..., description="Unique member UUID", min_length=1)
+    book_id: str = Field(..., description="Target book UUID/ID", min_length=1)
+    book_title: str = Field(..., description="Title of the book", min_length=1)
+    content: str = Field(..., description="Scrapped book quote/sentence", min_length=1)
+    memo: Optional[str] = Field(default="", description="User reflection/thought on the quote")
+
+
+class ScrapVectorizeResponse(BaseModel):
+    """Response payload after scrap vectorization and Supabase pgvector insertion."""
+
+    success: bool = Field(..., description="Whether vectorization and insertion succeeded")
+    scrap_id: Optional[str] = Field(default=None, description="Created or mock scrap record ID")
+    message: str = Field(..., description="Result summary message")
