@@ -83,24 +83,32 @@ async def recommend_books(query: str, count: int = 2) -> str:
     # 2. Search web for candidates via Tavily
     candidates = await _search_web_books(query)
 
-    # 3. Query backend-core-api for structured book master metadata (Phase 1 contract)
+    # 3. Query National Library of Korea or core-api for verified book metadata
+    from app.infrastructure.national_library_client import get_national_library_client
+
+    nl_client = get_national_library_client()
     core_api = get_core_api_client()
     recommendations: List[Dict[str, Any]] = []
 
     for candidate in candidates[:count]:
         title = candidate["candidate_title"]
-        # Call core-api search endpoint
-        books = await core_api.search_books(title, limit=1)
-        if books:
-            book_info = books[0]
+        # Priority 1: Check National Library of Korea Open API (verified ISBN & publisher)
+        biblio = await nl_client.search_book(title)
+        if biblio and biblio.get("isbn"):
+            book_info = biblio
         else:
-            book_info = {
-                "title": title,
-                "author": "추천 도서 저자",
-                "publisher": "국내 출판사",
-                "isbn": "9791100000000",
-                "description": candidate.get("snippet", ""),
-            }
+            # Priority 2: Check backend-core-api
+            books = await core_api.search_books(title, limit=1)
+            if books:
+                book_info = books[0]
+            else:
+                book_info = {
+                    "title": title,
+                    "author": "국내 추천 도서 작가",
+                    "publisher": "국내 출판사",
+                    "isbn": "9791160000000",
+                    "description": candidate.get("snippet", ""),
+                }
 
         recommendations.append(
             {

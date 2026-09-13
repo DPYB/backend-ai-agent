@@ -55,3 +55,15 @@ class AgentState(TypedDict):
 
     # Internal routing target when a handoff is actively executed
     handoff_target: Optional[str]
+
+    # Curation request metadata passed from Master Persona to Curator Agent
+    curator_request: Optional[str]
+
+    # Verified book list returned from Curator Agent back to Master Persona
+    curated_books: Optional[List[dict]]
+
+    # Geolocation coordinates (lat, lon) for live weather determination
+    location_coords: Optional[dict]
+
+    # Live weather summary (e.g. '보통 비, 기온 18.5°C')
+    weather_context: Optional[str]

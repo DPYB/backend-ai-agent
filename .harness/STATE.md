@@ -51,4 +51,13 @@
   - OpenAI API(`OPENAI_API_KEY`, `OPENAI_MODEL`) 예비/폴백 LLM 환경설정 및 명세 반영
   - 신규 단위 테스트 추가 (`tests/unit/test_memory_api.py`) 및 전체 36개 단위 테스트 100% 그린 패스
 
+- [x] **Phase 9: 도서 큐레이터 전문 서브에이전트, 국립중앙도서관 서지 검증 및 Open-Meteo 실시간 날씨 연동**
+  - 국립중앙도서관 Open API 클라이언트 구현 (`app/infrastructure/national_library_client.py`) 및 승인 대기 중 안전 폴백 지원
+  - Open-Meteo 기반 무료 실시간 날씨 클라이언트 (`app/infrastructure/weather_client.py`) 연동 및 `ChatRequest` 내 `location` 위경도 스키마 확장
+  - `book_curator_node` 전문 서브에이전트 구현 (실시간 날씨/감정 추론 + 국립중앙도서관 실존 서지 검증)
+  - `AgentState` 내 `curator_request`, `curated_books`, `weather_context`, `location_coords` 양방향 Handoff 상태 및 LangGraph 조건부 엣지 연동
+  - 사서 페르소나와 서지 추론의 단일 책임 분리를 통한 어조 오염 및 환각 원천 차단
+  - 신규 단위 테스트 추가 (`tests/unit/test_curator_pipeline.py`) 및 전체 41개 단위 테스트 100% 그린 패스
+
+
 

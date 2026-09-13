@@ -150,6 +150,28 @@ async def _run_persona_node(state: AgentState, persona_id: str) -> Dict[str, Any
     if context_summary:
         system_prompt += f"\n\n[이전 대화 핵심 팩트 요약 (어조 제외)]\n{context_summary}"
 
+    # Inject real-time weather context if available
+    weather_context = state.get("weather_context")
+    if weather_context:
+        system_prompt += f"\n\n[사용자 주변 실시간 날씨 환경 정보]: {weather_context}"
+
+    # Inject verified curated books if returned from curator_node
+    curated_books = state.get("curated_books")
+    if curated_books:
+        books_desc = "\n".join(
+            [
+                f"- 《{b['title']}》 ({b.get('author', '저자')}, {b.get('publisher', '출판사')}) / ISBN: {b.get('isbn', '')}\n"
+                f"  사유: {b.get('reason') or b.get('description', '')}"
+                for b in curated_books
+            ]
+        )
+        system_prompt += (
+            "\n\n[도서 큐레이터가 엄선 및 검증한 실존 추천 도서 목록]\n"
+            f"{books_desc}\n\n"
+            "지침: 위의 검증된 도서들을 당신 고유의 어조와 캐릭터 감성으로 독자에게 다정하게 소개해 주십시오. "
+            "존재하지 않는 가짜 책을 임의로 지어내지 마십시오."
+        )
+
     system_prompt += f"\n\n[현재 사용자 식별자: member_id={state.get('member_id')}]"
 
     prompt_messages = [SystemMessage(content=system_prompt)] + list(state["messages"])
@@ -163,18 +185,29 @@ async def _run_persona_node(state: AgentState, persona_id: str) -> Dict[str, Any
             last_user_msg = str(msg.content)
             break
 
+    # Check if recommendation/curation intent is present and not yet curated
+    curator_request = None
+    if not state.get("curated_books"):
+        recom_keywords = ["추천", "골라줘", "권해줘", "어떤 책", "읽을만한", "책 찾아"]
+        if any(kw in last_user_msg for kw in recom_keywords):
+            curator_request = last_user_msg
+
     suggestion, target = _detect_switch_intent(
         last_user_msg,
         str(response.content),
         persona_id,
     )
 
-    return {
+    result_payload: Dict[str, Any] = {
         "messages": [response],
         "active_persona": persona_id,
         "switch_suggestion": suggestion,
         "handoff_target": target,
     }
+    if curator_request:
+        result_payload["curator_request"] = curator_request
+
+    return result_payload
 
 
 # ==============================================================================

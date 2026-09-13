@@ -5,6 +5,7 @@ import logging
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 
+from app.domain.graph.curator_node import book_curator_node
 from app.domain.graph.nodes import (
     cat_node,
     debate_counselor_node,
@@ -64,20 +65,32 @@ def route_entry(state: AgentState) -> str:
 
 
 def route_persona_exit(state: AgentState) -> str:
-    """Route from persona node to summarizer (handoff), tool_node, or END."""
-    # 1. Handoff takes priority if switch is triggered
+    """Route from persona node to summarizer (handoff), curator, tool_node, or END."""
+    # 1. Handoff to another persona takes priority
     if state.get("handoff_target"):
         logger.info("Routing to summarizer_node for persona handoff.")
         return "summarizer_node"
 
-    # 2. Check for tool calls
+    # 2. Check for curation request (Handoff to book_curator_node)
+    if state.get("curator_request") and not state.get("curated_books"):
+        logger.info("Routing to curator_node for emotion/weather book curation.")
+        return "curator_node"
+
+    # 3. Check for tool calls
     messages = state.get("messages", [])
     if messages and hasattr(messages[-1], "tool_calls") and messages[-1].tool_calls:
         logger.info("Routing to tool_node for tool execution.")
         return "tool_node"
 
-    # 3. Otherwise conversation turn finishes
+    # 4. Otherwise conversation turn finishes
     return END
+
+
+def route_from_curator(state: AgentState) -> str:
+    """Return from curator_node back to the active master persona node."""
+    active = state.get("active_persona", "CAT")
+    logger.info("Returning from curator_node to master persona: %s", active)
+    return _get_node_for_persona(active)
 
 
 def route_from_tools(state: AgentState) -> str:
@@ -93,15 +106,16 @@ def route_from_summarizer(state: AgentState) -> str:
 
 
 def create_agent_graph():
-    """Build and compile the 8-Persona LangGraph workflow."""
+    """Build and compile the 8-Persona LangGraph workflow with Sub-Agent Curation."""
     workflow = StateGraph(AgentState)
 
     # 1. Register all 8 Persona nodes
     for node_name, node_func in ALL_PERSONA_NODES.items():
         workflow.add_node(node_name, node_func)
 
-    # 2. Register common nodes
+    # 2. Register common & specialized sub-agent nodes
     workflow.add_node("summarizer_node", summarizer_node)
+    workflow.add_node("curator_node", book_curator_node)
     workflow.add_node("tool_node", ToolNode(GENERIC_TOOLS))
 
     # 3. Dynamic entry point routing to any of the 8 personas
@@ -118,19 +132,27 @@ def create_agent_graph():
             route_persona_exit,
             {
                 "summarizer_node": "summarizer_node",
+                "curator_node": "curator_node",
                 "tool_node": "tool_node",
                 END: END,
             },
         )
 
-    # 5. Route back from tool execution to the calling persona
+    # 5. Route back from curator_node to master persona
+    workflow.add_conditional_edges(
+        "curator_node",
+        route_from_curator,
+        {node_name: node_name for node_name in ALL_PERSONA_NODES.keys()},
+    )
+
+    # 6. Route back from tool execution to the calling persona
     workflow.add_conditional_edges(
         "tool_node",
         route_from_tools,
         {node_name: node_name for node_name in ALL_PERSONA_NODES.keys()},
     )
 
-    # 6. Route from summarizer to newly activated persona node
+    # 7. Route from summarizer to newly activated persona node
     workflow.add_conditional_edges(
         "summarizer_node",
         route_from_summarizer,

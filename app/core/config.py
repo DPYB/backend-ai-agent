@@ -45,8 +45,15 @@ class Settings(BaseSettings):
     redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
     redis_cache_ttl_seconds: int = Field(default=3600, alias="REDIS_CACHE_TTL_SECONDS")
 
-    # Tavily Web Search (Free Tier)
+    # Tavily Web Search (Legacy Fallback)
     tavily_api_key: str = Field(default="", alias="TAVILY_API_KEY")
+
+    # National Library of Korea Open API
+    national_library_api_key: str = Field(default="", alias="NATIONAL_LIBRARY_API_KEY")
+    national_library_api_url: str = Field(
+        default="https://www.nl.go.kr/NL/search/openApi/saseoApi.do",
+        alias="NATIONAL_LIBRARY_API_URL",
+    )
 
     # backend-core-api REST Endpoint
     core_api_base_url: str = Field(default="http://localhost:8080", alias="CORE_API_BASE_URL")

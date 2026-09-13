@@ -6,6 +6,13 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 
+class LocationPayload(BaseModel):
+    """Geolocation coordinates sent from frontend for weather-informed curation."""
+
+    latitude: float = Field(..., description="Latitude", examples=[37.5665])
+    longitude: float = Field(..., description="Longitude", examples=[126.9780])
+
+
 class ChatRequest(BaseModel):
     """User request payload for conversational AI librarian or debate partner."""
 
@@ -37,6 +44,10 @@ class ChatRequest(BaseModel):
         default=None,
         description="User-defined custom librarian name (사용자가 개명한 사서 애칭)",
         examples=["내 고양이", "누디", "초록이"],
+    )
+    location: Optional[LocationPayload] = Field(
+        default=None,
+        description="Current user coordinates (위경도) for real-time weather curation",
     )
 
 
