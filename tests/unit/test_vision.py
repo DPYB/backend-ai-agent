@@ -34,7 +34,10 @@ def test_barcode_scan_with_mocked_isbn():
     mock_obj = MagicMock()
     mock_obj.data = b"9788966260959"
 
-    with patch("app.vision.barcode_service.decode", return_value=[mock_obj]):
+    with (
+        patch("app.vision.barcode_service._PYZBAR_AVAILABLE", True),
+        patch("app.vision.barcode_service.decode", return_value=[mock_obj], create=True),
+    ):
         isbn = BarcodeService.scan_isbn(img_bytes)
         assert isbn == "9788966260959"
 

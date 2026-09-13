@@ -12,9 +12,11 @@ try:
     from pyzbar.pyzbar import ZBarSymbol, decode
 
     _PYZBAR_AVAILABLE = True
-except ImportError:
+except (ImportError, Exception):
     logger.warning("pyzbar native library not available.")
     _PYZBAR_AVAILABLE = False
+    decode = None  # type: ignore[assignment]
+    ZBarSymbol = None  # type: ignore[assignment]
 
 
 class BarcodeService:
