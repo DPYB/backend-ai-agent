@@ -143,15 +143,20 @@
    - **고양이 사서 '블루' (`CAT`)**: 서울 실시간 날씨(구름 조금, 20.2°C) 및 울적한 기분 입력 시, 큐레이터가 국립도서관 실존 도서 검증 후 《죽고 싶지만 떡볶이는 먹고 싶어》를 블루 특유의 다정한 어조로 추천 성공.
    - **슈빌 사서 (`SHOEBILL`)**: "도대체 인생이 왜 이렇게 복잡하고 마음대로 안 되는 걸까?" 질문에 대해 직설적이고 명쾌한 3대 핵심(불확실성, 기대와 현실, 사회적 압박) 분석 답변 확인.
    - **바다달팽이 사서 (`SEA_SLUG`)**: 직장 상사 스트레스 호소에 대해 깊은 바다의 물결과 평온함의 은유로 위로하는 시적 톤 확인.
-   - **문학 비평가 (`DEBATE_CRITIC`)**: 《노르웨이의 숲》 상실감 질문에 대해 이동진 스타일의 지적이고 예리한 비평("괄호 안의 침묵") 답변 확인.
-4. **코드 품질 및 정적 검사 무결성**:
-   - Pytest 41개 단위 테스트 100% 통과 (그린).
-   - Ruff 린트/포맷 및 Mypy 타입 체크(52개 소스 파일) 100% 통과.
+   - **문학 비평가 (`DEBATE_CRITIC`)**: 《노르웨이의 숲》 상실감 및 한강 《소년이 온다》 3연속 멀티턴 토론(동호의 죽음 ➡️ 은숙/선주의 죄책감 ➡️ 에필로그 작가 개입) 완벽 검증.
+4. **Gemini 3.6 Flash 연동 및 실측 벤치마크**:
+   - Google 공식 최신 정식 모델 `gemini-3.6-flash`로 환경 설정 및 프롬프트 규격 일치화.
+   - Gemini(8.5s, 찰떡 도서 매칭 & 유려한 한국어 감성) vs GPT-4o-mini(2.1s, 초고속 백업 폴백) 실측 비교 완료.
+5. **PR #4 최신 커밋 반영 및 CI All Checks Passed**:
+   - 커밋 `feat[agent]: 큐레이터 선위임 파이프라인 최적화 및 Gemini 3.6 Flash 모델 연동` (`ebfe639`) 푸시 완료.
+   - GitHub Actions CI (Python 3.12 Lint/Type/Test & PR Lint) 100% 그린 패스 확인.
+   - 로컬 테스트 서버 정상 종료 및 8000 포트 정리 완료.
 
 ### 다음 세션에서 할 일
-- 사용자와 상의하여 본 세션의 최적화 커밋(`curator 선위임 및 OpenAI 호환성`)을 PR #4에 추가 푸시하거나 후속 PR로 분리 결정.
-- PR #4 머지 완료 후 `develop` 브랜치 동기화.
-- LangGraph 스트리밍(SSE) 엔드포인트(`POST /api/v1/chat/stream`) 도입 검토 및 설계.
+- GitHub 웹에서 [PR #4](https://github.com/DPYB/backend-ai-agent/pull/4) Squash and merge 완료 확인 (사람 직접 클릭 원칙).
+- 로컬 `develop` 브랜치 체크아웃 및 최신 동기화 (`git checkout develop && git pull origin develop`).
+- LangGraph 실시간 스트리밍(SSE) 엔드포인트(`POST /api/v1/chat/stream`) 설계 및 구현 (`.harness/PLAN.md`).
+
 
 
 
