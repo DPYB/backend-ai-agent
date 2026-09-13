@@ -8,6 +8,11 @@ from PIL import Image
 
 logger = logging.getLogger(__name__)
 
+
+class _ZBarSymbolFallback:
+    EAN13 = 1
+
+
 try:
     from pyzbar.pyzbar import ZBarSymbol, decode
 
@@ -16,7 +21,7 @@ except (ImportError, Exception):
     logger.warning("pyzbar native library not available.")
     _PYZBAR_AVAILABLE = False
     decode = None  # type: ignore[assignment]
-    ZBarSymbol = None  # type: ignore[assignment]
+    ZBarSymbol = _ZBarSymbolFallback  # type: ignore[assignment]
 
 
 class BarcodeService:
@@ -31,8 +36,11 @@ class BarcodeService:
 
         try:
             with Image.open(BytesIO(image_bytes)) as img:
+                if not decode:
+                    return None
                 # EAN13(도서 ISBN 형식) 심볼 우선 스캔
-                decoded_objects = decode(img, symbols=[ZBarSymbol.EAN13])
+                symbols = [ZBarSymbol.EAN13] if hasattr(ZBarSymbol, "EAN13") else []
+                decoded_objects = decode(img, symbols=symbols) if symbols else decode(img)
                 if not decoded_objects:
                     # 모든 바코드 심볼 폴백 스캔
                     decoded_objects = decode(img)
