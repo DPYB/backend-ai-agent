@@ -5,7 +5,7 @@ import logging
 import re
 from typing import Any, Dict, List
 
-from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.core.config import settings
 from app.domain.graph.state import AgentState
@@ -48,23 +48,47 @@ async def book_curator_node(state: AgentState) -> Dict[str, Any]:
     candidates: List[Dict[str, str]] = []
 
     # 1. Use low-temperature LLM reasoning to extract optimal book candidates
-    key = settings.gemini_api_key.strip()
-    if key and not key.startswith("your_") and len(key) > 10:
+    gemini_key = settings.gemini_api_key.strip()
+    openai_key = settings.openai_api_key.strip()
+    llm: Any = None
+
+    if gemini_key and not gemini_key.startswith("your_") and len(gemini_key) > 10:
         try:
             from langchain_google_genai import ChatGoogleGenerativeAI
 
-            # Use low temperature (0.1) for strictly deterministic, hallucination-free reasoning
             llm = ChatGoogleGenerativeAI(
                 model=settings.gemini_model,
-                google_api_key=key,
+                google_api_key=gemini_key,
                 temperature=0.1,
             )
+        except Exception as e:
+            logger.warning("Failed to initialize Gemini for curator (%s).", e)
+
+    if not llm and openai_key and not openai_key.startswith("your_") and len(openai_key) > 10:
+        try:
+            from langchain_openai import ChatOpenAI
+            from pydantic import SecretStr
+
+            llm = ChatOpenAI(
+                model=settings.openai_model,
+                api_key=SecretStr(openai_key),
+                temperature=0.1,
+            )
+        except Exception as e:
+            logger.warning("Failed to initialize OpenAI for curator (%s).", e)
+
+    if llm:
+        try:
             prompt = [
                 SystemMessage(content=CURATOR_SYSTEM_PROMPT),
-                AIMessage(content=context_desc),
+                HumanMessage(
+                    content=f"다음 컨텍스트와 추천 요청을 분석하여 최적의 도서 2~3권을 추천 JSON으로 반환해주세요:\n\n{context_desc}"
+                ),
             ]
             response = await llm.ainvoke(prompt)
-            content = str(response.content).strip()
+            from app.domain.graph.nodes import extract_message_text
+
+            content = extract_message_text(response.content).strip()
 
             # Clean json codeblocks if any
             clean_json = re.sub(r"^```(?:json)?\s*", "", content, flags=re.MULTILINE)

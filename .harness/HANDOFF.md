@@ -124,8 +124,35 @@
    - Ruff lint/format 및 Mypy 타입 체크 무결성 통과
 
 ### 다음 세션에서 할 일
-- `feat/AI-14-curator-agent-pipeline` ➡️ `develop` 대상 Pull Request #4 생성 및 리뷰/머지
+- Pull Request #4 리뷰 및 머지 완료 확인 (`https://github.com/DPYB/backend-ai-agent/pull/4`)
 - 로컬 서버 기동 후 Swagger UI(`http://localhost:8000/docs`)를 통한 위치/날씨 및 감정 기반 도서 추천 실제 동작 확인
+
+---
+
+## 세션 6 (2026-09-13)
+
+### 진행한 작업
+1. **로컬 Uvicorn 서버 기동 및 실시간 대화 파이프라인 검증**:
+   - `uv run uvicorn app.main:app --host 0.0.0.0 --port 8000` 백그라운드 기동.
+   - 루트 및 서비스 헬스체크 (`GET /health`, `GET /api/v1/health`) 200 OK 및 Supabase 연결 확인.
+2. **도서 추천 위임 최적화 및 OpenAI API 호환성 강화**:
+   - 사용자의 추천 의도(`추천`, `골라줘` 등) 감지 시 사서 노드에서 불필요하게 1차 LLM을 호출하지 않고 곧바로 `curator_node`로 선위임하도록 경로 최적화 (응답 지연 2~3초 및 LLM 토큰 비용 절감).
+   - 어시스턴트 메시지에 `tool_calls`가 있을 때 `ToolMessage` 응답 없이 LLM이 재호출되어 발생하는 OpenAI 400 Bad Request 에러를 방지하기 위해 `sanitized_messages` 메시지 정제 로직 구현.
+   - `langchain-openai` 의존성 명시 추가 및 `ChatOpenAI(api_key=SecretStr(...))` 타입 안정성 확보.
+3. **페르소나별 실제 대화 시연 검증**:
+   - **고양이 사서 '블루' (`CAT`)**: 서울 실시간 날씨(구름 조금, 20.2°C) 및 울적한 기분 입력 시, 큐레이터가 국립도서관 실존 도서 검증 후 《죽고 싶지만 떡볶이는 먹고 싶어》를 블루 특유의 다정한 어조로 추천 성공.
+   - **슈빌 사서 (`SHOEBILL`)**: "도대체 인생이 왜 이렇게 복잡하고 마음대로 안 되는 걸까?" 질문에 대해 직설적이고 명쾌한 3대 핵심(불확실성, 기대와 현실, 사회적 압박) 분석 답변 확인.
+   - **바다달팽이 사서 (`SEA_SLUG`)**: 직장 상사 스트레스 호소에 대해 깊은 바다의 물결과 평온함의 은유로 위로하는 시적 톤 확인.
+   - **문학 비평가 (`DEBATE_CRITIC`)**: 《노르웨이의 숲》 상실감 질문에 대해 이동진 스타일의 지적이고 예리한 비평("괄호 안의 침묵") 답변 확인.
+4. **코드 품질 및 정적 검사 무결성**:
+   - Pytest 41개 단위 테스트 100% 통과 (그린).
+   - Ruff 린트/포맷 및 Mypy 타입 체크(52개 소스 파일) 100% 통과.
+
+### 다음 세션에서 할 일
+- 사용자와 상의하여 본 세션의 최적화 커밋(`curator 선위임 및 OpenAI 호환성`)을 PR #4에 추가 푸시하거나 후속 PR로 분리 결정.
+- PR #4 머지 완료 후 `develop` 브랜치 동기화.
+- LangGraph 스트리밍(SSE) 엔드포인트(`POST /api/v1/chat/stream`) 도입 검토 및 설계.
+
 
 
 

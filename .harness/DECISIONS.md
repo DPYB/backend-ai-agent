@@ -6,6 +6,7 @@
 
 | 날짜 | 결정 내용 | 이유 |
 | :--- | :--- | :--- |
+| **2026-09-13** | **도서 추천 의도 감지 시 사서 노드에서 큐레이터 서브에이전트로 선위임 및 메시지 정제** | 사서 노드에서 불필요한 1차 LLM 호출(비용/지연 2~3초)을 제거하고, `tool_calls` 생성 후 `ToolMessage` 부재로 인한 LLM API의 400 Bad Request 에러를 원천 차단하기 위함. |
 | **2026-09-12** | **DPYB 중앙 Reusable Workflow 연동 및 Git/PR 머지 표준 확정** | 조직 전체 CI/CD 일관성 유지(Python 3.12 CI, PR Lint) 및 `feat/*` 단일화, `[scope]` 대괄호 규격, 사람에 의한 안전한 최종 머지 원칙을 보장하기 위함. |
 | **2026-09-12** | **바이브 코딩 하네스 표준 구축** | 복수의 AI 코딩 툴(Antigravity, Claude Code, Codex, Kiro) 간 컨텍스트 동기화 및 단일 책임 문서 관리 원칙을 준수하기 위함. |
 | **2026-09-12** | **도서 바코드 스캔 및 Clova OCR을 `backend-ai-agent`에서 무상태(Stateless)로 전담** | `pyzbar`, `Pillow`, `libzbar0` 등 무거운 C-익스텐션 의존성을 `backend-core-api`로부터 격리하여 비즈니스 코어 서버를 가볍고 안전하게 유지하기 위함. |

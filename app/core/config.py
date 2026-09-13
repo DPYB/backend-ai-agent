@@ -27,7 +27,7 @@ class Settings(BaseSettings):
 
     # Google Gemini AI (Primary Free Tier)
     gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
-    gemini_model: str = Field(default="gemini-3.8-flash", alias="GEMINI_MODEL")
+    gemini_model: str = Field(default="gemini-3.6-flash", alias="GEMINI_MODEL")
     gemini_embedding_model: str = Field(
         default="text-embedding-004",
         alias="GEMINI_EMBEDDING_MODEL",

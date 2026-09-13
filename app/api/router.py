@@ -160,11 +160,13 @@ async def chat_with_persona(request: ChatRequest) -> ChatResponse:
         result_state = await _graph.ainvoke(initial_state)
 
         # 3. Extract final reply and active persona
+        from app.domain.graph.nodes import extract_message_text
+
         final_messages = result_state.get("messages", [])
         last_ai_msg = ""
         for msg in reversed(final_messages):
             if isinstance(msg, AIMessage) and msg.content:
-                last_ai_msg = str(msg.content)
+                last_ai_msg = extract_message_text(msg.content)
                 break
 
         current_active_persona = result_state.get("active_persona", active_persona)

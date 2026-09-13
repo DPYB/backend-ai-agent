@@ -62,6 +62,11 @@
   - 응답 파싱 필드를 국립중앙도서관 공식 표준(`docs`, `TITLE`, `AUTHOR`, `EA_ISBN`, `TITLE_URL`)으로 일치화
   - 위치 권한 미허용 시 서울 기준 정직한 날씨 폴백 안내 및 환각 방지 지침 강화
   - Clova OCR General API V2 설정 안내 주석 보강 및 로컬 CI 41개 단위 테스트 100% 그린 패스
+- [x] **Phase 11: 큐레이터 선위임 파이프라인 최적화 및 로컬 멀티 페르소나 대화 검증**
+  - 도서 추천 의도 감지 시 사서 노드의 불필요한 1차 LLM 호출(비용/지연 2~3초)을 건너뛰고 `curator_node`로 선위임하는 라우팅 최적화
+  - `tool_calls`가 포함된 이전 어시스턴트 메시지가 `ToolMessage` 없이 LLM API에 재전송되어 발생하는 400 Bad Request 에러 원천 방어(Sanitization)
+  - `langchain-openai` 의존성 추가 및 `SecretStr` 정적 타입 안정성 보장
+  - 로컬 Uvicorn 8000 포트 실시간 기동 및 사서(고양이 블루, 슈빌, 바다달팽이), 문학 비평가(이동진 톤) 실대화 완벽 검증
 
 
 

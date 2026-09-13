@@ -23,10 +23,25 @@ from app.domain.personas import (
 logger = logging.getLogger(__name__)
 
 
-class ResilientLLM:
-    """Wraps LLM execution with automatic fallback to mock responses on API failure."""
+def extract_message_text(content: Any) -> str:
+    """Extract plain text even if content is returned as a list of blocks/dicts."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict) and "text" in item:
+                parts.append(str(item["text"]))
+        return "".join(parts)
+    return str(content)
 
-    def __init__(self, primary_llm=None, bound_tools=None):
+
+class ResilientLLM:
+    """Wrapper that falls back to a deterministic mock if the primary LLM fails or is unconfigured."""
+
+    def __init__(self, primary_llm: Optional[Any] = None, bound_tools: Optional[List[Any]] = None):
         self.primary_llm = primary_llm
         self.bound_tools = bound_tools or []
 
@@ -37,11 +52,12 @@ class ResilientLLM:
     async def ainvoke(self, messages: List[BaseMessage]) -> AIMessage:
         if self.primary_llm:
             try:
-                return await self.primary_llm.ainvoke(messages)
+                res = await self.primary_llm.ainvoke(messages)
+                if hasattr(res, "content"):
+                    res.content = extract_message_text(res.content)
+                return res
             except Exception as e:
-                logger.warning(
-                    "Primary Gemini LLM call failed (%s). Falling back to mock response.", e
-                )
+                logger.warning("Primary LLM call failed (%s). Falling back to mock response.", e)
 
         last_msg = str(messages[-1].content) if messages else ""
         if "서재" in last_msg or "책장" in last_msg:
@@ -64,23 +80,44 @@ class ResilientLLM:
 
 
 def _get_llm(tools: Optional[List[Any]] = None) -> ResilientLLM:
-    """Obtain LLM instance bound with tools or mock fallback."""
-    key = settings.gemini_api_key.strip()
+    """Obtain LLM instance bound with tools (Gemini Primary -> OpenAI Secondary -> Mock Fallback)."""
+    gemini_key = settings.gemini_api_key.strip()
+    openai_key = settings.openai_api_key.strip()
     primary: Any = None
 
-    if key and not key.startswith("your_") and len(key) > 10:
+    # 1. Primary: Google Gemini
+    if gemini_key and not gemini_key.startswith("your_") and len(gemini_key) > 10:
         try:
             from langchain_google_genai import ChatGoogleGenerativeAI
 
             primary = ChatGoogleGenerativeAI(
                 model=settings.gemini_model,
-                google_api_key=key,
+                google_api_key=gemini_key,
                 temperature=0.7,
             )
             if tools:
                 primary = primary.bind_tools(tools)
+            return ResilientLLM(primary_llm=primary, bound_tools=tools)
         except Exception as e:
-            logger.warning("Failed to initialize Gemini LLM (%s), using mock fallback.", e)
+            logger.warning("Failed to initialize Gemini LLM (%s). Trying OpenAI.", e)
+
+    # 2. Secondary: OpenAI
+    if openai_key and not openai_key.startswith("your_") and len(openai_key) > 10:
+        try:
+            from langchain_openai import ChatOpenAI
+            from pydantic import SecretStr
+
+            primary = ChatOpenAI(
+                model=settings.openai_model,
+                api_key=SecretStr(openai_key),
+                temperature=0.7,
+            )
+            if tools:
+                primary = primary.bind_tools(tools)
+            logger.info("Using OpenAI (%s) as active LLM engine.", settings.openai_model)
+            return ResilientLLM(primary_llm=primary, bound_tools=tools)
+        except Exception as e:
+            logger.warning("Failed to initialize OpenAI LLM (%s). Falling back to mock.", e)
 
     return ResilientLLM(primary_llm=primary, bound_tools=tools)
 
@@ -160,6 +197,23 @@ async def _run_persona_node(state: AgentState, persona_id: str) -> Dict[str, Any
             "또는 '계절의 문맥'으로 정직하고 자연스럽게 언급해야 합니다."
         )
 
+    last_user_msg = ""
+    for msg in reversed(state.get("messages", [])):
+        if isinstance(msg, HumanMessage):
+            last_user_msg = str(msg.content)
+            break
+
+    # 1. If recommendation/curation intent is present and books are not yet curated,
+    # immediately delegate to curator_node to verify real books without an extra LLM call
+    if not state.get("curated_books"):
+        recom_keywords = ["추천", "골라줘", "권해줘", "어떤 책", "읽을만한", "책 찾아"]
+        if any(kw in last_user_msg for kw in recom_keywords):
+            logger.info("Recommendation intent detected. Delegating directly to curator_node.")
+            return {
+                "active_persona": persona_id,
+                "curator_request": last_user_msg,
+            }
+
     # Inject verified curated books if returned from curator_node
     curated_books = state.get("curated_books")
     if curated_books:
@@ -179,23 +233,25 @@ async def _run_persona_node(state: AgentState, persona_id: str) -> Dict[str, Any
 
     system_prompt += f"\n\n[현재 사용자 식별자: member_id={state.get('member_id')}]"
 
-    prompt_messages = [SystemMessage(content=system_prompt)] + list(state["messages"])
+    # Sanitize messages to avoid dangling tool_calls without tool response messages
+    sanitized_messages: List[BaseMessage] = []
+    raw_messages = list(state.get("messages", []))
+    for i, msg in enumerate(raw_messages):
+        if isinstance(msg, AIMessage) and getattr(msg, "tool_calls", None):
+            # Check if immediately followed by ToolMessage
+            has_tool_reply = i + 1 < len(raw_messages) and getattr(
+                raw_messages[i + 1], "tool_call_id", None
+            )
+            if not has_tool_reply:
+                # Strip dangling tool_calls to satisfy OpenAI API requirement
+                sanitized_messages.append(AIMessage(content=msg.content or ""))
+                continue
+        sanitized_messages.append(msg)
+
+    prompt_messages = [SystemMessage(content=system_prompt)] + sanitized_messages
 
     llm = _get_llm(tools=GENERIC_TOOLS)
     response = await llm.ainvoke(prompt_messages)
-
-    last_user_msg = ""
-    for msg in reversed(state["messages"]):
-        if isinstance(msg, HumanMessage):
-            last_user_msg = str(msg.content)
-            break
-
-    # Check if recommendation/curation intent is present and not yet curated
-    curator_request = None
-    if not state.get("curated_books"):
-        recom_keywords = ["추천", "골라줘", "권해줘", "어떤 책", "읽을만한", "책 찾아"]
-        if any(kw in last_user_msg for kw in recom_keywords):
-            curator_request = last_user_msg
 
     suggestion, target = _detect_switch_intent(
         last_user_msg,
@@ -203,16 +259,12 @@ async def _run_persona_node(state: AgentState, persona_id: str) -> Dict[str, Any
         persona_id,
     )
 
-    result_payload: Dict[str, Any] = {
+    return {
         "messages": [response],
         "active_persona": persona_id,
         "switch_suggestion": suggestion,
         "handoff_target": target,
     }
-    if curator_request:
-        result_payload["curator_request"] = curator_request
-
-    return result_payload
 
 
 # ==============================================================================
