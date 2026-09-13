@@ -2,7 +2,7 @@
 
 import logging
 from io import BytesIO
-from typing import Optional
+from typing import Any, Optional
 
 from PIL import Image
 
@@ -13,15 +13,21 @@ class _ZBarSymbolFallback:
     EAN13 = 1
 
 
+decode_fn: Any = None
+decode: Any = None
+zbar_symbol: Any = _ZBarSymbolFallback
+
 try:
-    from pyzbar.pyzbar import ZBarSymbol, decode
+    from pyzbar.pyzbar import ZBarSymbol as _RealZBarSymbol
+    from pyzbar.pyzbar import decode as _real_decode
 
     _PYZBAR_AVAILABLE = True
+    decode_fn = _real_decode
+    decode = _real_decode
+    zbar_symbol = _RealZBarSymbol
 except (ImportError, Exception):
     logger.warning("pyzbar native library not available.")
     _PYZBAR_AVAILABLE = False
-    decode = None  # type: ignore[assignment]
-    ZBarSymbol = _ZBarSymbolFallback  # type: ignore[assignment]
 
 
 class BarcodeService:
@@ -36,14 +42,15 @@ class BarcodeService:
 
         try:
             with Image.open(BytesIO(image_bytes)) as img:
-                if not decode:
+                _scanner = decode or decode_fn
+                if not _scanner:
                     return None
                 # EAN13(도서 ISBN 형식) 심볼 우선 스캔
-                symbols = [ZBarSymbol.EAN13] if hasattr(ZBarSymbol, "EAN13") else []
-                decoded_objects = decode(img, symbols=symbols) if symbols else decode(img)
+                symbols = [zbar_symbol.EAN13] if hasattr(zbar_symbol, "EAN13") else []
+                decoded_objects = _scanner(img, symbols=symbols) if symbols else _scanner(img)
                 if not decoded_objects:
                     # 모든 바코드 심볼 폴백 스캔
-                    decoded_objects = decode(img)
+                    decoded_objects = _scanner(img)
 
                 for obj in decoded_objects:
                     barcode_data = obj.data.decode("utf-8").strip()

@@ -25,13 +25,17 @@ class Settings(BaseSettings):
         alias="CORS_ORIGINS",
     )
 
-    # Google Gemini AI (Free Tier)
+    # Google Gemini AI (Primary Free Tier)
     gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
     gemini_model: str = Field(default="gemini-3.8-flash", alias="GEMINI_MODEL")
     gemini_embedding_model: str = Field(
         default="text-embedding-004",
         alias="GEMINI_EMBEDDING_MODEL",
     )
+
+    # OpenAI API (Fallback / Alternative LLM)
+    openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
+    openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
 
     # Supabase pgvector (Cloud Free Tier)
     supabase_url: str = Field(default="", alias="SUPABASE_URL")

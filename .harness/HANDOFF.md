@@ -69,4 +69,29 @@
 ### 다음 세션에서 할 일
 - `feat/*` 작업 브랜치 기반으로 `backend-record-api`의 스크랩 벡터화 비동기 수신 API(`POST /api/v1/memory/scraps`) 구현 여부 확인 및 개발 진행.
 
+---
+
+## 세션 4 (2026-09-13)
+
+### 진행한 작업
+1. **작업 브랜치 생성 및 격리 개발**:
+   - `develop` 브랜치 기반 `feat/scrap-vectorization` 분기
+2. **OpenAI 예비/대체 LLM 설정 명세 보강**:
+   - `.env.example`, `app/core/config.py`에 `OPENAI_API_KEY`, `OPENAI_MODEL` 주석 및 설정 반영
+3. **독서 기록/스크랩 벡터화 수신 엔드포인트 구현**:
+   - 스키마 정의 (`ScrapVectorizeRequest`, `ScrapVectorizeResponse` in `app/api/schemas.py`)
+   - 인제스천 엔드포인트 `POST /api/v1/memory/scraps` (`app/api/v1/memory.py`) 구현
+   - 도서명, 발췌 문장, 독자 메모를 결합하여 Gemini 임베딩 벡터(768차원) 생성 및 Supabase pgvector `scrap_vector` 적재 연동
+   - `app/main.py`에 `memory_router` 등록
+4. **품질 검증 및 테스트 전체 통과**:
+   - `tests/unit/test_memory_api.py` 단위 테스트 추가
+   - Pytest 36개 단위 테스트 전원 통과 (100% 그린)
+   - Ruff 린트 및 포맷 정렬, Mypy 타입 체크 무결성 확인 완료
+
+### 다음 세션에서 할 일
+- 사용자의 커밋 및 PR 생성 승인 시 `feat/scrap-vectorization` 커밋/푸시 및 `feat/* -> develop` PR 생성
+- 로컬 서버 기동 후 Swagger UI(`http://localhost:8000/docs`)를 통한 실제 동작 시각적 확인
+- 2번 계획(LangGraph 스트리밍 SSE 엔드포인트) 검토 및 착수
+
+
 

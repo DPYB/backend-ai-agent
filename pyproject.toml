@@ -49,3 +49,16 @@ ignore = ["B008", "E501"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.mypy]
+python_version = "3.12"
+warn_unused_ignores = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = [
+    "pyzbar.*",
+    "tavily.*",
+]
+ignore_missing_imports = true
+ignore_errors = true
