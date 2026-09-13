@@ -57,7 +57,12 @@
   - `book_curator_node` 전문 서브에이전트 구현 (실시간 날씨/감정 추론 + 국립중앙도서관 실존 서지 검증)
   - `AgentState` 내 `curator_request`, `curated_books`, `weather_context`, `location_coords` 양방향 Handoff 상태 및 LangGraph 조건부 엣지 연동
   - 사서 페르소나와 서지 추론의 단일 책임 분리를 통한 어조 오염 및 환각 원천 차단
-  - 신규 단위 테스트 추가 (`tests/unit/test_curator_pipeline.py`) 및 전체 41개 단위 테스트 100% 그린 패스
+- [x] **Phase 10: 국립중앙도서관 정식 서지정보 API(`SearchApi.do`) 규격 일치화 및 위치 폴백 강화**
+  - `backend-core-api`와 동일하게 국립중앙도서관 정식 서지정보 API 규격(`https://www.nl.go.kr/seoji/SearchApi.do`, `NL_API_CERT_KEY`)으로 1:1 완벽 정렬
+  - 응답 파싱 필드를 국립중앙도서관 공식 표준(`docs`, `TITLE`, `AUTHOR`, `EA_ISBN`, `TITLE_URL`)으로 일치화
+  - 위치 권한 미허용 시 서울 기준 정직한 날씨 폴백 안내 및 환각 방지 지침 강화
+  - Clova OCR General API V2 설정 안내 주석 보강 및 로컬 CI 41개 단위 테스트 100% 그린 패스
+
 
 
 

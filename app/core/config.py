@@ -48,10 +48,16 @@ class Settings(BaseSettings):
     # Tavily Web Search (Legacy Fallback)
     tavily_api_key: str = Field(default="", alias="TAVILY_API_KEY")
 
-    # National Library of Korea Open API
+    # National Library of Korea Open API (Aligned with backend-core-api NL_API_CERT_KEY)
+    nl_api_cert_key: str = Field(default="", alias="NL_API_CERT_KEY")
+    nl_api_search_url: str = Field(
+        default="https://www.nl.go.kr/seoji/SearchApi.do",
+        alias="NL_API_SEARCH_URL",
+    )
+    # Backward compatibility alias
     national_library_api_key: str = Field(default="", alias="NATIONAL_LIBRARY_API_KEY")
     national_library_api_url: str = Field(
-        default="https://www.nl.go.kr/NL/search/openApi/saseoApi.do",
+        default="https://www.nl.go.kr/seoji/SearchApi.do",
         alias="NATIONAL_LIBRARY_API_URL",
     )
 

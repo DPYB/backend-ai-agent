@@ -16,14 +16,14 @@ def test_national_library_client_fallback_mode():
     """Verify NationalLibraryClient returns deterministic verified books during pending approval."""
     client = get_national_library_client()
     # When unconfigured or pending approval
-    client.api_key = ""
+    client.cert_key = ""
     assert client.is_configured is False
 
 
 @pytest.mark.asyncio
 async def test_national_library_search_fallback():
     """Verify search_book returns verified metadata for known and generic titles."""
-    client = NationalLibraryClient(api_key="")
+    client = NationalLibraryClient(cert_key="")
     # Known curated book
     res = await client.search_book("데미안")
     assert res is not None

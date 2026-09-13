@@ -115,13 +115,16 @@
    - `AgentState` 내 `curator_request`, `curated_books`, `weather_context`, `location_coords` 상태 추가
    - 사서/토론자 마스터 에이전트 ➡️ `curator_node` 위임 ➡️ 실존 도서 바인딩 후 원래 사서 노드로 복귀하는 양방향 Handoff 조건부 엣지 등록
    - 사서 페르소나의 어조 오염 및 환각 원천 차단
-6. **품질 검증 및 테스트 전체 통과**:
-   - `tests/unit/test_curator_pipeline.py` 신규 작성 (날씨 폴백 테스트 포함)
+6. **국립중앙도서관 정식 서지정보 API(`SearchApi.do`) 규격 일치화**:
+   - `core-api`와 동일하게 공식 규격(`https://www.nl.go.kr/seoji/SearchApi.do`, `NL_API_CERT_KEY`) 및 `docs` 배열 표준(`TITLE`, `AUTHOR`, `EA_ISBN`, `TITLE_URL`)으로 1:1 완벽 정렬
+   - Naver Cloud Clova OCR General API V2 설정 가이드 주석 보강
+7. **품질 검증 및 테스트 전체 통과**:
+   - `tests/unit/test_curator_pipeline.py` 신규 작성 (날씨 및 국립도서관 공식 폴백 테스트 포함)
    - Pytest 41개 단위 테스트 100% 통과 (그린)
    - Ruff lint/format 및 Mypy 타입 체크 무결성 통과
 
 ### 다음 세션에서 할 일
-- 사용자의 커밋 및 PR 생성 승인 시 `feat/AI-14-curator-agent-pipeline` 커밋/푸시 및 PR 생성
+- `feat/AI-14-curator-agent-pipeline` ➡️ `develop` 대상 Pull Request #4 생성 및 리뷰/머지
 - 로컬 서버 기동 후 Swagger UI(`http://localhost:8000/docs`)를 통한 위치/날씨 및 감정 기반 도서 추천 실제 동작 확인
 
 
