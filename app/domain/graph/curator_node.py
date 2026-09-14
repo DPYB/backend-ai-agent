@@ -50,13 +50,14 @@ async def book_curator_node(state: AgentState) -> Dict[str, Any]:
     # 1. Use low-temperature LLM reasoning to extract optimal book candidates
     gemini_key = settings.gemini_api_key.strip()
     openai_key = settings.openai_api_key.strip()
-    llm: Any = None
+    primary_llm: Any = None
+    secondary_llm: Any = None
 
     if gemini_key and not gemini_key.startswith("your_") and len(gemini_key) > 10:
         try:
             from langchain_google_genai import ChatGoogleGenerativeAI
 
-            llm = ChatGoogleGenerativeAI(
+            primary_llm = ChatGoogleGenerativeAI(
                 model=settings.gemini_model,
                 google_api_key=gemini_key,
                 temperature=0.1,
@@ -64,12 +65,12 @@ async def book_curator_node(state: AgentState) -> Dict[str, Any]:
         except Exception as e:
             logger.warning("Failed to initialize Gemini for curator (%s).", e)
 
-    if not llm and openai_key and not openai_key.startswith("your_") and len(openai_key) > 10:
+    if openai_key and not openai_key.startswith("your_") and len(openai_key) > 10:
         try:
             from langchain_openai import ChatOpenAI
             from pydantic import SecretStr
 
-            llm = ChatOpenAI(
+            secondary_llm = ChatOpenAI(
                 model=settings.openai_model,
                 api_key=SecretStr(openai_key),
                 temperature=0.1,
@@ -77,7 +78,9 @@ async def book_curator_node(state: AgentState) -> Dict[str, Any]:
         except Exception as e:
             logger.warning("Failed to initialize OpenAI for curator (%s).", e)
 
-    if llm:
+    llms_to_try = [candidate for candidate in (primary_llm, secondary_llm) if candidate is not None]
+    response = None
+    for candidate_llm in llms_to_try:
         try:
             prompt = [
                 SystemMessage(content=CURATOR_SYSTEM_PROMPT),
@@ -85,7 +88,14 @@ async def book_curator_node(state: AgentState) -> Dict[str, Any]:
                     content=f"다음 컨텍스트와 추천 요청을 분석하여 최적의 도서 2~3권을 추천 JSON으로 반환해주세요:\n\n{context_desc}"
                 ),
             ]
-            response = await llm.ainvoke(prompt)
+            response = await candidate_llm.ainvoke(prompt)
+            if response:
+                break
+        except Exception as e:
+            logger.warning("Curator candidate LLM call failed (%s). Trying next candidate.", e)
+
+    if response:
+        try:
             from app.domain.graph.nodes import extract_message_text
 
             content = extract_message_text(response.content).strip()

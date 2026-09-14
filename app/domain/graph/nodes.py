@@ -4,6 +4,7 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
 
 from app.core.config import settings
 from app.domain.graph.state import AgentState, SwitchSuggestion
@@ -39,25 +40,49 @@ def extract_message_text(content: Any) -> str:
 
 
 class ResilientLLM:
-    """Wrapper that falls back to a deterministic mock if the primary LLM fails or is unconfigured."""
+    """Wrapper that falls back to secondary LLM (OpenAI) and then deterministic mock."""
 
-    def __init__(self, primary_llm: Optional[Any] = None, bound_tools: Optional[List[Any]] = None):
+    def __init__(
+        self,
+        primary_llm: Optional[Any] = None,
+        secondary_llm: Optional[Any] = None,
+        bound_tools: Optional[List[Any]] = None,
+    ):
         self.primary_llm = primary_llm
+        self.secondary_llm = secondary_llm
         self.bound_tools = bound_tools or []
 
-    def bind_tools(self, tools):
+    def bind_tools(self, tools: List[Any]) -> "ResilientLLM":
         new_primary = self.primary_llm.bind_tools(tools) if self.primary_llm else None
-        return ResilientLLM(primary_llm=new_primary, bound_tools=tools)
+        new_secondary = self.secondary_llm.bind_tools(tools) if self.secondary_llm else None
+        return ResilientLLM(
+            primary_llm=new_primary,
+            secondary_llm=new_secondary,
+            bound_tools=tools,
+        )
 
-    async def ainvoke(self, messages: List[BaseMessage]) -> AIMessage:
+    async def ainvoke(
+        self,
+        messages: List[BaseMessage],
+        config: Optional[RunnableConfig] = None,
+    ) -> AIMessage:
         if self.primary_llm:
             try:
-                res = await self.primary_llm.ainvoke(messages)
+                res = await self.primary_llm.ainvoke(messages, config=config)
                 if hasattr(res, "content"):
                     res.content = extract_message_text(res.content)
                 return res
             except Exception as e:
-                logger.warning("Primary LLM call failed (%s). Falling back to mock response.", e)
+                logger.warning("Primary LLM call failed (%s). Trying secondary LLM.", e)
+
+        if self.secondary_llm:
+            try:
+                res = await self.secondary_llm.ainvoke(messages, config=config)
+                if hasattr(res, "content"):
+                    res.content = extract_message_text(res.content)
+                return res
+            except Exception as e:
+                logger.warning("Secondary LLM call failed (%s). Falling back to mock response.", e)
 
         last_msg = str(messages[-1].content) if messages else ""
         if "서재" in last_msg or "책장" in last_msg:
@@ -84,6 +109,7 @@ def _get_llm(tools: Optional[List[Any]] = None) -> ResilientLLM:
     gemini_key = settings.gemini_api_key.strip()
     openai_key = settings.openai_api_key.strip()
     primary: Any = None
+    secondary: Any = None
 
     # 1. Primary: Google Gemini
     if gemini_key and not gemini_key.startswith("your_") and len(gemini_key) > 10:
@@ -97,9 +123,8 @@ def _get_llm(tools: Optional[List[Any]] = None) -> ResilientLLM:
             )
             if tools:
                 primary = primary.bind_tools(tools)
-            return ResilientLLM(primary_llm=primary, bound_tools=tools)
         except Exception as e:
-            logger.warning("Failed to initialize Gemini LLM (%s). Trying OpenAI.", e)
+            logger.warning("Failed to initialize Gemini LLM (%s).", e)
 
     # 2. Secondary: OpenAI
     if openai_key and not openai_key.startswith("your_") and len(openai_key) > 10:
@@ -107,19 +132,17 @@ def _get_llm(tools: Optional[List[Any]] = None) -> ResilientLLM:
             from langchain_openai import ChatOpenAI
             from pydantic import SecretStr
 
-            primary = ChatOpenAI(
+            secondary = ChatOpenAI(
                 model=settings.openai_model,
                 api_key=SecretStr(openai_key),
                 temperature=0.7,
             )
             if tools:
-                primary = primary.bind_tools(tools)
-            logger.info("Using OpenAI (%s) as active LLM engine.", settings.openai_model)
-            return ResilientLLM(primary_llm=primary, bound_tools=tools)
+                secondary = secondary.bind_tools(tools)
         except Exception as e:
-            logger.warning("Failed to initialize OpenAI LLM (%s). Falling back to mock.", e)
+            logger.warning("Failed to initialize OpenAI LLM (%s).", e)
 
-    return ResilientLLM(primary_llm=primary, bound_tools=tools)
+    return ResilientLLM(primary_llm=primary, secondary_llm=secondary, bound_tools=tools)
 
 
 def _detect_switch_intent(
@@ -168,7 +191,11 @@ def _detect_switch_intent(
     return None, None
 
 
-async def _run_persona_node(state: AgentState, persona_id: str) -> Dict[str, Any]:
+async def _run_persona_node(
+    state: AgentState,
+    persona_id: str,
+    config: Optional[RunnableConfig] = None,
+) -> Dict[str, Any]:
     """Universal runner for any of the 8 persona nodes with custom librarian name support."""
     logger.info("Executing persona node: %s", persona_id)
     persona_meta = PERSONA_REGISTRY.get(persona_id, PERSONA_REGISTRY[CAT_ID])
@@ -225,10 +252,11 @@ async def _run_persona_node(state: AgentState, persona_id: str) -> Dict[str, Any
             ]
         )
         system_prompt += (
-            "\n\n[도서 큐레이터가 엄선 및 검증한 실존 추천 도서 목록]\n"
+            "\n\n[도서 큐레이터가 엄선 및 검증한 국립중앙도서관 실존 도서 목록]\n"
             f"{books_desc}\n\n"
-            "지침: 위의 검증된 도서들을 당신 고유의 어조와 캐릭터 감성으로 독자에게 다정하게 소개해 주십시오. "
-            "존재하지 않는 가짜 책을 임의로 지어내지 마십시오."
+            "지침: 위의 검증된 실존 도서를 당신 고유의 어조와 캐릭터 감성으로 독자에게 다정하게 소개해 주십시오.\n"
+            "- [절대 준수]: 도서의 제목과 저자명(작가)은 위 목록에 적힌 그대로 정확하게 일치시켜 언급해야 합니다. 작가 이름을 임의로 다른 작가(예: 김애란 등)로 바꾸거나 날조하지 마십시오.\n"
+            "- 존재하지 않는 가짜 책을 임의로 지어내지 마십시오."
         )
 
     system_prompt += f"\n\n[현재 사용자 식별자: member_id={state.get('member_id')}]"
@@ -251,7 +279,7 @@ async def _run_persona_node(state: AgentState, persona_id: str) -> Dict[str, Any
     prompt_messages = [SystemMessage(content=system_prompt)] + sanitized_messages
 
     llm = _get_llm(tools=GENERIC_TOOLS)
-    response = await llm.ainvoke(prompt_messages)
+    response = await llm.ainvoke(prompt_messages, config=config)
 
     suggestion, target = _detect_switch_intent(
         last_user_msg,
@@ -270,24 +298,28 @@ async def _run_persona_node(state: AgentState, persona_id: str) -> Dict[str, Any
 # ==============================================================================
 # 📚 Librarian Persona Nodes (4: CAT, SHOEBILL, SEA_SLUG, GECKO)
 # ==============================================================================
-async def cat_node(state: AgentState) -> Dict[str, Any]:
+async def cat_node(state: AgentState, config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
     """Execute Cat persona node (고양이 사서 '블루')."""
-    return await _run_persona_node(state, CAT_ID)
+    return await _run_persona_node(state, CAT_ID, config=config)
 
 
-async def shoebill_node(state: AgentState) -> Dict[str, Any]:
+async def shoebill_node(
+    state: AgentState, config: Optional[RunnableConfig] = None
+) -> Dict[str, Any]:
     """Execute Shoebill persona node (넓적부리황새 사서 '슈빌')."""
-    return await _run_persona_node(state, SHOEBILL_ID)
+    return await _run_persona_node(state, SHOEBILL_ID, config=config)
 
 
-async def sea_slug_node(state: AgentState) -> Dict[str, Any]:
+async def sea_slug_node(
+    state: AgentState, config: Optional[RunnableConfig] = None
+) -> Dict[str, Any]:
     """Execute Sea Slug persona node (바다달팽이 사서)."""
-    return await _run_persona_node(state, SEA_SLUG_ID)
+    return await _run_persona_node(state, SEA_SLUG_ID, config=config)
 
 
-async def gecko_node(state: AgentState) -> Dict[str, Any]:
+async def gecko_node(state: AgentState, config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
     """Execute Gecko persona node (게코 도마뱀 사서)."""
-    return await _run_persona_node(state, GECKO_ID)
+    return await _run_persona_node(state, GECKO_ID, config=config)
 
 
 # Aliases for backward compatibility
@@ -300,24 +332,32 @@ librarian_4_node = gecko_node
 # ==============================================================================
 # 🎙️ Debate Persona Nodes (4)
 # ==============================================================================
-async def debate_critic_node(state: AgentState) -> Dict[str, Any]:
+async def debate_critic_node(
+    state: AgentState, config: Optional[RunnableConfig] = None
+) -> Dict[str, Any]:
     """Execute Debate Critic persona node (평론가)."""
-    return await _run_persona_node(state, DEBATE_CRITIC_ID)
+    return await _run_persona_node(state, DEBATE_CRITIC_ID, config=config)
 
 
-async def debate_storyteller_node(state: AgentState) -> Dict[str, Any]:
+async def debate_storyteller_node(
+    state: AgentState, config: Optional[RunnableConfig] = None
+) -> Dict[str, Any]:
     """Execute Debate Storyteller persona node (이야기꾼)."""
-    return await _run_persona_node(state, DEBATE_STORYTELLER_ID)
+    return await _run_persona_node(state, DEBATE_STORYTELLER_ID, config=config)
 
 
-async def debate_counselor_node(state: AgentState) -> Dict[str, Any]:
+async def debate_counselor_node(
+    state: AgentState, config: Optional[RunnableConfig] = None
+) -> Dict[str, Any]:
     """Execute Debate Counselor persona node (상담사)."""
-    return await _run_persona_node(state, DEBATE_COUNSELOR_ID)
+    return await _run_persona_node(state, DEBATE_COUNSELOR_ID, config=config)
 
 
-async def debate_observer_node(state: AgentState) -> Dict[str, Any]:
+async def debate_observer_node(
+    state: AgentState, config: Optional[RunnableConfig] = None
+) -> Dict[str, Any]:
     """Execute Debate Observer persona node (관찰가)."""
-    return await _run_persona_node(state, DEBATE_OBSERVER_ID)
+    return await _run_persona_node(state, DEBATE_OBSERVER_ID, config=config)
 
 
 # ==============================================================================

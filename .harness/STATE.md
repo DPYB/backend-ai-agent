@@ -74,7 +74,13 @@
   - `agent` 스키마 DDL 명세(`scripts/init_agent_schema.sql`) 및 asyncpg 자동 실행 스크립트(`scripts/init_agent_schema.py`) 작성
   - ORM 모델 `ScrapVector`(`__table_args__ = {"schema": "agent"}`) 및 `AgentVectorRepository` 코사인 유사도 검색 구현
   - `SupabaseVectorClient` 어댑터 통합으로 `POST /api/v1/memory/scraps` 및 RAG 도구 자동 연계 및 하위 호환성 100% 보장
-  - 신규 단위 테스트(`tests/unit/test_db_infrastructure.py`) 포함 총 46개 단위 테스트, Ruff 린트, Mypy 타입 체크 무결성 100% 통과
+- [x] **Phase 13: LangGraph 실시간 스트리밍(SSE) 응답 엔드포인트 구축**
+  - `POST /api/v1/chat/stream` Server-Sent Events (SSE) 엔드포인트 구현 (`StreamingResponse`, `text/event-stream; charset=utf-8`)
+  - 표준 SSE 이벤트 규격 구현 (`event: metadata`, `event: token`, `event: switch_suggestion`, `event: done`, `event: error`)
+  - LangGraph `astream_events(v2)` 연동: 8개 마스터 페르소나 노드 응답 토큰만 필터링하여 사용자에게 실시간 스트리밍 (내부 `curator_node` 서브에이전트 중간 JSON 토큰 원천 격리)
+  - `ResilientLLM` 및 큐레이터 노드에 Gemini 429 시 OpenAI(`gpt-4o-mini`) 즉시 2차 폴백 파이프라인 탑재
+  - 스트리밍 종료 시점에 Redis 세션(슬라이딩 윈도우 10건)에 완전 영속화하여 기존 `/chat`과의 세션 일관성 100% 보장
+  - 신규 단위 테스트(`tests/unit/test_streaming_api.py`) 3종 작성 및 실시간 스트리밍 토큰 송출 검증 완료 (Ruff & Mypy 100% 통과)
 
 
 
