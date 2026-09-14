@@ -3,8 +3,9 @@
 import json
 import logging
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
+from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Header, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
@@ -77,12 +78,33 @@ async def list_personas(
     return results
 
 
+def extract_member_id_from_auth(auth_header: Optional[str]) -> Optional[str]:
+    """Extract authenticated member UUID from JWT Authorization header if present."""
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None
+    token = auth_header.replace("Bearer ", "", 1).strip()
+    try:
+        import jwt
+
+        # Safely extract sub/member_id from JWT token payload
+        payload = jwt.decode(token, options={"verify_signature": False})
+        sub = payload.get("sub") or payload.get("member_id")
+        return str(sub).strip() if sub else None
+    except Exception:
+        return None
+
+
 async def _prepare_chat_context(
     request: ChatRequest,
+    authorization: Optional[str] = None,
 ) -> Tuple[str, str, str, Dict[str, Any], Optional[str], RedisSessionManager]:
     """Prepare initial conversation context, weather info, and session state."""
     session_mgr = get_redis_session_manager()
     session_id = request.session_id or "default"
+
+    # Resolve member_id: 1) JWT Bearer token sub, 2) request body, 3) generated guest UUID
+    authenticated_member_id = extract_member_id_from_auth(authorization)
+    effective_member_id = authenticated_member_id or request.member_id or str(uuid4())
 
     # Default persona selection based on mode
     requested_mode = request.mode or "LIBRARIAN"
@@ -146,7 +168,7 @@ async def _prepare_chat_context(
 
     initial_state = {
         "messages": history_messages,
-        "member_id": request.member_id,
+        "member_id": effective_member_id,
         "active_persona": active_persona,
         "librarian_name": request.librarian_name,
         "mode": requested_mode,
@@ -170,7 +192,10 @@ async def _prepare_chat_context(
 
 
 @api_router.post("/chat", response_model=ChatResponse, tags=["Chat"])
-async def chat_with_persona(request: ChatRequest) -> ChatResponse:
+async def chat_with_persona(
+    request: ChatRequest,
+    authorization: Optional[str] = Header(default=None),
+) -> ChatResponse:
     """Chat with the persona-driven AI librarian or debate partner.
 
     Supports custom user-defined librarian names, memory RAG, bookshelf search,
@@ -183,7 +208,7 @@ async def chat_with_persona(request: ChatRequest) -> ChatResponse:
         initial_state,
         weather_context,
         session_mgr,
-    ) = await _prepare_chat_context(request)
+    ) = await _prepare_chat_context(request, authorization=authorization)
 
     try:
         result_state = await _graph.ainvoke(initial_state)
@@ -276,7 +301,10 @@ def _format_sse(event_type: str, data: Any) -> str:
 
 
 @api_router.post("/chat/stream", tags=["Chat"])
-async def chat_stream_with_persona(request: ChatRequest) -> StreamingResponse:
+async def chat_stream_with_persona(
+    request: ChatRequest,
+    authorization: Optional[str] = Header(default=None),
+) -> StreamingResponse:
     """Stream real-time chat responses chunk by chunk using Server-Sent Events (SSE).
 
     Emits structured events:
@@ -293,7 +321,7 @@ async def chat_stream_with_persona(request: ChatRequest) -> StreamingResponse:
         initial_state,
         weather_context,
         session_mgr,
-    ) = await _prepare_chat_context(request)
+    ) = await _prepare_chat_context(request, authorization=authorization)
 
     async def event_generator() -> AsyncGenerator[str, None]:
         try:
