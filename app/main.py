@@ -35,6 +35,11 @@ async def lifespan(app: FastAPI):
     await redis_mgr.disconnect()
     core_api_client = get_core_api_client()
     await core_api_client.close()
+    from app.infrastructure.db.session import get_async_engine
+
+    engine = get_async_engine()
+    if engine:
+        await engine.dispose()
 
 
 app = FastAPI(

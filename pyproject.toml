@@ -21,6 +21,9 @@ dependencies = [
     "pillow>=10.4.0",
     "python-multipart>=0.0.17",
     "langchain-openai>=1.6.2",
+    "sqlalchemy>=2.0.0",
+    "asyncpg>=0.30.0",
+    "pgvector>=0.3.0",
 ]
 
 [dependency-groups]
@@ -60,6 +63,7 @@ show_error_codes = true
 module = [
     "pyzbar.*",
     "tavily.*",
+    "asyncpg.*",
 ]
 ignore_missing_imports = true
 ignore_errors = true

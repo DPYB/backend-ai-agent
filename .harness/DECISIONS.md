@@ -6,6 +6,7 @@
 
 | 날짜 | 결정 내용 | 이유 |
 | :--- | :--- | :--- |
+| **2026-09-14** | **Supabase 공용 DB MSA 스키마 격리(`agent`) 및 Transaction Pooler(포트 6543) 연동** | 전사 $0 무과금 단일 Supabase Postgres 인스턴스 공유 정책 준수, 타 스키마(`core`/`record`) 직접 쿼리 원천 차단(REST API 원칙), Transaction Pooler prepared statement 충돌 방지(`statement_cache_size: 0`), pgvector 코사인 유사도 검색 최적화를 위함. |
 | **2026-09-13** | **도서 추천 의도 감지 시 사서 노드에서 큐레이터 서브에이전트로 선위임 및 메시지 정제** | 사서 노드에서 불필요한 1차 LLM 호출(비용/지연 2~3초)을 제거하고, `tool_calls` 생성 후 `ToolMessage` 부재로 인한 LLM API의 400 Bad Request 에러를 원천 차단하기 위함. |
 | **2026-09-12** | **DPYB 중앙 Reusable Workflow 연동 및 Git/PR 머지 표준 확정** | 조직 전체 CI/CD 일관성 유지(Python 3.12 CI, PR Lint) 및 `feat/*` 단일화, `[scope]` 대괄호 규격, 사람에 의한 안전한 최종 머지 원칙을 보장하기 위함. |
 | **2026-09-12** | **바이브 코딩 하네스 표준 구축** | 복수의 AI 코딩 툴(Antigravity, Claude Code, Codex, Kiro) 간 컨텍스트 동기화 및 단일 책임 문서 관리 원칙을 준수하기 위함. |

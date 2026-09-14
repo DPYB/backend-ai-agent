@@ -68,6 +68,15 @@
   - `langchain-openai` 의존성 추가 및 `SecretStr` 정적 타입 안정성 보장
   - 로컬 Uvicorn 8000 포트 실시간 기동 및 사서(고양이 블루, 슈빌, 바다달팽이), 문학 비평가(이동진 톤) 실대화 완벽 검증
 
+- [x] **Phase 12: Supabase `agent` 다중 스키마 및 Transaction Pooler(포트 6543) 연동**
+  - DPYB 전사 $0 무과금 단일 Supabase Postgres 인스턴스 공유 정책 반영 및 `agent` 전용 스키마 격리 구현
+  - Transaction Pooler 충돌 방지 옵션(`connect_args={"statement_cache_size": 0, "prepared_statement_cache_size": 0}`) 적용된 SQLAlchemy asyncpg 엔진 구축
+  - `agent` 스키마 DDL 명세(`scripts/init_agent_schema.sql`) 및 asyncpg 자동 실행 스크립트(`scripts/init_agent_schema.py`) 작성
+  - ORM 모델 `ScrapVector`(`__table_args__ = {"schema": "agent"}`) 및 `AgentVectorRepository` 코사인 유사도 검색 구현
+  - `SupabaseVectorClient` 어댑터 통합으로 `POST /api/v1/memory/scraps` 및 RAG 도구 자동 연계 및 하위 호환성 100% 보장
+  - 신규 단위 테스트(`tests/unit/test_db_infrastructure.py`) 포함 총 46개 단위 테스트, Ruff 린트, Mypy 타입 체크 무결성 100% 통과
+
+
 
 
 
