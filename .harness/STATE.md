@@ -81,6 +81,15 @@
   - `ResilientLLM` 및 큐레이터 노드에 Gemini 429 시 OpenAI(`gpt-4o-mini`) 즉시 2차 폴백 파이프라인 탑재
   - 스트리밍 종료 시점에 Redis 세션(슬라이딩 윈도우 10건)에 완전 영속화하여 기존 `/chat`과의 세션 일관성 100% 보장
   - 신규 단위 테스트(`tests/unit/test_streaming_api.py`) 3종 작성 및 실시간 스트리밍 토큰 송출 검증 완료 (Ruff & Mypy 100% 통과)
+- [x] **Phase 14: 도서 추천 상세 메타데이터 파이프라인 및 프론트 원클릭 서재 등록 연계**
+  - 프론트엔드(`frontend-reader-web`) `LibrarianChat.jsx` 및 `RegisterBook.jsx`와 100% 호환되는 `RecommendedBook` 스키마 정의 (`title`, `author`, `isbn`, `publisher`, `page_count`, `genre`, `cover_url`, `reason`, `description`)
+  - 국립중앙도서관 API (`SearchApi.do`) 응답 파싱 고도화:
+    - 정규식 기반 총 쪽수(`page_count`) 정수 추출 (`parse_page_count`)
+    - KDC(한국십진분류) 및 주제 키워드 기반 표준 장르 매핑 (`map_kdc_to_genre`)
+    - 복잡한 도서관 저자 표기(저자/역자/공저 등) 순수 저자명 자동 정제 (`clean_author_name`)
+    - 국립도서관 표지 누락 시 교보문고 고화질 CDN(`https://contents.kyobobook.co.kr/sih/fit-in/458x0/pdt/{isbn}.jpg`) 0ms 무지연 자동 폴백 (`get_verified_cover_url`)
+  - `/api/v1/chat` 응답(`ChatResponse.recommended_books`) 및 `/api/v1/chat/stream` SSE 이벤트(`event: books`, `event: done`)에 완벽 바인딩
+  - 단위 테스트(`tests/unit/test_recommend_metadata.py`) 6종 작성 및 전체 55개 단위 테스트 100% 그린 패스 (Ruff & Mypy 100% 통과)
 
 
 

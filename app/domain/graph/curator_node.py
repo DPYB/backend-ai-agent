@@ -174,6 +174,8 @@ async def book_curator_node(state: AgentState) -> Dict[str, Any]:
                     "publisher": biblio.get("publisher", ""),
                     "isbn": biblio.get("isbn", ""),
                     "cover_url": biblio.get("cover_url", ""),
+                    "page_count": biblio.get("page_count"),
+                    "genre": biblio.get("genre"),
                     "description": biblio.get("description", candidate.get("reason", "")),
                     "reason": candidate.get("reason", ""),
                     "verified": True,

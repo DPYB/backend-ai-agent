@@ -13,6 +13,7 @@ from app.api.schemas import (
     ChatResponse,
     HealthResponse,
     PersonaInfo,
+    RecommendedBook,
     SwitchSuggestionResponse,
 )
 from app.core.config import settings
@@ -232,6 +233,24 @@ async def chat_with_persona(request: ChatRequest) -> ChatResponse:
             },
         )
 
+        curated_books_data = result_state.get("curated_books") or []
+        recommended_books = []
+        for b in curated_books_data:
+            if isinstance(b, dict):
+                recommended_books.append(
+                    RecommendedBook(
+                        title=str(b.get("title", "")),
+                        author=str(b.get("author", "")),
+                        isbn=str(b.get("isbn", "")),
+                        publisher=b.get("publisher"),
+                        page_count=b.get("page_count"),
+                        genre=b.get("genre"),
+                        cover_url=b.get("cover_url"),
+                        reason=b.get("reason"),
+                        description=b.get("description"),
+                    )
+                )
+
         return ChatResponse(
             session_id=session_id,
             reply=last_ai_msg or "답변을 정리하고 있습니다.",
@@ -239,6 +258,7 @@ async def chat_with_persona(request: ChatRequest) -> ChatResponse:
             display_name=display_name,
             mode=persona_mode,
             switch_suggestion=switch_suggestion,
+            recommended_books=recommended_books,
         )
 
     except Exception as e:
@@ -300,6 +320,7 @@ async def chat_stream_with_persona(request: ChatRequest) -> StreamingResponse:
             tokens_emitted = 0
             last_active_persona = active_persona
             switch_suggestion_data = None
+            curated_books_data: List[Dict[str, Any]] = []
             final_messages: List[BaseMessage] = list(initial_state["messages"])
             context_summary = initial_state.get("context_summary")
 
@@ -327,6 +348,8 @@ async def chat_stream_with_persona(request: ChatRequest) -> StreamingResponse:
                             last_active_persona = output["active_persona"]
                         if output.get("switch_suggestion"):
                             switch_suggestion_data = output["switch_suggestion"]
+                        if output.get("curated_books"):
+                            curated_books_data = output["curated_books"]
                         if output.get("messages"):
                             for m in output["messages"]:
                                 final_messages.append(m)
@@ -335,6 +358,10 @@ async def chat_stream_with_persona(request: ChatRequest) -> StreamingResponse:
                                 accumulated_text = extract_message_text(
                                     getattr(ai_m, "content", "")
                                 )
+                    elif node_name == "book_curator_node" and isinstance(output, dict):
+                        if output.get("curated_books"):
+                            curated_books_data = output["curated_books"]
+                            yield _format_sse("books", {"books": curated_books_data})
                     elif node_name == "summarizer_node" and isinstance(output, dict):
                         if output.get("active_persona"):
                             last_active_persona = output["active_persona"]
@@ -381,6 +408,23 @@ async def chat_stream_with_persona(request: ChatRequest) -> StreamingResponse:
                 },
             )
 
+            formatted_books = []
+            for b in curated_books_data:
+                if isinstance(b, dict):
+                    formatted_books.append(
+                        {
+                            "title": str(b.get("title", "")),
+                            "author": str(b.get("author", "")),
+                            "isbn": str(b.get("isbn", "")),
+                            "publisher": b.get("publisher"),
+                            "page_count": b.get("page_count"),
+                            "genre": b.get("genre"),
+                            "cover_url": b.get("cover_url"),
+                            "reason": b.get("reason"),
+                            "description": b.get("description"),
+                        }
+                    )
+
             # 4. Emit done event
             yield _format_sse(
                 "done",
@@ -391,6 +435,7 @@ async def chat_stream_with_persona(request: ChatRequest) -> StreamingResponse:
                     "display_name": final_display_name,
                     "mode": final_mode,
                     "switch_suggestion": switch_suggestion_data,
+                    "recommended_books": formatted_books,
                 },
             )
 
