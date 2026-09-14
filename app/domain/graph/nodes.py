@@ -287,12 +287,16 @@ async def _run_persona_node(
         persona_id,
     )
 
-    return {
+    result: Dict[str, Any] = {
         "messages": [response],
         "active_persona": persona_id,
         "switch_suggestion": suggestion,
         "handoff_target": target,
     }
+    if curated_books:
+        result["curated_books"] = curated_books
+
+    return result
 
 
 # ==============================================================================

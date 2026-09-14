@@ -1,6 +1,6 @@
 """Pydantic request and response schemas for FastAPI endpoints."""
 
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -59,6 +59,32 @@ class SwitchSuggestionResponse(BaseModel):
     reason: str = Field(..., description="Contextual reason for suggestion")
 
 
+class RecommendedBook(BaseModel):
+    """Detailed book recommendation metadata verified by National Library of Korea."""
+
+    title: str = Field(..., description="Book title (도서명)")
+    author: str = Field(
+        default="", description="Author name without extraneous notes (순수 저자명)"
+    )
+    isbn: str = Field(default="", description="13-digit standard ISBN (13자리 정식 ISBN)")
+    publisher: Optional[str] = Field(default=None, description="Publisher name (출판사)")
+    page_count: Optional[int] = Field(
+        default=None, description="Total page count as integer (총 쪽수)"
+    )
+    genre: Optional[str] = Field(
+        default=None, description="Book genre or KDC main category (도서 장르/대분류)"
+    )
+    cover_url: Optional[str] = Field(
+        default=None, description="High-resolution book cover image URL (고화질 표지 URL)"
+    )
+    reason: Optional[str] = Field(
+        default=None, description="AI recommendation context or rationale (추천 사유)"
+    )
+    description: Optional[str] = Field(
+        default=None, description="Book summary or description (도서 소개/줄거리)"
+    )
+
+
 class ChatResponse(BaseModel):
     """Response payload returned by AI librarian or debate partner."""
 
@@ -73,6 +99,10 @@ class ChatResponse(BaseModel):
     switch_suggestion: Optional[SwitchSuggestionResponse] = Field(
         default=None,
         description="Button action metadata when handoff is recommended",
+    )
+    recommended_books: List[RecommendedBook] = Field(
+        default_factory=list,
+        description="Structured verified book recommendations for one-click bookshelf registration",
     )
 
 
