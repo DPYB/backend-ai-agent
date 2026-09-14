@@ -157,6 +157,36 @@
 - 로컬 `develop` 브랜치 체크아웃 및 최신 동기화 (`git checkout develop && git pull origin develop`).
 - LangGraph 실시간 스트리밍(SSE) 엔드포인트(`POST /api/v1/chat/stream`) 설계 및 구현 (`.harness/PLAN.md`).
 
+---
+
+## 세션 7 (2026-09-14)
+
+### 진행한 작업
+1. **전사 Supabase 공용 DB 아키텍처 및 MSA `agent` 스키마 연동**:
+   - DPYB 전사 $0 무과금 단일 Supabase Postgres 인스턴스 공유 정책 반영
+   - `core` / `record` 스키마 직접 쿼리를 원천 차단하고 `agent` 스키마를 독점 소유하여 독서 기억/대화 세션 격리
+2. **Transaction Pooler(포트 6543) 연동 및 충돌 방지**:
+   - `pyproject.toml`에 `sqlalchemy>=2.0.0`, `asyncpg>=0.30.0`, `pgvector>=0.3.0` 의존성 추가
+   - `app/core/config.py` 및 `.env.example`에 Transaction Pooler 규격(`DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT=6543`, `DB_NAME=postgres`, `DB_SCHEMA=agent`) 및 특수문자 안전 인코딩 `async_database_url` 구현
+   - Transaction Pooler prepared statement 충돌 방지를 위한 `connect_args={"statement_cache_size": 0, "prepared_statement_cache_size": 0}` 적용 (`app/infrastructure/db/session.py`)
+3. **`agent` 스키마 전용 DDL 및 자동 실행 도구 작성**:
+   - `scripts/init_agent_schema.sql`: `vector` 확장 활성화, `agent` 스키마 생성, `agent.scrap_vector` 테이블, HNSW 코사인 유사도 인덱스, `agent.match_scraps` RPC 함수 정의
+   - `scripts/init_agent_schema.py`: 비동기 asyncpg 기반 DDL 자동 실행 및 샘플 데이터 시딩(`--seed`) 스크립트 작성
+4. **SQLAlchemy ORM 및 `AgentVectorRepository` 구축**:
+   - `app/infrastructure/db/models.py`: `ScrapVector`(`__table_args__ = {"schema": "agent"}`) 및 `ChatSession` 선언적 매핑
+   - `app/infrastructure/db/repository.py`: `member_id` 완전 격리 코사인 유사도 연산 및 스크랩 벡터 삽입, 헬스체크 핑 구현 (미연결 시 인메모리 폴백 지원)
+   - `app/infrastructure/supabase_client.py`: `SupabaseVectorClient`가 `AgentVectorRepository`를 우선 호출하도록 어댑터 통합 (하위 호환성 100% 유지)
+5. **품질 검증 및 테스트 전체 통과**:
+   - `tests/unit/test_db_infrastructure.py` 신규 작성 (URL 인코딩, 스키마 분리, 인메모리 폴백, 회원별 격리 검증)
+   - 총 46개 단위 테스트 전원 통과 (100% 그린)
+   - Ruff 린트/포맷 정렬 및 Mypy 정적 타입 체크(`56 source files`) 무결성 확인 완료
+
+### 다음 세션에서 할 일
+- 사용자의 확인 및 요청 시 `feat/supabase-agent-schema` 브랜치 변경 사항 커밋 및 푸시
+- `feat/supabase-agent-schema -> develop` PR 생성 보조
+- LangGraph 스트리밍(SSE) 응답 인터페이스(`POST /api/v1/chat/stream`) 설계 및 구현 (`.harness/PLAN.md`)
+
+
 
 
 

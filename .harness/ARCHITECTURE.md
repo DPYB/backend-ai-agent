@@ -32,12 +32,12 @@
 | **Runtime & Language** | Python 3.12, `uv` | 경량 패키지 관리 및 초고속 실행 환경 |
 | **Web Framework** | FastAPI, Uvicorn | 비동기 고성능 REST API 서버, 자동 OpenAPI Docs |
 | **Agent Orchestration** | LangGraph, LangChain Core | 8개 페르소나 상태 관리, 도구 바인딩 및 Handoff |
-| **LLM & Embedding** | Google Gemini 1.5 Flash, `text-embedding-004` (768차원) | 대화 생성 및 텍스트 임베딩 벡터화 |
-| **Vector Database** | Supabase pgvector (`scrap_vector`) | 회원별(`member_id`) 스크랩 문장/메모 코사인 유사도 검색 |
+| **LLM & Embedding** | Google Gemini 3.6 Flash, `text-embedding-004` (768차원), OpenAI 폴백 | 대화 생성 및 텍스트 임베딩 벡터화 |
+| **Vector Database & ORM** | Supabase pgvector (`agent.scrap_vector`), SQLAlchemy 2.0, `asyncpg` | Transaction Pooler(6543) 연동, 회원별 코사인 유사도 검색, `agent` 스키마 격리 |
 | **Cache & Session** | Redis / Upstash Redis | 다회 대화 컨텍스트 유지 및 추천 결과 TTL 캐싱 |
 | **Computer Vision** | `pyzbar`, `Pillow`, `libzbar0` | 13자리 도서 바코드(EAN13/ISBN-13) 스캔 |
 | **External OCR** | Naver Cloud Clova OCR General API V2 | 책 문장 이미지에서 행 단위 텍스트 추출 |
-| **Web Search** | Tavily Python SDK | 최신 도서 및 트렌드 실시간 검색 |
+| **Book & Weather Info** | 국립중앙도서관 Open API, Open-Meteo | 실존 도서 서지정보 100% 검증 및 실시간 날씨 연동 |
 
 ---
 
@@ -69,10 +69,21 @@ backend-ai-agent/
 │   │   ├── recommend/          # Tavily + Redis 도서 추천 도구
 │   │   └── graph/              # LangGraph 노드, 상태, 워크플로우
 │   ├── vision/                 # 바코드 스캐너 및 Clova OCR 클라이언트
-│   ├── infrastructure/         # Supabase, Redis, core-api 클라이언트
+│   ├── infrastructure/         # Supabase, DB(SQLAlchemy asyncpg), Redis, core-api 클라이언트
+│   │   ├── db/                 # 'agent' 스키마 ORM 모델, Pooler 세션, pgvector 리포지토리
+│   │   │   ├── session.py
+│   │   │   ├── models.py
+│   │   │   └── repository.py
+│   │   ├── supabase_client.py
+│   │   ├── redis_session.py
+│   │   ├── core_api_client.py
+│   │   ├── national_library_client.py
+│   │   └── weather_client.py
 │   └── api/                    # API 스키마 및 REST 엔드포인트 라우터
 ├── scripts/
-│   └── seed_supabase_scrap_vector.py # Supabase pgvector DDL 및 시딩
+│   ├── init_agent_schema.sql   # Supabase 'agent' 스키마 DDL
+│   ├── init_agent_schema.py    # DDL 자동 적용 및 시딩 실행기
+│   └── seed_supabase_scrap_vector.py # 레거시 시딩 스크립트
 ├── tests/
 │   └── unit/                   # 단위 테스트 (Pytest)
 ├── Dockerfile                  # $PORT 동적 주입 및 libzbar0 포함
@@ -112,23 +123,34 @@ backend-ai-agent/
 APP_ENV=development
 PORT=8000
 
-# Google Gemini
+# Google Gemini & OpenAI Fallback
 GEMINI_API_KEY=
-GEMINI_MODEL=gemini-1.5-flash
-GEMINI_EMBEDDING_MODEL=models/text-embedding-004
+GEMINI_MODEL=gemini-3.6-flash
+GEMINI_EMBEDDING_MODEL=text-embedding-004
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4o-mini
 
-# Supabase (pgvector)
+# Supabase PostgreSQL / Transaction Pooler (Port 6543, 'agent' Schema)
+DB_USER=postgres.clhojanmfvjtdhhwilxm
+DB_PASSWORD=
+DB_HOST=aws-0-ap-northeast-2.pooler.supabase.com
+DB_PORT=6543
+DB_NAME=postgres
+DB_SCHEMA=agent
+
+# Supabase REST API (Optional / Legacy fallback)
 SUPABASE_URL=
 SUPABASE_KEY=
 
 # Redis
 REDIS_URL=redis://localhost:6379/0
 
-# Tavily & Core API
-TAVILY_API_KEY=
-CORE_API_URL=http://localhost:8080
+# National Library of Korea Open API & Core API
+NL_API_CERT_KEY=
+NL_API_SEARCH_URL=https://www.nl.go.kr/seoji/SearchApi.do
+CORE_API_BASE_URL=http://localhost:8080
 
-# Naver Cloud Clova OCR
+# Naver Cloud Clova OCR General API V2
 NAVER_CLOVA_API_URL=
 NAVER_CLOVA_SECRET_KEY=
 ```
