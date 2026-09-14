@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 from typing import List
+from urllib.parse import quote_plus
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -37,9 +38,18 @@ class Settings(BaseSettings):
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
     openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
 
-    # Supabase pgvector (Cloud Free Tier)
+    # Supabase pgvector (Cloud Free Tier - REST API)
     supabase_url: str = Field(default="", alias="SUPABASE_URL")
     supabase_key: str = Field(default="", alias="SUPABASE_KEY")
+
+    # Supabase PostgreSQL / Transaction Pooler (Multi-Schema & pgvector)
+    db_user: str = Field(default="", alias="DB_USER")
+    db_password: str = Field(default="", alias="DB_PASSWORD")
+    db_host: str = Field(default="", alias="DB_HOST")
+    db_port: int = Field(default=6543, alias="DB_PORT")
+    db_name: str = Field(default="postgres", alias="DB_NAME")
+    db_schema: str = Field(default="agent", alias="DB_SCHEMA")
+    database_url: str = Field(default="", alias="DATABASE_URL")
 
     # Redis (Session State & Cache)
     redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
@@ -78,6 +88,25 @@ class Settings(BaseSettings):
     def is_testing(self) -> bool:
         """Check if environment is testing."""
         return self.app_env.lower() in ("test", "testing")
+
+    @property
+    def async_database_url(self) -> str:
+        """Return asyncpg database connection URL with URL-encoded credentials."""
+        if self.database_url:
+            url = self.database_url
+            if url.startswith("postgresql://"):
+                return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            return url
+        if self.db_host and self.db_user:
+            encoded_password = quote_plus(self.db_password) if self.db_password else ""
+            auth = f"{self.db_user}:{encoded_password}" if encoded_password else self.db_user
+            return f"postgresql+asyncpg://{auth}@{self.db_host}:{self.db_port}/{self.db_name}"
+        return ""
+
+    @property
+    def is_db_configured(self) -> bool:
+        """Check if PostgreSQL/Supabase database connection is configured."""
+        return bool(self.async_database_url)
 
 
 @lru_cache()

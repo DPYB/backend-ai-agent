@@ -6,27 +6,41 @@ from typing import Any, Dict, List, Optional, cast
 from supabase import Client, create_client
 
 from app.core.config import settings
+from app.infrastructure.db.repository import (
+    AgentVectorRepository,
+    get_agent_vector_repository,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class SupabaseVectorClient:
-    """Manages Supabase client for scrap_vector similarity search partitioned by member_id."""
+    """Manages Supabase client for scrap_vector similarity search partitioned by member_id.
+
+    Prioritizes the direct PostgreSQL Transaction Pooler ('agent' schema) via SQLAlchemy asyncpg.
+    Falls back to Supabase PostgREST Client, and finally to in-memory storage for test/mock modes.
+    """
 
     def __init__(
         self,
         url: str = settings.supabase_url,
         key: str = settings.supabase_key,
+        repo: Optional[AgentVectorRepository] = None,
     ):
         self.url = url
         self.key = key
+        self._repo = repo or get_agent_vector_repository()
         self._client: Optional[Client] = None
         self._mock_scraps: List[Dict[str, Any]] = []
 
-        if self.url and self.key:
+        if self._repo.is_connected:
+            logger.info(
+                "Supabase Transaction Pooler ('agent' schema) active via SQLAlchemy asyncpg."
+            )
+        elif self.url and self.key:
             try:
                 self._client = create_client(self.url, self.key)
-                logger.info("Supabase client initialized successfully.")
+                logger.info("Supabase REST client initialized successfully.")
             except Exception as e:
                 logger.warning(
                     "Failed to initialize Supabase client (%s). In-memory mock enabled.",
@@ -37,11 +51,13 @@ class SupabaseVectorClient:
 
     @property
     def is_connected(self) -> bool:
-        """Check if Supabase client is connected."""
-        return self._client is not None
+        """Check if database or Supabase client is connected."""
+        return self._repo.is_connected or (self._client is not None)
 
     async def ping_db(self) -> bool:
-        """Execute a lightweight query on Supabase to prevent 7-day inactivity pause."""
+        """Execute a lightweight query to prevent 7-day inactivity pause."""
+        if self._repo.is_connected:
+            return await self._repo.ping_db()
         if not self._client:
             return False
         try:
@@ -55,13 +71,21 @@ class SupabaseVectorClient:
         self,
         member_id: str,
         query_embedding: List[float],
-        match_threshold: float = 0.5,
+        match_threshold: float = 0.3,
         match_count: int = 5,
     ) -> List[Dict[str, Any]]:
         """Search scrap vectors strictly filtered by member_id (personalization only).
 
-        Calls the Supabase RPC function `match_scraps`.
+        Prioritizes direct PostgreSQL 'agent.scrap_vector' search.
         """
+        if self._repo.is_connected:
+            return await self._repo.search_member_scraps(
+                member_id=member_id,
+                query_embedding=query_embedding,
+                match_threshold=match_threshold,
+                match_count=match_count,
+            )
+
         if self._client:
             try:
                 response = self._client.rpc(
@@ -93,7 +117,17 @@ class SupabaseVectorClient:
         memo: str,
         embedding: List[float],
     ) -> Dict[str, Any]:
-        """Insert a scrap embedding record into Supabase pgvector scrap_vector table."""
+        """Insert a scrap embedding record into agent.scrap_vector table."""
+        if self._repo.is_connected:
+            return await self._repo.insert_scrap_vector(
+                member_id=member_id,
+                book_id=book_id,
+                book_title=book_title,
+                content=content,
+                memo=memo,
+                embedding=embedding,
+            )
+
         record = {
             "member_id": member_id,
             "book_id": book_id,
