@@ -182,9 +182,35 @@
    - Ruff 린트/포맷 정렬 및 Mypy 정적 타입 체크(`56 source files`) 무결성 확인 완료
 
 ### 다음 세션에서 할 일
-- 사용자의 확인 및 요청 시 `feat/supabase-agent-schema` 브랜치 변경 사항 커밋 및 푸시
-- `feat/supabase-agent-schema -> develop` PR 생성 보조
-- LangGraph 스트리밍(SSE) 응답 인터페이스(`POST /api/v1/chat/stream`) 설계 및 구현 (`.harness/PLAN.md`)
+- 사용자의 확인 및 요청 시 `feat/supabase-agent-schema` 브랜치 변경 사항 커밋 및 푸시 (완료: PR #5 머지됨)
+- `feat/supabase-agent-schema -> develop` PR 생성 보조 (완료: PR #5 머지됨)
+- LangGraph 스트리밍(SSE) 응답 인터페이스(`POST /api/v1/chat/stream`) 설계 및 구현 (세션 8에서 완료)
+
+---
+
+## 세션 8 (2026-09-14)
+
+### 진행한 작업
+1. **PR #5 머지 및 develop 최신 동기화**:
+   - `feat/supabase-agent-schema` PR #5 사람 직접 머지 확인 후 `develop` 풀 완료
+   - 작업 브랜치 `feat/chat-sse-streaming` 분기
+2. **LangGraph 실시간 스트리밍(SSE) 엔드포인트 구현**:
+   - `POST /api/v1/chat/stream` 엔드포인트 추가 (`StreamingResponse`, `text/event-stream; charset=utf-8`)
+   - 표준 SSE 이벤트 규격 구현: `event: metadata`, `event: token` (텍스트 델타), `event: switch_suggestion`, `event: done`, `event: error`
+   - LangGraph `astream_events(v2)` 연동: 마스터 페르소나 노드 토큰만 실시간 스트리밍하고 내부 도서 추천 서브에이전트(`curator_node`) 중간 JSON 추론은 완벽 격리
+   - 프록시 버퍼링 방지 헤더(`X-Accel-Buffering: no`, `Cache-Control: no-cache`) 적용
+3. **ResilientLLM 및 큐레이터 2차 예비 LLM(OpenAI) 즉시 폴백 구현**:
+   - Gemini API 429 할당량 초과 시 곧바로 OpenAI(`gpt-4o-mini`)로 전환 호출하여 응답 중단 원천 방지
+   - 노드 함수에 `config: Optional[RunnableConfig] = None` 표준 파라미터 전달 연동
+4. **품질 검증 및 실시간 통신 확인**:
+   - `tests/unit/test_streaming_api.py` 신규 작성 (3개 테스트 100% 통과)
+   - 실시간 SSE 스트리밍 통신(`metadata` -> `token` 실시간 타이핑 -> `done` -> Redis 영속화) 동작 확인 완료
+   - Ruff 린트/포맷 통과, Mypy 타입 체크 무결성 통과 (`59 source files`)
+
+### 다음 세션에서 할 일
+- 사용자 승인 시 `feat/chat-sse-streaming` 변경사항 커밋, 푸시 및 `develop` 대상 PR 생성
+- 프론트엔드 연동 지원 및 향후 백로그 아이디어(멀티모달 표지 분석 등) 검토
+
 
 
 
