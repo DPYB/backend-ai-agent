@@ -56,6 +56,20 @@ class ChatRequest(BaseModel):
         description="Current user coordinates (위경도) for real-time weather curation",
     )
     stream: Optional[bool] = Field(default=False, description="Streaming response flag")
+    action: Optional[Literal["chat", "conclude"]] = Field(
+        default="chat",
+        description="Action intent: 'chat' (normal conversation) or 'conclude' (UI button instant wrap-up & curation)",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def handle_conclude_action(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            action = data.get("action", "chat")
+            msg = data.get("message")
+            if action == "conclude" and (not msg or not str(msg).strip()):
+                data["message"] = "토론 마무리"
+        return data
 
     @model_validator(mode="after")
     def populate_defaults_and_aliases(self) -> "ChatRequest":
@@ -145,6 +159,14 @@ class ChatResponse(BaseModel):
     recommended_books: List[RecommendedBook] = Field(
         default_factory=list,
         description="Structured verified book recommendations for one-click bookshelf registration",
+    )
+    is_concluded: Optional[bool] = Field(
+        default=False,
+        description="Whether this debate session has concluded with wrap-up curation",
+    )
+    debate_summary: Optional[str] = Field(
+        default=None,
+        description="Structured wrap-up summary of the debate discussion",
     )
 
     @model_validator(mode="after")

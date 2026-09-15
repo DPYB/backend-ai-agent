@@ -1,6 +1,7 @@
 """Node implementations for LangGraph: 8 Personas and Summarizer node."""
 
 import logging
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
@@ -85,6 +86,18 @@ class ResilientLLM:
                 logger.warning("Secondary LLM call failed (%s). Falling back to mock response.", e)
 
         last_msg = str(messages[-1].content) if messages else ""
+        system_text = "".join(str(m.content) for m in messages if isinstance(m, SystemMessage))
+        if "마무리" in last_msg or "피날레" in last_msg or "피날레" in system_text:
+            return AIMessage(
+                content=(
+                    "[토론 요약]\n"
+                    "오늘 우리는 텍스트에 내재된 상실과 인간의 실존적 고뇌에 대해 깊이 있는 대화를 나누었습니다.\n\n"
+                    "★ 별점: 4.5 / 5.0\n"
+                    "■ 한 줄 총평: 고통을 응시함으로써 비로소 피어나는 연대의 온기.\n\n"
+                    "오늘 나눈 사유의 여운을 이어갈 다음 책으로 추천해 드린 도서를 서재에 담아 깊이 음미해 보시길 바랍니다. "
+                    "풍요로운 대화 나눠주셔서 대단히 감사했습니다."
+                )
+            )
         if "서재" in last_msg or "책장" in last_msg:
             return AIMessage(
                 content="독자님의 서재를 확인해보니 흥미로운 책들이 가득하네요. 어떤 책에 대해 이야기해볼까요?"
@@ -143,6 +156,59 @@ def _get_llm(tools: Optional[List[Any]] = None) -> ResilientLLM:
             logger.warning("Failed to initialize OpenAI LLM (%s).", e)
 
     return ResilientLLM(primary_llm=primary, secondary_llm=secondary, bound_tools=tools)
+
+
+def _extract_debate_topic(messages: List[BaseMessage]) -> str:
+    """Extract debate topic or mentioned book titles from conversation history."""
+    book_candidates: List[str] = []
+    for msg in reversed(messages):
+        text = str(getattr(msg, "content", ""))
+        matches = re.findall(r"[《<「『](.*?)[》>」』]", text)
+        for m in matches:
+            cleaned = m.strip()
+            if cleaned and cleaned not in book_candidates:
+                book_candidates.append(cleaned)
+
+    if book_candidates:
+        return f"도서 '{book_candidates[0]}'와 관련된 심화 사유 및 토론 확장"
+
+    recent_user_texts: List[str] = []
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            txt = str(msg.content).strip()
+            if txt and txt not in ["토론 마무리", "마무리", "종료", "끝", "토론 끝"]:
+                recent_user_texts.append(txt)
+            if len(recent_user_texts) >= 2:
+                break
+
+    if recent_user_texts:
+        return f"독서 토론 주제: {' / '.join(reversed(recent_user_texts))}"
+
+    return "독서 토론의 화두를 확장해 줄 깊이 있는 인문/문학 도서"
+
+
+def _extract_debate_summary(ai_content: str) -> Optional[str]:
+    """Extract a concise debate summary from the concluding response text."""
+    if not ai_content:
+        return None
+
+    summary_markers = [
+        r"(?:\[토론 요약\]|【토론 요약】|오늘의 토론 요약|토론 요약:?)(.*?)(?=(?:\[|【|■|★|🏛️|🌱|🔍|추천 도서|다음 책|\Z))",
+        r"(?:■ 한 줄 총평|한 줄 총평:?)(.*?)(?=(?:■|★|◆|🏛️|🌱|🔍|\Z))",
+    ]
+    for pattern in summary_markers:
+        match = re.search(pattern, ai_content, flags=re.DOTALL)
+        if match:
+            extracted = match.group(1).strip()
+            if len(extracted) > 10:
+                return extracted
+
+    paragraphs = [p.strip() for p in ai_content.split("\n\n") if p.strip()]
+    if paragraphs:
+        first_p = re.sub(r"^#+\s*", "", paragraphs[0]).strip()
+        return first_p[:300]
+
+    return ai_content[:200]
 
 
 def _detect_switch_intent(
@@ -230,7 +296,41 @@ async def _run_persona_node(
             last_user_msg = str(msg.content)
             break
 
-    # 1. If recommendation/curation intent is present and books are not yet curated,
+    # 1. Conclude Intent Check (UI button action='conclude' or natural conclude phrasing)
+    action = state.get("action") or "chat"
+    is_debate = persona_id.startswith("DEBATE_")
+    conclude_keywords = [
+        "토론 끝",
+        "토론 마무리",
+        "여기까지",
+        "수고하셨",
+        "그만할래",
+        "토론 종료",
+        "끝내자",
+        "끝낼래",
+        "마무리하자",
+        "마무리할래",
+        "정리해줘",
+    ]
+    is_conclude_requested = (action == "conclude") or (
+        is_debate and any(kw in last_user_msg for kw in conclude_keywords)
+    )
+    is_already_concluded = bool(state.get("is_concluded"))
+
+    # If conclude is requested and books are not yet curated, delegate to curator_node
+    if (is_conclude_requested or is_already_concluded) and not state.get("curated_books"):
+        logger.info(
+            "Conclude intent detected for persona %s. Delegating to curator_node for wrap-up books.",
+            persona_id,
+        )
+        debate_topic = _extract_debate_topic(state.get("messages", []))
+        return {
+            "active_persona": persona_id,
+            "curator_request": f"토론 마무리 연계 추천: {debate_topic}",
+            "is_concluded": True,
+        }
+
+    # 2. If recommendation/curation intent is present and books are not yet curated,
     # immediately delegate to curator_node to verify real books without an extra LLM call
     if not state.get("curated_books"):
         recom_keywords = ["추천", "골라줘", "권해줘", "어떤 책", "읽을만한", "책 찾아"]
@@ -257,6 +357,18 @@ async def _run_persona_node(
             "지침: 위의 검증된 실존 도서를 당신 고유의 어조와 캐릭터 감성으로 독자에게 다정하게 소개해 주십시오.\n"
             "- [절대 준수]: 도서의 제목과 저자명(작가)은 위 목록에 적힌 그대로 정확하게 일치시켜 언급해야 합니다. 작가 이름을 임의로 다른 작가(예: 김애란 등)로 바꾸거나 날조하지 마십시오.\n"
             "- 존재하지 않는 가짜 책을 임의로 지어내지 마십시오."
+        )
+
+    # 3. Inject finale & debate wrap-up instructions if concluding
+    is_conclude_active = is_conclude_requested or is_already_concluded
+    if is_conclude_active:
+        system_prompt += (
+            "\n\n[🏁 독서 토론 피날레 및 마무리 총평 지침]\n"
+            "사용자가 이번 토론의 마무리를 요청했습니다. 당신은 다음 세 가지 구성을 반드시 포함하여 토론의 대미를 장식해야 합니다:\n"
+            "1. [토론 요약]: 오늘 사용자와 깊이 있게 나눈 논제, 쟁점, 그리고 도출된 핵심 통찰을 2~3문장 또는 개조식으로 명확하고 품격 있게 요약하십시오.\n"
+            "2. [작별 및 피날레 총평]: 당신 고유의 오마주 캐릭터 어조(평론가의 별점/한줄평, 이야기꾼의 역사적 교훈, 상담사의 마음 돌봄, 관찰가의 행동 시그널 등)를 살려 독자에게 진심 어린 찬사와 마지막 총평을 전하십시오.\n"
+            "3. [연계 도서 제안]: 큐레이터가 엄선한 위의 실존 추천 도서를 소개하며, 오늘 나눈 토론의 사유를 이어갈 다음 책으로 자연스럽게 권유하십시오.\n"
+            "- [절대 준수]: 이번 발화로 토론이 완전히 마무리되므로, 사용자에게 새로운 질문이나 다음 화두를 던져 대화를 연장하지 말고 감사의 작별 인사로 마침표를 찍으십시오."
         )
 
     system_prompt += f"\n\n[현재 사용자 식별자: member_id={state.get('member_id')}]"
@@ -287,11 +399,17 @@ async def _run_persona_node(
         persona_id,
     )
 
+    debate_summary: Optional[str] = None
+    if is_conclude_active:
+        debate_summary = _extract_debate_summary(str(response.content))
+
     result: Dict[str, Any] = {
         "messages": [response],
         "active_persona": persona_id,
         "switch_suggestion": suggestion,
         "handoff_target": target,
+        "is_concluded": is_conclude_active,
+        "debate_summary": debate_summary,
     }
     if curated_books:
         result["curated_books"] = curated_books
