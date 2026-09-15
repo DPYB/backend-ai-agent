@@ -358,10 +358,9 @@
    - `.harness/DECISIONS.md`에 토론 피날레 4단계 플로우 분리 및 큐레이터 선위임 결정 추가
 
 ### 다음 세션에서 할 일
-- 사용자의 확인 및 요청 시 `feat/debate-personas-enhancement` 브랜치 변경 사항 커밋 및 푸시 (PR #9 누적 반영)
+- PR #10 충돌 해결 후 머지 및 develop 최신화 확인
 - **Milestone 2 (Phase 16)**: 토론 기억 전용 테이블(`agent.debate_insights`) DDL 및 개인화 벡터 DB 저장 연계 착수
 - 또는 **Milestone 3 (Phase 15)**: 4단계 다중 방어 보안 가드레일 파이프라인 (0차 인증 ~ 1차 Safety ~ 2차 Input ~ 3차 Security) 구축 착수
-
 
 
 
