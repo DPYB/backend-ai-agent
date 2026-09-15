@@ -120,6 +120,7 @@ backend-ai-agent/
 | `POST` | `/api/v1/vectors/records` | `backend-core-api` 독서 기록(서평) 수신 및 `agent.scrap_vector` 자동 벡터화 적재 |
 | `POST` | `/api/v1/vision/scan-barcode` | 책 바코드 이미지 업로드 -> 13자리 ISBN 반환 |
 | `POST` | `/api/v1/vision/ocr` | 책 문장 이미지 업로드 -> Clova OCR 텍스트 반환 |
+| `GET` | `/api/v1/reports/monthly` | **사서 월간 독서 리포트** 단일 진입점 (Core 01~05 통계 + 토론 키워드 + AI 06 성향분석 & 07 처방 도서카드 병합) |
 
 
 ---

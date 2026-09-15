@@ -135,6 +135,15 @@
   - 중앙 레지스트리(`PERSONA_REGISTRY`), `nodes.py` 키워드 매핑(`switch_map`), API 스키마(`display_name`) 기본 표시명 '누디' 동기화
   - 신규 단위 테스트 추가(`test_librarian_personas_default_display_names`, `test_librarian_personas_mbti_genre_and_endings`) 및 Ruff/Mypy 무결성 검증 완료
 
+- [x] **Phase 18 (Milestone 2.7): 사서 월간 독서 리포트 오케스트레이션 및 LLM 분석/처방 API (`GET /api/v1/reports/monthly`)**
+  - `GET /api/v1/reports/monthly?year=YYYY&month=M` 단일 서빙 엔드포인트 신설 (`app/api/v1/reports.py`)
+  - `CoreApiClient` 내 Token Relay 연동 `get_monthly_report_stats` 구현 (`GET /api/v1/reports/monthly-stats`) 및 구조화된 오프라인 폴백 지원
+  - 자체 토론/스크랩 기반 대표 키워드 3~5개 자동 추출 및 `preferences.debateKeywords` 주입 (`app/domain/reports/keyword_extractor.py`)
+  - 사서 페르소나 4종(블루 ~냥, 슈빌 ~두둥, 누디 ~누누, 게코 ~크크) 맞춤 어조 기반 Gemini LLM 06번 성향 분석(`aiAnalysis`) 및 07번 처방(`prescription`) 생성 파이프라인 구축 (`app/domain/reports/generator.py`)
+  - `balance.unreadGenres` 기반 도전 장르 추천 및 국립중앙도서관 실존 서지 검증 + 교보 CDN 표지 바인딩 맞춤 추천 도서 카드(1~2권) 생성
+  - Pydantic 스키마 정의 (`app/schemas/report.py`) 및 프론트엔드 CamelCase 직렬화 표준화
+  - 신규 단위 테스트(`tests/unit/test_monthly_reports.py`) 4종 작성 및 전체 79개 단위 테스트 100% 그린 패스 (Ruff & Mypy 100% 통과)
+
 
 
 

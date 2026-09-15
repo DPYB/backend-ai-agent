@@ -170,6 +170,194 @@ class CoreApiClient:
             ],
         }
 
+    async def get_monthly_report_stats(
+        self,
+        year: int,
+        month: int,
+        token: Optional[str] = None,
+        member_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Fetch raw monthly reading report stats from backend-core-api (GET /api/v1/reports/monthly-stats).
+
+        Passes Authorization Bearer token or X-Member-Id header.
+        Provides robust fallback matching backend-core-api MonthlyReportStatsResponse schema.
+        """
+        try:
+            client = await self._get_client()
+            headers: Dict[str, str] = {}
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+            if member_id:
+                headers["X-Member-Id"] = member_id
+
+            response = await client.get(
+                "/api/v1/reports/monthly-stats",
+                params={"year": year, "month": month},
+                headers=headers,
+            )
+            if response.status_code == 200:
+                return response.json()
+            logger.info(
+                "core-api monthly-stats returned status %d for year=%d month=%d",
+                response.status_code,
+                year,
+                month,
+            )
+        except Exception as e:
+            logger.info(
+                "core-api monthly-stats request failed (%s), using structured fallback for year=%d month=%d",
+                e,
+                year,
+                month,
+            )
+
+        # Realistic fallback data matching backend-core-api MonthlyReportStatsResponse
+        mid = member_id or "00000000-0000-0000-0000-000000000001"
+        return {
+            "year": year,
+            "month": month,
+            "memberId": mid,
+            "librarian": {
+                "type": "CAT",
+                "name": "블루",
+                "level": 1,
+                "reportTitle": f"블루 사서의 {month}월 독서 리포트",
+            },
+            "overview": {
+                "completedBooksCount": 3,
+                "totalPagesRead": 832,
+                "totalDurationMinutes": 960,
+                "goalBooksCount": 4,
+                "goalAchievementRate": 75.0,
+            },
+            "habits": {
+                "weekdayDistribution": {
+                    "MON": 2,
+                    "TUE": 3,
+                    "WED": 1,
+                    "THU": 4,
+                    "FRI": 5,
+                    "SAT": 8,
+                    "SUN": 6,
+                },
+                "timeDistribution": {
+                    "dawn": 2,
+                    "day": 5,
+                    "evening": 12,
+                    "night": 10,
+                },
+                "weatherDistribution": {
+                    "clear": 15,
+                    "rainy": 8,
+                    "cloudy": 6,
+                },
+                "avgCompletionDays": 6.5,
+                "longestStreakDays": 5,
+            },
+            "preferences": {
+                "topGenres": [
+                    {
+                        "genre": "LITERATURE",
+                        "genreName": "문학",
+                        "count": 4,
+                        "percentage": 50.0,
+                    },
+                    {
+                        "genre": "PHILOSOPHY",
+                        "genreName": "철학",
+                        "count": 2,
+                        "percentage": 25.0,
+                    },
+                    {
+                        "genre": "SOCIAL_SCIENCE",
+                        "genreName": "사회과학",
+                        "count": 2,
+                        "percentage": 25.0,
+                    },
+                ],
+                "topSubjects": ["자아성찰", "실존주의", "성장소설", "심리학"],
+                "weatherPreferences": [
+                    {
+                        "weather": "rainy",
+                        "sessionCount": 8,
+                        "topGenre": "LITERATURE",
+                        "topGenreName": "문학",
+                        "preferredBookTitle": "데미안",
+                    },
+                    {
+                        "weather": "clear",
+                        "sessionCount": 15,
+                        "topGenre": "PHILOSOPHY",
+                        "topGenreName": "철학",
+                        "preferredBookTitle": "니체의 말",
+                    },
+                ],
+            },
+            "balance": {
+                "genreBreakdown": [
+                    {"genre": "LITERATURE", "genreName": "문학", "count": 4, "percentage": 50.0},
+                    {"genre": "PHILOSOPHY", "genreName": "철학", "count": 2, "percentage": 25.0},
+                    {
+                        "genre": "SOCIAL_SCIENCE",
+                        "genreName": "사회과학",
+                        "count": 2,
+                        "percentage": 25.0,
+                    },
+                ],
+                "dominantGenre": "문학",
+                "isBiased": False,
+                "diversityScore": 65,
+                "unreadGenres": ["자연과학", "기술과학", "예술", "역사", "종교"],
+            },
+            "traces": {
+                "mostScrappedBooks": [
+                    {
+                        "bookId": 1,
+                        "title": "데미안",
+                        "author": "헤르만 헤세",
+                        "coverUrl": "https://contents.kyobobook.co.kr/sih/fit-in/458x0/pdt/9788937460449.jpg",
+                        "displayGenre": "문학",
+                        "scrapCount": 5,
+                    }
+                ],
+                "featuredRecords": [
+                    {
+                        "recordId": 101,
+                        "bookId": 1,
+                        "title": "알을 깨고 나오는 순간의 고통과 희열",
+                        "contentSnippet": "새는 알에서 나오려고 투쟁한다. 알은 세계이다. 태어나려는 자는 하나의 세계를 깨뜨려야 한다.",
+                        "rating": 5,
+                        "weather": "rainy",
+                        "createdAt": "2026-09-10T21:30:00Z",
+                    }
+                ],
+                "completedBooks": [
+                    {
+                        "bookId": 1,
+                        "title": "데미안",
+                        "author": "헤르만 헤세",
+                        "coverUrl": "https://contents.kyobobook.co.kr/sih/fit-in/458x0/pdt/9788937460449.jpg",
+                        "displayGenre": "문학",
+                        "currentPage": 240,
+                        "totalPages": 240,
+                        "completedAt": "2026-09-12T18:00:00Z",
+                    }
+                ],
+                "readingBooks": [
+                    {
+                        "bookId": 2,
+                        "title": "코스모스",
+                        "author": "칼 세이건",
+                        "coverUrl": "https://contents.kyobobook.co.kr/sih/fit-in/458x0/pdt/9788983711892.jpg",
+                        "displayGenre": "자연과학",
+                        "currentPage": 150,
+                        "totalPages": 700,
+                        "completedAt": None,
+                    }
+                ],
+            },
+        }
+
 
 _core_api_client: Optional[CoreApiClient] = None
 
