@@ -1,9 +1,9 @@
 """Pydantic request and response schemas for FastAPI endpoints."""
 
-from typing import List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class LocationPayload(BaseModel):
@@ -16,8 +16,8 @@ class LocationPayload(BaseModel):
 class ChatRequest(BaseModel):
     """User request payload for conversational AI librarian or debate partner."""
 
-    member_id: str = Field(
-        ...,
+    member_id: Optional[str] = Field(
+        default=None,
         description="Member UUID to strictly partition personalized scrap memory and bookshelf",
         examples=["550e8400-e29b-41d4-a716-446655440000"],
     )
@@ -29,7 +29,7 @@ class ChatRequest(BaseModel):
         examples=["내 서재에 있는 책 중에 지금 읽기 좋은 책 추천해 줘"],
     )
     session_id: Optional[str] = Field(
-        default_factory=lambda: str(uuid4()),
+        default=None,
         description="Conversation session ID for Redis history tracking",
     )
     mode: Optional[Literal["LIBRARIAN", "DEBATE"]] = Field(
@@ -40,15 +40,49 @@ class ChatRequest(BaseModel):
         default="CAT",
         description="Target persona ID (CAT, SHOEBILL, SEA_SLUG, GECKO, DEBATE_CRITIC, etc.)",
     )
+    librarian_id: Optional[str] = Field(
+        default=None,
+        description="Frontend alias for persona (cat, stork, shoebill, etc.)",
+    )
     librarian_name: Optional[str] = Field(
         default=None,
         description="User-defined custom librarian name (사용자가 개명한 사서 애칭)",
         examples=["내 고양이", "누디", "초록이"],
     )
+    latitude: Optional[float] = Field(default=None, description="Flat coordinate latitude")
+    longitude: Optional[float] = Field(default=None, description="Flat coordinate longitude")
     location: Optional[LocationPayload] = Field(
         default=None,
         description="Current user coordinates (위경도) for real-time weather curation",
     )
+    stream: Optional[bool] = Field(default=False, description="Streaming response flag")
+
+    @model_validator(mode="after")
+    def populate_defaults_and_aliases(self) -> "ChatRequest":
+        # 1. Do not auto-generate member_id; keep None for guest users
+
+        # 2. Map librarian_id to persona if provided
+        if self.librarian_id:
+            lib_id = self.librarian_id.strip().upper()
+            mapping = {
+                "CAT": "CAT",
+                "STORK": "SHOEBILL",
+                "SHOEBILL": "SHOEBILL",
+                "SEA_SLUG": "SEA_SLUG",
+                "GECKO": "GECKO",
+            }
+            if lib_id in mapping:
+                self.persona = mapping[lib_id]
+
+        # 3. Assemble location from flat coordinates if not already present
+        if not self.location and self.latitude is not None and self.longitude is not None:
+            self.location = LocationPayload(latitude=self.latitude, longitude=self.longitude)
+
+        # 4. Generate session_id if not present
+        if not self.session_id:
+            self.session_id = str(uuid4())
+
+        return self
 
 
 class SwitchSuggestionResponse(BaseModel):
@@ -90,6 +124,10 @@ class ChatResponse(BaseModel):
 
     session_id: str = Field(..., description="Session identifier")
     reply: str = Field(..., description="AI response message")
+    message: Optional[str] = Field(
+        default=None,
+        description="Deprecated frontend alias for reply",
+    )
     active_persona: str = Field(..., description="Active persona ID")
     display_name: str = Field(
         ...,
@@ -100,10 +138,27 @@ class ChatResponse(BaseModel):
         default=None,
         description="Button action metadata when handoff is recommended",
     )
+    switch_to: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Deprecated frontend alias for switch_suggestion",
+    )
     recommended_books: List[RecommendedBook] = Field(
         default_factory=list,
         description="Structured verified book recommendations for one-click bookshelf registration",
     )
+
+    @model_validator(mode="after")
+    def sync_frontend_aliases(self) -> "ChatResponse":
+        if not self.message:
+            self.message = self.reply
+        if not self.switch_to and self.switch_suggestion:
+            self.switch_to = {
+                "librarian_id": self.switch_suggestion.suggested_persona.lower(),
+                "persona": self.switch_suggestion.suggested_persona,
+                "display_name": self.switch_suggestion.display_name,
+                "reason": self.switch_suggestion.reason,
+            }
+        return self
 
 
 class PersonaInfo(BaseModel):
@@ -141,4 +196,22 @@ class ScrapVectorizeResponse(BaseModel):
 
     success: bool = Field(..., description="Whether vectorization and insertion succeeded")
     scrap_id: Optional[str] = Field(default=None, description="Created or mock scrap record ID")
+    message: str = Field(..., description="Result summary message")
+
+
+class RecordVectorizeRequest(BaseModel):
+    """Request payload from backend-core-api for vectorizing a reading record/review."""
+
+    record_id: int = Field(..., description="backend-core-api record ID")
+    member_id: str = Field(..., description="Member UUID", min_length=1)
+    title: str = Field(..., description="Book title or record title", min_length=1)
+    content: str = Field(..., description="Reading record review/thoughts", min_length=1)
+
+
+class RecordVectorizeResponse(BaseModel):
+    """Response payload after reading record vectorization."""
+
+    success: bool = Field(..., description="Whether vectorization succeeded")
+    record_id: int = Field(..., description="The processed record ID")
+    scrap_id: Optional[str] = Field(default=None, description="Created scrap vector record ID")
     message: str = Field(..., description="Result summary message")

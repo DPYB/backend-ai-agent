@@ -71,9 +71,14 @@ class Settings(BaseSettings):
         alias="NATIONAL_LIBRARY_API_URL",
     )
 
-    # backend-core-api REST Endpoint
+    # backend-core-api REST Endpoint & Shared JWT Auth
     core_api_base_url: str = Field(default="http://localhost:8080", alias="CORE_API_BASE_URL")
     core_api_timeout_seconds: float = Field(default=5.0, alias="CORE_API_TIMEOUT_SECONDS")
+    jwt_secret_key: str = Field(
+        default="dont-paw-get-jwt-secret-change-in-prod-2026",
+        alias="JWT_SECRET_KEY",
+    )
+    jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
 
     # NAVER Cloud CLOVA OCR General API V2
     naver_clova_api_url: str = Field(default="", alias="NAVER_CLOVA_API_URL")

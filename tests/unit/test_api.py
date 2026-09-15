@@ -132,3 +132,53 @@ async def test_chat_endpoint_debate_mode():
         assert data["active_persona"] == "DEBATE_CRITIC"
         assert data["display_name"] == "평론가"
         assert data["mode"] == "DEBATE"
+
+
+@pytest.mark.asyncio
+async def test_chat_endpoint_jwt_auth_success():
+    """Verify POST /api/v1/chat succeeds with valid mock or core-api Bearer token."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        payload = {
+            "message": "안녕하세요!",
+            "mode": "LIBRARIAN",
+            "persona": "CAT",
+        }
+        headers = {"Authorization": "Bearer mock-token-550e8400-e29b-41d4-a716-446655440000"}
+        response = await client.post("/api/v1/chat", json=payload, headers=headers)
+        assert response.status_code == 200
+        data = response.json()
+        assert "reply" in data
+        assert data["active_persona"] == "CAT"
+
+
+@pytest.mark.asyncio
+async def test_chat_endpoint_invalid_jwt_unauthorized():
+    """Verify POST /api/v1/chat returns 401 Unauthorized for forged or invalid Bearer token."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        payload = {
+            "message": "안녕하세요!",
+            "mode": "LIBRARIAN",
+            "persona": "CAT",
+        }
+        headers = {"Authorization": "Bearer fake.forged.token.payload"}
+        response = await client.post("/api/v1/chat", json=payload, headers=headers)
+        assert response.status_code == 401
+        assert "유효하지 않은" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_chat_endpoint_guest_mode_success():
+    """Verify POST /api/v1/chat succeeds in guest mode without Authorization header."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        payload = {
+            "message": "오늘 날씨에 맞는 책 하나 추천해줘",
+            "mode": "LIBRARIAN",
+            "persona": "CAT",
+        }
+        response = await client.post("/api/v1/chat", json=payload)
+        assert response.status_code == 200
+        data = response.json()
+        assert "reply" in data

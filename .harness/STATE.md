@@ -90,6 +90,14 @@
     - 국립도서관 표지 누락 시 교보문고 고화질 CDN(`https://contents.kyobobook.co.kr/sih/fit-in/458x0/pdt/{isbn}.jpg`) 0ms 무지연 자동 폴백 (`get_verified_cover_url`)
   - `/api/v1/chat` 응답(`ChatResponse.recommended_books`) 및 `/api/v1/chat/stream` SSE 이벤트(`event: books`, `event: done`)에 완벽 바인딩
   - 단위 테스트(`tests/unit/test_recommend_metadata.py`) 6종 작성 및 전체 55개 단위 테스트 100% 그린 패스 (Ruff & Mypy 100% 통과)
+- [x] **Phase 14.1: Prod 표준 인증(JWT 서명 검증), 게스트 모드 바이패스 및 core-api 규격 정석화**
+  - 전사 공용 `JWT_SECRET_KEY` 및 `JWT_ALGORITHM(HS256)` 설정 반영 및 정식 서명/만료 검증 (`jwt.decode`)
+  - 비인가/위조/만료 토큰 401 Unauthorized 즉시 거부 (BOLA 보안 취약점 원천 방어)
+  - 비로그인 사용자의 무작위 UUID 발급을 중단하고 `effective_member_id = None` (게스트 모드) 안전 유지
+  - `search_my_library` 및 `search_scrap_memory` 도구에서 게스트 모드 시 DB 쿼리 스킵(Bypass) 및 즉시 안내 반환
+  - `core_api_client.py`의 서재 조회를 `backend-core-api` 실제 엔드포인트(`GET /api/v1/library/books`) 규격으로 교정 및 Token Relay 구현
+  - `backend-core-api` 독서 기록 저장 시 호출하는 벡터화 수신 엔드포인트(`POST /api/v1/vectors/records`) 구현
+  - `ChatResponse` 더미 필드 정리 및 신규 단위 테스트 추가, 100% 그린 패스 (Ruff & Mypy 100% 통과)
 
 
 

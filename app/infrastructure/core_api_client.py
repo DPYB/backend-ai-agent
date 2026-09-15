@@ -94,21 +94,53 @@ class CoreApiClient:
             for i in range(min(limit, 3))
         ]
 
-    async def get_my_bookshelf(self, member_id: str) -> Dict[str, Any]:
-        """Fetch member's bookshelf from core-api (GET /api/v1/members/{member_id}/bookshelf).
+    async def get_my_bookshelf(
+        self,
+        member_id: Optional[str] = None,
+        token: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Fetch member's bookshelf from core-api (GET /api/v1/library/books).
 
-        Provides graceful fallback if core-api is not yet reachable.
+        Uses Token Relay (Bearer token) to query backend-core-api bookshelf.
+        Provides graceful fallback if core-api is not yet reachable or in offline test mode.
         """
         try:
             client = await self._get_client()
-            response = await client.get(f"/api/v1/members/{member_id}/bookshelf")
+            headers = {"Authorization": f"Bearer {token}"} if token else {}
+            response = await client.get("/api/v1/library/books", headers=headers)
             if response.status_code == 200:
-                return response.json()
+                data = response.json()
+                items = data.get("items", [])
+                books = []
+                for item in items:
+                    raw_st = item.get("readingStatus") or item.get("reading_status") or "READING"
+                    # Normalize PLANNED to WISH for agent persona consistency
+                    mapped_status = (
+                        "WISH" if str(raw_st).upper() == "PLANNED" else str(raw_st).upper()
+                    )
+                    books.append(
+                        {
+                            "book_id": str(item.get("bookId") or item.get("book_id", "")),
+                            "title": item.get("title", ""),
+                            "author": item.get("author", ""),
+                            "status": mapped_status,
+                            "rating": item.get("rating"),
+                            "created_at": item.get("createdAt") or item.get("created_at"),
+                        }
+                    )
+                return {
+                    "member_id": member_id or "authenticated_user",
+                    "total_count": data.get("totalElements")
+                    or data.get("total_elements")
+                    or len(books),
+                    "books": books,
+                }
+            logger.info("core-api library books endpoint returned status %d", response.status_code)
         except Exception as e:
             logger.info("core-api bookshelf query failed (%s), using structured fallback", e)
 
         return {
-            "member_id": member_id,
+            "member_id": member_id or "mock-member",
             "total_count": 3,
             "books": [
                 {
