@@ -320,8 +320,47 @@
    - Ruff lint/format 통과, Mypy 타입 체크 무결성 통과, 단위 테스트 100% 그린 패스
 
 ### 다음 세션에서 할 일
-- 사용자 컨펌 시 `feat/debate-personas-enhancement` 브랜치 커밋 및 푸시, PR 생성 보조
-- **Phase 15: 4단계 다중 방어 가드레일 파이프라인 (0차 인증 ~ 1차 Safety ~ 2차 Input ~ 3차 Security/Jailbreak) 구축** 착수
+- 토론 피날레 플로우(`action: conclude`) 및 실존 연계 도서 큐레이션 파이프라인 구축 (세션 13에서 완료)
+
+---
+
+## 세션 13 (2026-09-15)
+
+### 진행한 작업
+1. **토론 마무리 스키마 및 상태 확장 (`app/api/schemas.py`, `app/domain/graph/state.py`)**:
+   - `ChatRequest` 내 `action: Literal["chat", "conclude"]` 필드 지원 및 `action == "conclude"` 시 빈 메시지 자동 보정(`"토론 마무리"`) validator 적용
+   - `ChatResponse` 내 `is_concluded: bool` 플래그 및 `debate_summary: Optional[str]` 필드 확장
+   - `AgentState`에 `action`, `is_concluded`, `debate_summary` 추가하여 LangGraph 노드 및 양방향 Handoff 상태 일치
+2. **토론 피날레 큐레이터 선위임 및 요약 추출 파이프라인 (`app/domain/graph/nodes.py`)**:
+   - `_extract_debate_topic`: 대화 히스토리에서 언급된 도서명(《...》 등) 및 토론 주제 키워드 자동 추출
+   - `_extract_debate_summary`: 피날레 LLM 응답 본문에서 `[토론 요약]`, `■ 한 줄 총평` 등 핵심 요약문 자동 추출
+   - `_run_persona_node`:
+     - `action == "conclude"` 또는 토론 모드 내 마무리 발화 키워드 감지 시, `curated_books` 부재 시 `curator_node`로 선위임(`curator_request = f"토론 마무리 연계 추천: {debate_topic}"`)
+     - `curator_node`에서 국립중앙도서관 실존 서지 검증 및 교보문고 표지 바인딩 후 마스터 토론자로 복귀
+     - 복귀 시 피날레 전용 시스템 프롬프트(토론 요약 브리핑 + 오마주 작별 총평 + 다음 연계 도서 권유 + 추가 질문 금지) 주입
+     - 응답 딕셔너리에 `is_concluded=True`, `debate_summary` 바인딩
+3. **API 엔드포인트 및 SSE 스트리밍 동기화 (`app/api/router.py`)**:
+   - `POST /api/v1/chat`: `is_concluded`, `debate_summary`, `recommended_books` 반환
+   - `POST /api/v1/chat/stream`: 스트리밍 루프 내 `is_concluded` 및 `debate_summary` 추적 및 `event: done` 페이로드 동기화
+4. **품질 검증 및 단위 테스트 전수 통과**:
+   - `tests/unit/test_debate_conclude.py` 신규 작성:
+     - UI 버튼(`action="conclude"`) 즉시 마무리 & 도서 카드 반환 검증
+     - 빈 메시지 자동 보정 검증
+     - 자연어 마무리 키워드 감지 검증
+     - 일반 토론 턴 무제한 지속 및 `is_concluded=False` 검증
+     - 실시간 SSE 스트리밍 `/chat/stream` 마무리 검증
+   - Pytest 신규 5개 및 기존 관련 테스트 26개 100% 통과 (총 31개 그린)
+   - Ruff 린트/포맷 정렬 완료 (`All checks passed`, `71 files already formatted`)
+   - Mypy 정적 타입 체크 100% 무결성 통과 (`59 source files`)
+5. **하네스 문서 동기화**:
+   - `.harness/STATE.md`에 Phase 14.3 (Milestone 1) 완료 반영
+   - `.harness/PLAN.md`에서 완료된 Milestone 1 제거 및 잔여 로드맵 정렬
+   - `.harness/DECISIONS.md`에 토론 피날레 4단계 플로우 분리 및 큐레이터 선위임 결정 추가
+
+### 다음 세션에서 할 일
+- PR #10 충돌 해결 후 머지 및 develop 최신화 확인
+- **Milestone 2 (Phase 16)**: 토론 기억 전용 테이블(`agent.debate_insights`) DDL 및 개인화 벡터 DB 저장 연계 착수
+- 또는 **Milestone 3 (Phase 15)**: 4단계 다중 방어 보안 가드레일 파이프라인 (0차 인증 ~ 1차 Safety ~ 2차 Input ~ 3차 Security) 구축 착수
 
 
 

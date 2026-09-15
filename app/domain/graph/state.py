@@ -70,3 +70,12 @@ class AgentState(TypedDict):
 
     # Live weather summary (e.g. '보통 비, 기온 18.5°C')
     weather_context: Optional[str]
+
+    # Action intent: 'chat' or 'conclude' (from ChatRequest.action)
+    action: Optional[str]
+
+    # Whether the debate session has concluded with wrap-up curation
+    is_concluded: Optional[bool]
+
+    # Structured wrap-up summary of the debate discussion
+    debate_summary: Optional[str]

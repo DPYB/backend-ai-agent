@@ -239,6 +239,9 @@ async def _prepare_chat_context(
         "curated_books": None,
         "location_coords": location_coords,
         "weather_context": weather_context,
+        "action": request.action or "chat",
+        "is_concluded": False,
+        "debate_summary": None,
     }
 
     return (
@@ -344,6 +347,8 @@ async def chat_with_persona(
             mode=persona_mode,
             switch_suggestion=switch_suggestion,
             recommended_books=recommended_books,
+            is_concluded=bool(result_state.get("is_concluded", False)),
+            debate_summary=result_state.get("debate_summary"),
         )
 
     except Exception as e:
@@ -411,6 +416,8 @@ async def chat_stream_with_persona(
             curated_books_data: List[Dict[str, Any]] = []
             final_messages: List[BaseMessage] = list(initial_state["messages"])
             context_summary = initial_state.get("context_summary")
+            is_concluded = bool(initial_state.get("is_concluded", False))
+            debate_summary = initial_state.get("debate_summary")
 
             async for event in _graph.astream_events(initial_state, version="v2"):
                 kind = event.get("event")
@@ -438,6 +445,10 @@ async def chat_stream_with_persona(
                             switch_suggestion_data = output["switch_suggestion"]
                         if output.get("curated_books"):
                             curated_books_data = output["curated_books"]
+                        if "is_concluded" in output:
+                            is_concluded = bool(output["is_concluded"])
+                        if "debate_summary" in output:
+                            debate_summary = output["debate_summary"]
                         if output.get("messages"):
                             for m in output["messages"]:
                                 final_messages.append(m)
@@ -524,6 +535,8 @@ async def chat_stream_with_persona(
                     "mode": final_mode,
                     "switch_suggestion": switch_suggestion_data,
                     "recommended_books": formatted_books,
+                    "is_concluded": is_concluded,
+                    "debate_summary": debate_summary,
                 },
             )
 

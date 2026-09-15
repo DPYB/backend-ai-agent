@@ -107,6 +107,15 @@
     - 관찰가: `🔍 행동 시그널 총평` + `⚡ 현실 관찰 질문`
   - 토론 마무리 시 미학적/역사적/심리적/행동적 화두를 확장해 줄 실존 도서 1권 연계 추천 지침 탑재
   - 단위 테스트(`tests/unit/test_personas.py`, `test_api.py`) 갱신 및 100% 그린 패스 (Ruff & Mypy 무결성 통과)
+- [x] **Phase 14.3 (Milestone 1): 토론 피날레 4단계 플로우 & 연계 도서 큐레이션 파이프라인 구축**
+  - UI `[🏁 토론 마무리]` 버튼 지원을 위한 `ChatRequest.action: Literal["chat", "conclude"]` 및 빈 메시지 자동 보정 스키마 구현
+  - `ChatResponse` 내 `is_concluded: bool` 플래그 및 `debate_summary: Optional[str]` 필드 확장
+  - `AgentState`에 `action`, `is_concluded`, `debate_summary` 추가 및 일반 `/chat`과 실시간 SSE `/chat/stream`(`done` 이벤트) 완벽 동기화
+  - `_run_persona_node` 내 토론 마무리 인텐트(`action == "conclude"` 또는 자연어 마무리 발화) 감지 시:
+    - 대화 히스토리에서 언급된 도서명 및 논제 맥락을 추출하여 `curator_node`로 선위임
+    - 국립중앙도서관 API 실존 서지 검증 + 교보문고 고화질 CDN 표지 바인딩
+    - 원래 토론 파트너로 복귀하여 오마주 피날레 총평 + 토론 요약 리포트 + `recommended_books` 카드 반환 및 `is_concluded=True` 자동 마킹
+  - 신규 단위 테스트(`tests/unit/test_debate_conclude.py`) 5종 작성 및 100% 그린(Success) 통과 (Ruff & Mypy 무결성 완료)
 
 
 
