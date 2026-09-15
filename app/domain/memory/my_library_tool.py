@@ -29,9 +29,18 @@ async def search_my_library(member_id: str, status_filter: Optional[str] = None)
         member_id,
         status_filter,
     )
+    # Bypass for unauthenticated guest users
+    if (
+        not member_id
+        or member_id in ("None", "guest", "undefined")
+        or member_id.startswith("guest-")
+    ):
+        logger.info("Skipping search_my_library: Unauthenticated guest user.")
+        return "현재 로그인하지 않은 게스트 상태이므로 개인 서재가 없습니다. 도서 추천이나 일반 독서 대화를 바로 진행합니다."
+
     try:
         client = get_core_api_client()
-        bookshelf = await client.get_my_bookshelf(member_id)
+        bookshelf = await client.get_my_bookshelf(member_id=member_id)
         books = bookshelf.get("books", [])
 
         if status_filter:

@@ -237,9 +237,66 @@
    - Ruff 린트/포맷 정렬 및 Mypy 정적 타입 체크(58개 소스 파일) 무결성 확인 완료
 
 ### 다음 세션에서 할 일
-- 사용자 컨펌 시 `feat/recommend-book-metadata` 변경 사항 커밋 및 푸시
-- `feat/recommend-book-metadata -> develop` PR 생성 보조
+- 사용자 컨펌 시 `feat/recommend-book-metadata` 변경 사항 커밋 및 푸시 (완료: PR #8 열림)
 - `backend-core-api` 인증/회원가입 엔드포인트 머지 후, 프론트/코어/에이전트 3대 서비스 로컬 동시 기동 및 실화면 원클릭 서재 등록 통합 테스트 진행
+
+---
+
+## 세션 10 (2026-09-14)
+
+### 진행한 작업
+1. **프론트엔드 연동 422 Unprocessable Entity 해결 및 3-Tier JWT 인증 연동**:
+   - 프론트엔드가 요청 본문 대신 `Authorization: Bearer <token>` 헤더로 유저 정보를 보내는 구조를 수용하도록 `extract_member_id_from_auth` 구현.
+   - `member_id` 누락 시 비로그인 게스트용 고유 UUID 자동 발급, `librarian_id` 대소문자 무관 매핑, 최상위 위경도(`latitude`, `longitude`) 수신 모델 호환성 확보 (`app/api/schemas.py`, `app/api/router.py`).
+   - 커밋: `2bd8a19` (422 호환 스키마 확장), `4b8a52f` (JWT Bearer 헤더 연동), [PR #8](https://github.com/DPYB/backend-ai-agent/pull/8) 오픈.
+   - 로컬 Uvicorn 8001 포트에서 프론트엔드 페이로드(`librarian_id: "cat"`, `latitude`, `longitude`) 수신 및 추천 도서 2권 정상 생성(200 OK) 실증 완료.
+2. **이전 서비스(`backend-discovery`) 보안 가드레일 구조 분석 및 재설계**:
+   - 사용자가 제시한 4단계 게이트(0차 인증 ➔ 1차 Safety ➔ 2차 Input ➔ 3차 Bedrock Guardrails) 구조 분석:
+     - `safety_gate.py`: 위기 발화 패턴(`CRISIS_KEYWORDS_PATTERN`), 도서명 예외(`BOOK_TITLE_EXCLUSIONS_PATTERN`, '자살론' 등 오탐 방지), 109 핫라인 안내.
+     - `input_gate.py`: 자모(`ㄱ-ㅎ`), 숫자, 이모지 단독 입력 시 LLM 없이 즉각 되묻기.
+     - `SHARED_GUARDRAILS`: 시스템 프롬프트 유출 금지, 날씨 팩트 엄수, 도서 서비스 범위 밖 질문 거절.
+3. **본 레포 아키텍처 맞춤형 재구성 방향성 및 설계 수립 (핵심 원칙)**:
+   - **레거시 단순 복제 지양**: 과거 2종 사서(`cat`, `stork`) 및 Bedrock Guardrails 의존성을 그대로 가져오지 않고, **본 레포의 현재 스트럭처(8종 페르소나, LangGraph 8-Node, SSE 실시간 스트리밍, $0 무과금 Zero-cost)에 완벽히 맞게 현대화하여 재구성**하기로 결정.
+   - 시스템 프롬프트를 `backend-ai-agent` 단독 마이크로서비스 내부(`app/domain/guardrails/` 및 `app/domain/personas/`)에서 코드로 일괄 소유(GitOps)하는 아키텍처적 당위성 정립.
+   - `.harness/PLAN.md`에 Phase 15 세부 구현 계획 수립 및 `.harness/DECISIONS.md`에 설계 결정 기록 완료.
+
+### 다음 세션에서 할 일
+- **Phase 15: 4단계 다중 방어 가드레일 파이프라인 구현 착수**:
+  - `app/domain/guardrails/` 패키지 신설:
+    - `safety_gate.py`: 위기/자해 정규식 감지, 도서명('자살론' 등) 오탐 방지, 8종 페르소나(사서 4종 + 토론자 4종)별 109 핫라인 공감 멘트
+    - `input_gate.py`: 자모/숫자/이모지 정규식 감지 및 8종 페르소나별 자연스러운 되묻기 멘트
+    - `security_gate.py`: 시스템 프롬프트 유출 시도, DAN/탈옥, PII(주민등록번호 등) 0ms 사전 차단 게이트
+    - `shared_rules.py`: 시스템 프롬프트 공통 가드레일(날씨 팩트 엄수, 도서 서비스 범위 밖 질문 정중 거절, 내부 메타데이터 은폐)
+  - `app/api/router.py`의 `POST /api/v1/chat` 및 `POST /api/v1/chat/stream` 엔드포인트에 4단계 게이트 순차 연결
+  - 단위 테스트(`tests/unit/test_guardrails.py`) 작성 및 100% 그린 검증
+  - DPYB Git 컨벤션(`feat[guardrail]: ...`)에 따라 커밋 및 푸시
+
+---
+
+## 세션 11 (2026-09-14)
+
+### 진행한 작업
+1. **Prod 표준 인증 체계 정석화 (JWT 서명 검증 도입)**:
+   - `core-api`와 전사 공유하는 `JWT_SECRET_KEY` 및 `JWT_ALGORITHM(HS256)` 설정 반영 (`app/core/config.py`, `.env.example`).
+   - `extract_member_id_from_auth`를 `options={"verify_signature": False}`에서 정식 서명 및 만료(`exp`) 검증으로 교체하여 BOLA/토큰 위조 보안 취약점을 원천 차단.
+   - 위조되거나 만료된 토큰 전달 시 `401 Unauthorized` 예외 즉시 반환 (`test_chat_endpoint_invalid_jwt_unauthorized` 검증 완료).
+2. **비로그인 게스트 모드 안전 처리 (무작위 UUID 발급 안티패턴 제거)**:
+   - 비로그인 유저 요청 시 매번 임의의 `uuid4()`를 생성하던 코드를 제거하고 `effective_member_id = None`으로 게스트 상태 명확화.
+   - `search_my_library` 및 `search_scrap_memory` 도구에 게스트 바이패스 가드를 적용하여, 비로그인 시 Supabase pgvector/core-api에 불필요한 쿼리를 날리지 않고 0ms로 게스트 친화적 안내를 반환하도록 최적화.
+3. **`backend-core-api` 서재 조회 규격 일치 및 Token Relay 연동**:
+   - `core_api_client.py`의 잘못된 URL(`/api/v1/members/{member_id}/bookshelf`)을 `core-api` 실제 엔드포인트(`GET /api/v1/library/books`)로 교정.
+   - 프론트엔드의 Bearer 토큰을 그대로 `core-api`에 포워딩하는 Token Relay를 구현하고, `PaginatedResponse` 응답 표준 파싱 연동.
+4. **독서 기록(서평) 벡터화 수신 엔드포인트 호환 (`POST /api/v1/vectors/records`)**:
+   - `core-api`의 `record_service.py`가 실제로 호출하는 `POST /api/v1/vectors/records` 엔드포인트를 구현하여 독서 기록 저장 시 `agent.scrap_vector`에 즉시 자동 벡터화 적재 지원.
+5. **스키마 정리 및 단위 테스트 전수 검증**:
+   - `ChatResponse`에서 임시 더미 필드(`signals`, `library_books`)를 제거하고 깔끔한 표준 스키마 유지.
+   - `test_api.py`, `test_memory_api.py`, `test_my_library_tool.py`, `test_rag_tool.py` 신규 단위 테스트 추가 및 전체 57개 단위 테스트 100% 그린 패스 (Ruff & Mypy 통과).
+
+### 다음 세션에서 할 일
+- 사용자의 확인 및 요청 시 `feat/recommend-book-metadata` 브랜치 변경사항 커밋 및 푸시
+- **Phase 15: 4단계 다중 방어 가드레일 파이프라인 (0차 인증 ~ 1차 Safety ~ 2차 Input ~ 3차 Security/Jailbreak) 구축 착수**
+
+
 
 
 

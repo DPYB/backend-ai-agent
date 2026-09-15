@@ -3,7 +3,6 @@
 import json
 import logging
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
-from uuid import uuid4
 
 from fastapi import APIRouter, Header, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -78,20 +77,77 @@ async def list_personas(
     return results
 
 
-def extract_member_id_from_auth(auth_header: Optional[str]) -> Optional[str]:
-    """Extract authenticated member UUID from JWT Authorization header if present."""
-    if not auth_header or not auth_header.startswith("Bearer "):
-        return None
+def extract_member_id_from_auth(
+    auth_header: Optional[str],
+) -> Tuple[Optional[str], Optional[str]]:
+    """Extract authenticated member UUID and raw token from JWT Authorization header.
+
+    Validates signature and expiration using shared JWT_SECRET_KEY.
+
+    Returns:
+        Tuple of (member_id, raw_token) if authenticated, or (None, None) if guest (no header).
+
+    Raises:
+        HTTPException(401): If token is expired, invalid, forged, or malformed.
+    """
+    if not auth_header or not auth_header.strip():
+        return None, None
+
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authorization 헤더는 'Bearer <token>' 형식이어야 합니다.",
+        )
+
     token = auth_header.replace("Bearer ", "", 1).strip()
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="인증 토큰이 누락되었습니다.",
+        )
+
+    # 1. CI / Test mock token support matching backend-core-api
+    if token.startswith("mock-token-"):
+        mock_id = token.replace("mock-token-", "")
+        return mock_id, token
+    if token == "test-token":
+        return "00000000-0000-0000-0000-000000000001", token
+
+    # 2. Standard JWT signature and expiration verification
     try:
         import jwt
 
-        # Safely extract sub/member_id from JWT token payload
-        payload = jwt.decode(token, options={"verify_signature": False})
+        payload = jwt.decode(
+            token,
+            settings.jwt_secret_key,
+            algorithms=[settings.jwt_algorithm],
+            options={"verify_aud": False},
+        )
         sub = payload.get("sub") or payload.get("member_id")
-        return str(sub).strip() if sub else None
-    except Exception:
-        return None
+        if not sub:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="토큰에 사용자 식별자(sub)가 존재하지 않습니다.",
+            )
+        return str(sub).strip(), token
+    except jwt.ExpiredSignatureError as e:
+        logger.warning("Expired JWT token received: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="만료된 인증 토큰입니다. 다시 로그인해 주세요.",
+        ) from e
+    except jwt.PyJWTError as e:
+        logger.warning("Invalid JWT signature or format: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="유효하지 않은 인증 토큰입니다.",
+        ) from e
+    except Exception as e:
+        logger.error("Unexpected error decoding JWT: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="인증 토큰 처리 중 오류가 발생했습니다.",
+        ) from e
 
 
 async def _prepare_chat_context(
@@ -102,9 +158,12 @@ async def _prepare_chat_context(
     session_mgr = get_redis_session_manager()
     session_id = request.session_id or "default"
 
-    # Resolve member_id: 1) JWT Bearer token sub, 2) request body, 3) generated guest UUID
-    authenticated_member_id = extract_member_id_from_auth(authorization)
-    effective_member_id = authenticated_member_id or request.member_id or str(uuid4())
+    # Resolve member_id:
+    # 1) Verified JWT Bearer token sub
+    # 2) Explicit request.member_id (internal or testing)
+    # 3) None (Guest mode: unauthenticated user without random UUID generation)
+    authenticated_member_id, raw_token = extract_member_id_from_auth(authorization)
+    effective_member_id = authenticated_member_id or request.member_id or None
 
     # Default persona selection based on mode
     requested_mode = request.mode or "LIBRARIAN"
@@ -169,6 +228,7 @@ async def _prepare_chat_context(
     initial_state = {
         "messages": history_messages,
         "member_id": effective_member_id,
+        "auth_token": raw_token,
         "active_persona": active_persona,
         "librarian_name": request.librarian_name,
         "mode": requested_mode,

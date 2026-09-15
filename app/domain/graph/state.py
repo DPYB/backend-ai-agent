@@ -35,8 +35,11 @@ class AgentState(TypedDict):
     # Chat history with standard LangGraph message reducer
     messages: Annotated[List[BaseMessage], add_messages]
 
-    # Current authenticated member UUID (strictly isolates personal scrap vectors & library)
-    member_id: str
+    # Current authenticated member UUID (strictly isolates personal scrap vectors & library, None for guest)
+    member_id: Optional[str]
+
+    # Raw Bearer token for Token Relay to backend-core-api
+    auth_token: Optional[str]
 
     # Currently active persona in control (Head Agent)
     active_persona: str

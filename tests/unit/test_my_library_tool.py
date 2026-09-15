@@ -36,3 +36,11 @@ async def test_search_my_library_tool_filtered():
     )
     assert "읽는 중" in res
     assert "듄" in res
+
+
+@pytest.mark.asyncio
+async def test_search_my_library_tool_guest_bypass():
+    """Verify search_my_library tool gracefully bypasses for guest users."""
+    res = await search_my_library.ainvoke({"member_id": "None"})
+    assert "게스트" in res
+    assert "서재" in res

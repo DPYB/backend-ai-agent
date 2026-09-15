@@ -59,9 +59,7 @@ class ChatRequest(BaseModel):
 
     @model_validator(mode="after")
     def populate_defaults_and_aliases(self) -> "ChatRequest":
-        # 1. Fallback member_id if not provided
-        if not self.member_id:
-            self.member_id = str(uuid4())
+        # 1. Do not auto-generate member_id; keep None for guest users
 
         # 2. Map librarian_id to persona if provided
         if self.librarian_id:
@@ -128,7 +126,7 @@ class ChatResponse(BaseModel):
     reply: str = Field(..., description="AI response message")
     message: Optional[str] = Field(
         default=None,
-        description="Alias for reply to support frontend-reader-web (data.message)",
+        description="Deprecated frontend alias for reply",
     )
     active_persona: str = Field(..., description="Active persona ID")
     display_name: str = Field(
@@ -142,15 +140,7 @@ class ChatResponse(BaseModel):
     )
     switch_to: Optional[Dict[str, Any]] = Field(
         default=None,
-        description="Frontend alias for switch_suggestion",
-    )
-    signals: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Contextual weather/mood signals for frontend rendering",
-    )
-    library_books: List[Dict[str, Any]] = Field(
-        default_factory=list,
-        description="Bookshelf books referenced in response",
+        description="Deprecated frontend alias for switch_suggestion",
     )
     recommended_books: List[RecommendedBook] = Field(
         default_factory=list,
@@ -206,4 +196,22 @@ class ScrapVectorizeResponse(BaseModel):
 
     success: bool = Field(..., description="Whether vectorization and insertion succeeded")
     scrap_id: Optional[str] = Field(default=None, description="Created or mock scrap record ID")
+    message: str = Field(..., description="Result summary message")
+
+
+class RecordVectorizeRequest(BaseModel):
+    """Request payload from backend-core-api for vectorizing a reading record/review."""
+
+    record_id: int = Field(..., description="backend-core-api record ID")
+    member_id: str = Field(..., description="Member UUID", min_length=1)
+    title: str = Field(..., description="Book title or record title", min_length=1)
+    content: str = Field(..., description="Reading record review/thoughts", min_length=1)
+
+
+class RecordVectorizeResponse(BaseModel):
+    """Response payload after reading record vectorization."""
+
+    success: bool = Field(..., description="Whether vectorization succeeded")
+    record_id: int = Field(..., description="The processed record ID")
+    scrap_id: Optional[str] = Field(default=None, description="Created scrap vector record ID")
     message: str = Field(..., description="Result summary message")

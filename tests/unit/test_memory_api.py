@@ -40,3 +40,24 @@ async def test_vectorize_scrap_validation_error():
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post("/api/v1/memory/scraps", json=invalid_payload)
         assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_vectorize_reading_record_success():
+    """Verify that backend-core-api reading record payload is successfully vectorized."""
+    transport = ASGITransport(app=app)
+    payload = {
+        "record_id": 99,
+        "member_id": "550e8400-e29b-41d4-a716-446655440000",
+        "title": "이기적 유전자",
+        "content": "우리는 유전자의 생존 기계일 뿐인가? 충격적인 통찰을 주는 명저.",
+    }
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/api/v1/vectors/records", json=payload)
+        assert response.status_code == 201
+        data = response.json()
+        assert data["success"] is True
+        assert data["record_id"] == 99
+        assert data["scrap_id"] is not None
+        assert "독서 기록" in data["message"]

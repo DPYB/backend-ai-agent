@@ -81,3 +81,13 @@ async def test_search_scrap_memory_tool():
     assert "프로젝트 헤일메리" in tool_output
     assert "지혜는 생존의 열쇠다" in tool_output
     assert "로키와의 우정" in tool_output
+
+
+@pytest.mark.asyncio
+async def test_search_scrap_memory_guest_bypass():
+    """Verify search_scrap_memory tool gracefully bypasses for guest users."""
+    tool_output = await search_scrap_memory.ainvoke(
+        {"member_id": "None", "query": "프로젝트 헤일메리"}
+    )
+    assert "게스트" in tool_output
+    assert "기억" in tool_output

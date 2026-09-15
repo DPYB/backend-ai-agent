@@ -65,6 +65,7 @@ backend-ai-agent/
 │   │   └── config.py           # Pydantic Settings 환경변수 정의
 │   ├── domain/
 │   │   ├── personas/           # 8개 페르소나 정의 및 중앙 레지스트리
+│   │   ├── guardrails/         # 4단계 보안 가드레일 (Safety, Input, Security, Shared)
 │   │   ├── memory/             # RAG (scrap_vector) 및 내 서재 도구
 │   │   ├── recommend/          # Tavily + Redis 도서 추천 도구
 │   │   └── graph/              # LangGraph 노드, 상태, 워크플로우
@@ -111,7 +112,10 @@ backend-ai-agent/
 | `GET` | `/health` | **중앙 .github 킵얼라이브(10분 주기)** 전용 루트 헬스체크 (Render 슬립 방지 및 200 OK) |
 | `GET` | `/api/v1/health` | 서비스 헬스체크 및 Supabase/Redis 연결 확인 (Supabase 7일 슬립 방지 ping 포함) |
 | `GET` | `/api/v1/personas` | 사서(4종) 및 토론(4종) 페르소나 목록 조회 (모드 필터링 지원) |
-| `POST` | `/api/v1/chat` | AI 사서/토론자와의 대화 (커스텀 사서 이름, RAG 도구 자동 호출) |
+| `POST` | `/api/v1/chat` | AI 사서/토론자와의 대화 (JWT 서명 검증, 게스트 모드, 국립도서관 도서 추천 메타데이터 반환) |
+| `POST` | `/api/v1/chat/stream` | LangGraph SSE 실시간 스트리밍 대화 (`metadata` -> `token` -> `books` -> `done`) |
+| `POST` | `/api/v1/memory/scraps` | 사용자 문장 스크랩 + 독자 메모 768차원 벡터화 및 `agent.scrap_vector` 적재 |
+| `POST` | `/api/v1/vectors/records` | `backend-core-api` 독서 기록(서평) 수신 및 `agent.scrap_vector` 자동 벡터화 적재 |
 | `POST` | `/api/v1/vision/scan-barcode` | 책 바코드 이미지 업로드 -> 13자리 ISBN 반환 |
 | `POST` | `/api/v1/vision/ocr` | 책 문장 이미지 업로드 -> Clova OCR 텍스트 반환 |
 
@@ -149,6 +153,8 @@ REDIS_URL=redis://localhost:6379/0
 NL_API_CERT_KEY=
 NL_API_SEARCH_URL=https://www.nl.go.kr/seoji/SearchApi.do
 CORE_API_BASE_URL=http://localhost:8080
+JWT_SECRET_KEY=dont-paw-get-jwt-secret-change-in-prod-2026
+JWT_ALGORITHM=HS256
 
 # Naver Cloud Clova OCR General API V2
 NAVER_CLOVA_API_URL=

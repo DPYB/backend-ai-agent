@@ -48,6 +48,15 @@ async def search_scrap_memory(member_id: str, query: str) -> str:
         사용자의 스크랩 인용문과 개인 메모가 포함된 텍스트 결과
     """
     logger.info("Searching scrap memory for member_id=%s, query='%s'", member_id, query)
+    # Bypass for unauthenticated guest users
+    if (
+        not member_id
+        or member_id in ("None", "guest", "undefined")
+        or member_id.startswith("guest-")
+    ):
+        logger.info("Skipping search_scrap_memory: Unauthenticated guest user.")
+        return "현재 로그인하지 않은 게스트 상태이므로 저장된 개인 독서 스크랩 및 메모 기억이 없습니다."
+
     try:
         embedding = generate_query_embedding(query)
         client = get_supabase_client()

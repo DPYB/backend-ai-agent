@@ -9,6 +9,7 @@ from fastapi.responses import RedirectResponse
 
 from app.api.router import api_router
 from app.api.v1.memory import router as memory_router
+from app.api.v1.memory import vectors_router
 from app.api.v1.vision import router as vision_router
 from app.core.config import settings
 from app.infrastructure.core_api_client import get_core_api_client
@@ -69,6 +70,7 @@ app.add_middleware(
 app.include_router(api_router)
 app.include_router(vision_router)
 app.include_router(memory_router)
+app.include_router(vectors_router)
 
 
 @app.get("/health", tags=["Health"])
