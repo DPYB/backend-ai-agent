@@ -238,6 +238,8 @@ def _detect_switch_intent(
         "블루": CAT_ID,
         "고양이": CAT_ID,
         "달팽이": SEA_SLUG_ID,
+        "누디": SEA_SLUG_ID,
+        "갯민숭달팽이": SEA_SLUG_ID,
         "바다달팽이": SEA_SLUG_ID,
         "심해": SEA_SLUG_ID,
         "게코": GECKO_ID,

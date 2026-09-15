@@ -103,3 +103,55 @@ def test_debate_personas_required_format_and_recommendation_guidelines():
     assert "⚡ 현실 관찰 질문:" in observer_prompt
     assert "행동 시그널" in observer_prompt
     assert "토론 마무리 및 도서 추천 연계" in observer_prompt
+
+
+def test_librarian_personas_default_display_names():
+    """Verify all 4 librarian personas use the standardized default display names (블루, 슈빌, 누디, 게코)."""
+    cat = PERSONA_REGISTRY[CAT_ID]
+    shoebill = PERSONA_REGISTRY[SHOEBILL_ID]
+    sea_slug = PERSONA_REGISTRY[SEA_SLUG_ID]
+    gecko = PERSONA_REGISTRY[GECKO_ID]
+
+    assert cat["display_name"] == "블루"
+    assert shoebill["display_name"] == "슈빌"
+    assert sea_slug["display_name"] == "누디"
+    assert gecko["display_name"] == "게코"
+
+
+def test_librarian_personas_mbti_genre_and_endings():
+    """Verify all 4 librarian personas enforce their respective MBTI, genres, and ending rules (~냥, ~두둥, ~누누, ~크크)."""
+    # 1. Cat: INTJ, 총류/철학/종교, ~냥
+    cat_prompt = PERSONA_REGISTRY[CAT_ID]["system_prompt"]
+    assert "러시안 블루" in cat_prompt
+    assert "INTJ" in cat_prompt
+    assert "철학" in cat_prompt
+    assert "~냥" in cat_prompt
+    assert "사색가" in cat_prompt
+    assert "[호출 명칭]" in cat_prompt
+
+    # 2. Shoebill: ISTP, 자연과학/기술과학, ~두둥
+    shoebill_prompt = PERSONA_REGISTRY[SHOEBILL_ID]["system_prompt"]
+    assert "넙적부리황새" in shoebill_prompt
+    assert "ISTP" in shoebill_prompt
+    assert "자연과학" in shoebill_prompt
+    assert "~두둥" in shoebill_prompt
+    assert "실용적인 탐구자" in shoebill_prompt
+    assert "[호출 명칭]" in shoebill_prompt
+
+    # 3. Sea Slug: INFP, 예술/문학, ~누누
+    sea_slug_prompt = PERSONA_REGISTRY[SEA_SLUG_ID]["system_prompt"]
+    assert "갯민숭달팽이" in sea_slug_prompt
+    assert "INFP" in sea_slug_prompt
+    assert "문학" in sea_slug_prompt
+    assert "~누누" in sea_slug_prompt
+    assert "감성가" in sea_slug_prompt
+    assert "[호출 명칭]" in sea_slug_prompt
+
+    # 4. Gecko: ENFJ, 사회과학/언어/역사, ~크크
+    gecko_prompt = PERSONA_REGISTRY[GECKO_ID]["system_prompt"]
+    assert "게코 도마뱀" in gecko_prompt
+    assert "ENFJ" in gecko_prompt
+    assert "역사" in gecko_prompt
+    assert "~크크" in gecko_prompt
+    assert "공감형 탐구자" in gecko_prompt
+    assert "[호출 명칭]" in gecko_prompt
