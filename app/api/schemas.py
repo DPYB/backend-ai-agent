@@ -145,7 +145,7 @@ class ChatResponse(BaseModel):
     active_persona: str = Field(..., description="Active persona ID")
     display_name: str = Field(
         ...,
-        description="Character display name (블루, 슈빌, 바다달팽이, 게코 or custom librarian_name)",
+        description="Character display name (블루, 슈빌, 누디, 게코 or custom librarian_name)",
     )
     mode: Optional[str] = Field(default="LIBRARIAN", description="Current operating mode")
     switch_suggestion: Optional[SwitchSuggestionResponse] = Field(

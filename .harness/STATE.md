@@ -125,6 +125,17 @@
   - 수동/외부 저장용 API 엔드포인트 `POST /api/v1/memory/debate-insights` 추가
   - 단위 테스트(`tests/unit/test_debate_memory.py`) 7종 작성 및 전체 75개 테스트 100% 그린 패스 (Ruff & Mypy 무결성 통과)
 
+- [x] **Phase 14.4 (Milestone 2.5): 사서 4종 페르소나 전면 고도화 및 종결어미 규칙 반영**
+  - 사서 4종 시스템 프롬프트 및 도메인 모델 표준 템플릿화 (`cat.py`, `shoebill.py`, `sea_slug.py`, `gecko.py`):
+    - 러시안 블루 (`CAT`, 기본명 '블루', INTJ, 총류/철학/종교, ~냥)
+    - 넙적부리황새 (`SHOEBILL`, 기본명 '슈빌', ISTP, 자연과학/기술과학, ~두둥)
+    - 갯민숭달팽이 (`SEA_SLUG`, 기본명 '누디', INFP, 예술/문학, ~누누)
+    - 게코 도마뱀 (`GECKO`, 기본명 '게코', ENFJ, 사회과학/언어/역사, ~크크)
+  - 공통 표준 구조 적용: `# 기본 정보`, `# 역할`, `# 성격 및 독서 성향`, `# 말투/행동 규칙`, `# 🗣️ 종결어미 규칙`, `# 사용자 정의 사서 이름(애칭) 처리`, `# 도구 사용 및 추천 원칙`
+  - 중앙 레지스트리(`PERSONA_REGISTRY`), `nodes.py` 키워드 매핑(`switch_map`), API 스키마(`display_name`) 기본 표시명 '누디' 동기화
+  - 신규 단위 테스트 추가(`test_librarian_personas_default_display_names`, `test_librarian_personas_mbti_genre_and_endings`) 및 Ruff/Mypy 무결성 검증 완료
+
+
 
 
 

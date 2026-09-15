@@ -392,9 +392,43 @@
    - `.harness/DECISIONS.md`에 토론 기억 테이블 분리 및 백그라운드 자동 적재 결정 기록
 
 ### 다음 세션에서 할 일
-- 사용자의 커밋 및 PR 생성 승인 시 `feat/debate-memory-vector` 커밋/푸시 및 `develop` 대상 PR 생성 보조
-- **Milestone 3 (Phase 15)**: 4단계 다중 방어 보안 가드레일 파이프라인 (0차 인증 ~ 1차 Safety ~ 2차 Input ~ 3차 Security) 구축 착수
-- 또는 **Milestone 4**: 3대 레포(Core API + AI Agent + Frontend) 로컬 기동 및 풀스택 E2E 실화면 통합 테스트 진행
+- 사용자의 커밋 및 PR 생성 승인 시 `feat/debate-memory-vector` 커밋/푸시 및 `develop` 대상 PR 생성 보조 (완료)
+- 사서 4종 페르소나 전면 고도화 (세션 15에서 완료)
+
+---
+
+## 세션 15 (2026-09-15)
+
+### 진행한 작업
+1. **작업 브랜치 생성 및 격리 개발**:
+   - `develop` 브랜치 기반 `feat/librarian-personas-enhancement` 분기
+2. **사서 4종 시스템 프롬프트 및 도메인 페르소나 전면 고도화 (`app/domain/personas/`)**:
+   - **러시안 블루 (`cat.py`)**: 기본명 '블루', INTJ 사색가, 총류/철학/종교, 종결어미 `~냥` (문장 서술어 뒤, 응답당 1~2회 핵심 문장 절제 사용)
+   - **넙적부리황새 (`shoebill.py`)**: 기본명 '슈빌', ISTP 실용적인 탐구자, 자연과학/기술과학, 종결어미 `~두둥` (결론/발견/해결책 문장 끝, 응답당 1~2회)
+   - **갯민숭달팽이 (`sea_slug.py`)**: 기본명 '누디', INFP 감성가, 예술/문학, 종결어미 `~누누` (여운/감정 전달 문장 끝, 말줄임표와 결합, 응답당 1~2회)
+   - **게코 도마뱀 (`gecko.py`)**: 기본명 '게코', ENFJ 공감형 탐구자, 사회과학/언어/역사, 종결어미 `~크크` (질문형/공감형 문장 끝, 무거운 주제 시 자제)
+   - 토론자 4인과 동일한 프로덕션 표준 구조 확립: `# 기본 정보`, `# 역할`, `# 성격 및 독서 성향`, `# 말투 및 행동 규칙`, `# 🗣️ 종결어미 규칙`, `# 사용자 정의 사서 이름(애칭) 처리`, `# 도구 사용 및 추천 원칙`
+3. **기본 표시명 '누디' 동기화 및 런타임 호환성 보장**:
+   - `PERSONA_REGISTRY` 내 `SEA_SLUG_ID` 표시명 `"바다달팽이"` ➔ `"누디"` 갱신
+   - `nodes.py`의 `switch_map`에 `"누디"`, `"갯민숭달팽이"` 키워드 추가
+   - `app/api/schemas.py`의 `display_name` 필드 설명문 최신화
+   - `LIBRARIAN_3_SYSTEM_PROMPT`, `LIBRARIAN_4_SYSTEM_PROMPT` 하위 호환성 alias 유지
+4. **품질 검증 및 테스트 전체 통과**:
+   - `tests/unit/test_personas.py` 신규 테스트 추가:
+     - `test_librarian_personas_default_display_names`: 기본 이름(`블루`, `슈빌`, `누디`, `게코`) 검증
+     - `test_librarian_personas_mbti_genre_and_endings`: MBTI, 담당 장르, 종결어미 규칙, 사용자 정의 애칭 처리 지침 검증
+   - Pytest 단위 테스트 100% 그린 패스 (8개 persona 테스트 0.03s 통과)
+   - Ruff lint 및 format 100% 통과, Mypy 타입 체크 무결성 통과 (`45 source files`)
+5. **하네스 문서 동기화**:
+   - `.harness/STATE.md`에 Phase 14.4 완료 반영
+   - `.harness/PLAN.md`에서 완료된 Milestone 2.5 제거 및 Phase 17(신구 하이브리드 추천 및 Brave Search 연동) 로드맵 등록
+   - `.harness/DECISIONS.md`에 사서 4종 페르소나 및 종결어미 표준화 결정 기록
+
+### 다음 세션에서 할 일
+- 사용자 승인 시 `feat/librarian-personas-enhancement` 커밋 및 푸시, PR 생성 보조
+- `backend-core-api`에 사서 정보(기본 표시명 '누디', MBTI 및 담당 장르) 전달 및 동기화 지원
+- **Milestone 2.6 (Phase 17)**: 신구(新舊) 하이브리드 도서 추천 & Brave Search Ad-hoc 파이프라인 구축 또는 **Milestone 3 (Phase 15)** 보안 가드레일 착수
+
 
 
 
