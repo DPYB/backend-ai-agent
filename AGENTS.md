@@ -87,6 +87,30 @@ DPYB 최신 공통 개발 표준([02-git-conventions.md](https://github.com/DPYB
 - **develop/main 브랜치 PR 머지는 에이전트가 실행하지 않고 사람이 직접 클릭**: CI(`reusable-python-ci.yml`, `reusable-pr-lint.yml`) 통과 후, 반드시 인간 팀원이 코드 리뷰 및 승인(Approve)을 완료하고 **직접 머지(Squash and merge) 버튼을 클릭**한다.
 - AI 코딩 에이전트는 절대 PR 머지를 자의적으로 실행하지 않는다.
 
+### 5.4 PR 본문 표준 템플릿 (항상 필수 준수)
+모든 AI 에이전트는 PR 생성 시 임의의 형식으로 작성하지 말고, 반드시 아래 DPYB 표준 마크다운 템플릿(`.github/pull_request_template.md`)의 4대 섹션을 모두 채워서 작성해야 한다:
+```markdown
+## 🎯 작업 요약
+- **목적**: 
+- **주요 변경사항**: 
+
+### 세부 내용
+1. 
+
+## 🌐 적용 범위
+- 영향받는 도메인/컴포넌트/API: 
+
+## 💬 고려사항 & 리뷰 포인트
+- 
+
+## ✅ 체크리스트
+- [x] 로컬 단위 테스트 통과 (Pytest)
+- [x] Ruff 린트 및 포맷 검사 통과
+- [x] Mypy 정적 타입 체크 통과
+- [x] 하네스 문서 갱신 완료 (STATE.md, PLAN.md, HANDOFF.md, DECISIONS.md)
+```
+
+
 
 ---
 
