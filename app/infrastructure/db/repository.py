@@ -275,6 +275,77 @@ class AgentVectorRepository:
         self._mock_debate_insights.append(mock_record)
         return mock_record
 
+    async def get_member_monthly_debate_insights(
+        self,
+        member_id: str,
+        year: int,
+        month: int,
+        limit: int = 10,
+    ) -> List[Dict[str, Any]]:
+        """Retrieve debate insights for a member in a specific year/month."""
+        factory = get_session_factory()
+        if factory:
+            try:
+                member_uuid = uuid.UUID(member_id)
+                async with factory() as session:
+                    stmt = (
+                        select(
+                            DebateInsight.id,
+                            DebateInsight.member_id,
+                            DebateInsight.session_id,
+                            DebateInsight.book_title,
+                            DebateInsight.persona_id,
+                            DebateInsight.summary,
+                            DebateInsight.topic,
+                            DebateInsight.created_at,
+                        )
+                        .where(DebateInsight.member_id == member_uuid)
+                        .order_by(DebateInsight.created_at.desc())
+                        .limit(limit)
+                    )
+                    result = await session.execute(stmt)
+                    rows = result.all()
+                    # Filter by year and month if created_at is present
+                    insights = []
+                    for row in rows:
+                        if row.created_at:
+                            if row.created_at.year == year and row.created_at.month == month:
+                                insights.append(
+                                    {
+                                        "id": str(row.id),
+                                        "book_title": row.book_title,
+                                        "topic": row.topic or "",
+                                        "summary": row.summary,
+                                        "created_at": row.created_at.isoformat(),
+                                    }
+                                )
+                        else:
+                            insights.append(
+                                {
+                                    "id": str(row.id),
+                                    "book_title": row.book_title,
+                                    "topic": row.topic or "",
+                                    "summary": row.summary,
+                                }
+                            )
+                    return insights
+            except Exception as e:
+                logger.warning("DB query get_member_monthly_debate_insights failed (%s).", e)
+
+        # In-memory mock filter
+        results = []
+        for d in self._mock_debate_insights:
+            if str(d.get("member_id")) == str(member_id):
+                results.append(
+                    {
+                        "id": str(d.get("id")),
+                        "book_title": d.get("book_title", ""),
+                        "topic": d.get("topic", ""),
+                        "summary": d.get("summary", ""),
+                    }
+                )
+        return results[:limit]
+
 
 _agent_repository: Optional[AgentVectorRepository] = None
 

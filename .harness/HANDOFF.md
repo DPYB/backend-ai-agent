@@ -425,9 +425,52 @@
    - `.harness/DECISIONS.md`에 사서 4종 페르소나 및 종결어미 표준화 결정 기록
 
 ### 다음 세션에서 할 일
-- 사용자 승인 시 `feat/librarian-personas-enhancement` 커밋 및 푸시, PR 생성 보조
-- `backend-core-api`에 사서 정보(기본 표시명 '누디', MBTI 및 담당 장르) 전달 및 동기화 지원
+- `feat/librarian-personas-enhancement` PR 처리 및 develop 머지 확인 완료
+- 사서 월간 독서 리포트 오케스트레이션 및 LLM 분석/처방 API (`GET /api/v1/reports/monthly`) 구축 (세션 16에서 완료)
+
+---
+
+## 세션 16 (2026-09-15)
+
+### 진행한 작업
+1. **작업 브랜치 생성 및 격리 개발**:
+   - DPYB 브랜치 규칙에 따라 `develop` 브랜치 기반 `feat/monthly-reading-report` 분기 (`main` <- `develop` <- `feat/*`)
+2. **사서 월간 독서 리포트 Pydantic 스키마 체계 구축 (`app/schemas/report.py`)**:
+   - `backend-core-api`의 01~05 통계 스키마와 1:1 완벽 일치 (`LibrarianReportInfo`, `MonthlyOverview`, `ReadingHabits`, `ReadingPreferences`, `ReadingBalance`, `ReadingTraces`)
+   - AI Agent 고유 생성 스키마:
+     - `preferences.debate_keywords`: 자체 토론/스크랩 메모 기반 핵심 토론 키워드 3~5개
+     - `AiAnalysis`: 독서가 유형 네이밍(`reader_type`), 사서 페르소나 어조의 심층 분석 문장(`summary`), 핵심 특징 태그(`key_traits`)
+     - `Prescription`: 미독서 장르(`unread_genres`) 중 도전 추천 장르(`recommended_genre`), 제안 목표 권수(`suggested_goal_books`), 사서 조언 문장(`advice`), 국립중앙도서관 실존 서지 검증 + 교보문고 고화질 CDN 표지 바인딩 맞춤 추천 도서 카드(`recommended_books`)
+   - 프론트엔드 CamelCase 직렬화 표준화(`CamelModel`) 및 통합 응답 모델 `MonthlyReportResponse` 완성
+3. **Core API 통계 호출 클라이언트 구현 (`app/infrastructure/core_api_client.py`)**:
+   - `get_monthly_report_stats(year, month, token, member_id)`: `GET /api/v1/reports/monthly-stats` 호출 및 Token Relay (`Authorization: Bearer <token>`) / `X-Member-Id` 헤더 연동
+   - 오프라인 테스트 및 미연결 시 구조화된 완성형 Mock Fallback 지원
+4. **자체 토론 키워드 추출 파이프라인 (`app/infrastructure/db/repository.py`, `app/domain/reports/keyword_extractor.py`)**:
+   - `AgentVectorRepository`에 `get_member_monthly_debate_insights` 쿼리 메서드 구현 (Postgres DB 및 인메모리 폴백 일체화)
+   - 불용어(Stopwords) 필터링 및 빈도 기반 한국어 키워드 추출기 구현
+5. **사서 페르소나 탑재 Gemini LLM 분석/처방 생성기 (`app/domain/reports/generator.py`)**:
+   - Core API에서 전달받은 사서 종류(`CAT` ~냥, `SHOEBILL` ~두둥, `SEA_SLUG` ~누누, `GECKO` ~크크) 및 사서 애칭(`librarian_name`) 맞춤 말투/종결어미 장착
+   - Gemini 3.6 Flash 기반 06번 성향 분석 및 07번 독서 처방 JSON 합성 (OpenAI 및 결정론적 폴백 탑재)
+   - 국립중앙도서관 Open API 실서지 검증 및 교보문고 고화질 표지 자동 매핑 연동
+6. **단일 서빙 엔드포인트 구현 및 라우터 등록 (`app/api/v1/reports.py`, `app/main.py`)**:
+   - `GET /api/v1/reports/monthly?year=YYYY&month=M` 라우터 구현 (JWT 서명 검증 및 Token Relay)
+   - `app/main.py`에 `reports_router` 등록
+7. **품질 검증 및 단위 테스트 전수 통과**:
+   - `tests/unit/test_monthly_reports.py` 신규 작성 (키워드 추출, 파이프라인 합성, 엔드포인트 200 OK, 슈빌 페르소나 검증 등 4개 테스트)
+   - Ruff 린트/포맷 100% 통과 (`5 files reformatted, 61 files left unchanged`)
+   - Mypy 정적 타입 체크 100% 무결성 통과 (`49 source files`)
+   - Pytest 4개 신규 테스트 100% 그린(Success) 통과
+8. **하네스 문서 동기화**:
+   - `.harness/STATE.md`에 Phase 18 완료 반영
+   - `.harness/PLAN.md`에서 완료된 Milestone 2.7 제거
+   - `.harness/DECISIONS.md`에 월간 독서 리포트 오케스트레이션 결정 기록
+   - `.harness/ARCHITECTURE.md`에 `GET /api/v1/reports/monthly` 엔드포인트 명세 추가
+
+### 다음 세션에서 할 일
+- 사용자의 확인 및 요청 시 `feat/monthly-reading-report` 커밋 및 푸시, PR 생성 보조
+- `backend-core-api` 및 `frontend-reader-web`과 월간 독서 리포트 연동 E2E 테스트 진행
 - **Milestone 2.6 (Phase 17)**: 신구(新舊) 하이브리드 도서 추천 & Brave Search Ad-hoc 파이프라인 구축 또는 **Milestone 3 (Phase 15)** 보안 가드레일 착수
+
 
 
 
