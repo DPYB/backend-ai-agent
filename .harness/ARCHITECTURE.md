@@ -33,7 +33,8 @@
 | **Web Framework** | FastAPI, Uvicorn | 비동기 고성능 REST API 서버, 자동 OpenAPI Docs |
 | **Agent Orchestration** | LangGraph, LangChain Core | 8개 페르소나 상태 관리, 도구 바인딩 및 Handoff |
 | **LLM & Embedding** | Google Gemini 3.6 Flash, `text-embedding-004` (768차원), OpenAI 폴백 | 대화 생성 및 텍스트 임베딩 벡터화 |
-| **Vector Database & ORM** | Supabase pgvector (`agent.scrap_vector`), SQLAlchemy 2.0, `asyncpg` | Transaction Pooler(6543) 연동, 회원별 코사인 유사도 검색, `agent` 스키마 격리 |
+| **Vector Database & ORM** | Supabase pgvector (`agent.scrap_vector`, `agent.debate_insights`), SQLAlchemy 2.0, `asyncpg` | Transaction Pooler(6543) 연동, 회원별 코사인 유사도 검색, `agent` 스키마 격리 |
+
 | **Cache & Session** | Redis / Upstash Redis | 다회 대화 컨텍스트 유지 및 추천 결과 TTL 캐싱 |
 | **Computer Vision** | `pyzbar`, `Pillow`, `libzbar0` | 13자리 도서 바코드(EAN13/ISBN-13) 스캔 |
 | **External OCR** | Naver Cloud Clova OCR General API V2 | 책 문장 이미지에서 행 단위 텍스트 추출 |
@@ -115,9 +116,11 @@ backend-ai-agent/
 | `POST` | `/api/v1/chat` | AI 사서/토론자와의 대화 (JWT 서명 검증, 게스트 모드, 국립도서관 도서 추천 메타데이터 반환) |
 | `POST` | `/api/v1/chat/stream` | LangGraph SSE 실시간 스트리밍 대화 (`metadata` -> `token` -> `books` -> `done`) |
 | `POST` | `/api/v1/memory/scraps` | 사용자 문장 스크랩 + 독자 메모 768차원 벡터화 및 `agent.scrap_vector` 적재 |
+| `POST` | `/api/v1/memory/debate-insights` | 토론 피날레 요약 및 통찰 768차원 벡터화 및 `agent.debate_insights` 적재 |
 | `POST` | `/api/v1/vectors/records` | `backend-core-api` 독서 기록(서평) 수신 및 `agent.scrap_vector` 자동 벡터화 적재 |
 | `POST` | `/api/v1/vision/scan-barcode` | 책 바코드 이미지 업로드 -> 13자리 ISBN 반환 |
 | `POST` | `/api/v1/vision/ocr` | 책 문장 이미지 업로드 -> Clova OCR 텍스트 반환 |
+
 
 ---
 

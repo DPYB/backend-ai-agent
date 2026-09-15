@@ -6,24 +6,8 @@
 
 ## 전체 진행 계획 (사용자 승인 범위 총괄 로드맵)
 
-### 📌 Milestone 2: 토론 기억 전용 테이블 DDL 설계 및 개인화 벡터 DB 저장 연계
-> **`scrap_vector`(OCR 문장 스크랩 전용)의 순수성을 보존하고, 토론 요약을 영구 자산화하기 위한 전용 테이블 구축**
-
-- [ ] **1. 토론 기억 전용 테이블 DDL 작성 및 실행 스크립트 (`scripts/init_agent_schema.sql`, `init_agent_schema.py`)**:
-  - `agent.debate_insights` 테이블 신설 (`id`, `member_id`, `session_id`, `book_title`, `persona_id`, `summary`, `embedding(768)`, `created_at`)
-  - HNSW 코사인 유사도 인덱스 및 매칭 RPC 함수(`agent.match_debate_insights`) 정의
-- [ ] **2. SQLAlchemy ORM 모델 및 Repository 구축 (`app/infrastructure/db/models.py`, `repository.py`)**:
-  - `DebateInsight` ORM 선언 및 회원별(`member_id`) 완전 격리 벡터 검색/저장 메서드 구현
-- [ ] **3. 토론 피날레 시 자동 벡터화 적재 파이프라인 연동**:
-  - 토론 종료 시 생성된 `debate_summary`를 Gemini Embedding(768차원) 변환 후 `agent.debate_insights`에 자동 적재
-- [ ] **4. 토론 기억 회상 도구(`search_debate_memory`) 추가 및 페르소나 연동**:
-  - 다음 대화 시 사용자가 과거에 나눈 토론 통찰을 회상하여 대화에 반영하는 초개인화 도구 탑재
-- [ ] **5. 단위 테스트 및 검증 (`tests/unit/test_debate_memory.py`)**:
-  - 테이블 매핑, 회원 격리, 벡터 검색 정확도 100% 검증
-
----
-
 ### 📌 Milestone 3: 4단계 다중 방어 보안 가드레일 파이프라인 구축 (Phase 15)
+
 > **0ms $0 비용으로 유해 발화, 무의미 입력, 프롬프트 탈취를 차단하는 다중 방어 체계**
 
 - [ ] **1. 가드레일 도메인 모듈 신설 (`app/domain/guardrails/`)**:

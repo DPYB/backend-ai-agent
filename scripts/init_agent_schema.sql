@@ -75,3 +75,65 @@ CREATE TABLE IF NOT EXISTS agent.chat_sessions (
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- 8. Dedicated debate memory table in 'agent' schema (Preserves scrap_vector purity)
+CREATE TABLE IF NOT EXISTS agent.debate_insights (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    member_id UUID NOT NULL,
+    session_id VARCHAR(255) NOT NULL,
+    book_title TEXT NOT NULL,
+    persona_id VARCHAR(50) NOT NULL,
+    summary TEXT NOT NULL,
+    topic TEXT,
+    embedding vector(768),
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 9. Create member_id index for strict multi-tenant isolation
+CREATE INDEX IF NOT EXISTS debate_insights_member_id_idx
+ON agent.debate_insights (member_id);
+
+-- 10. Create HNSW vector cosine similarity index
+CREATE INDEX IF NOT EXISTS debate_insights_embedding_hnsw_idx
+ON agent.debate_insights USING hnsw (embedding vector_cosine_ops);
+
+-- 11. Create RPC match function for debate insights inside 'agent' schema
+CREATE OR REPLACE FUNCTION agent.match_debate_insights(
+    p_member_id UUID,
+    query_embedding vector(768),
+    match_threshold float DEFAULT 0.3,
+    match_count int DEFAULT 5
+)
+RETURNS TABLE (
+    id UUID,
+    member_id UUID,
+    session_id VARCHAR,
+    book_title TEXT,
+    persona_id VARCHAR,
+    summary TEXT,
+    topic TEXT,
+    similarity float,
+    created_at TIMESTAMPTZ
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        d.id,
+        d.member_id,
+        d.session_id,
+        d.book_title,
+        d.persona_id,
+        d.summary,
+        d.topic,
+        (1 - (d.embedding <=> query_embedding))::float AS similarity,
+        d.created_at
+    FROM agent.debate_insights d
+    WHERE d.member_id = p_member_id
+      AND (1 - (d.embedding <=> query_embedding)) > match_threshold
+    ORDER BY d.embedding <=> query_embedding
+    LIMIT match_count;
+END;
+$$;
+

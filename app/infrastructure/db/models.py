@@ -81,3 +81,49 @@ class ChatSession(Base):
         server_default=func.now(),
         onupdate=func.now(),
     )
+
+
+class DebateInsight(Base):
+    """Personalized debate insights and takeaways strictly isolated by member_id.
+
+    Table: agent.debate_insights
+    Preserves the pure quote/scrap nature of scrap_vector by housing user-AI philosophical
+    and literary discussion conclusions separately.
+    """
+
+    __tablename__ = "debate_insights"
+    __table_args__ = {"schema": "agent"}
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    member_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+        index=True,
+    )
+    session_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    book_title: Mapped[str] = mapped_column(Text, nullable=False)
+    persona_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    topic: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    embedding = mapped_column(Vector(768), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+    def to_dict(self) -> dict:
+        """Convert model instance to dictionary representation."""
+        return {
+            "id": str(self.id),
+            "member_id": str(self.member_id),
+            "session_id": self.session_id,
+            "book_title": self.book_title,
+            "persona_id": self.persona_id,
+            "summary": self.summary,
+            "topic": self.topic or "",
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }

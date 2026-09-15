@@ -117,6 +117,14 @@
     - 원래 토론 파트너로 복귀하여 오마주 피날레 총평 + 토론 요약 리포트 + `recommended_books` 카드 반환 및 `is_concluded=True` 자동 마킹
   - 신규 단위 테스트(`tests/unit/test_debate_conclude.py`) 5종 작성 및 100% 그린(Success) 통과 (Ruff & Mypy 무결성 완료)
 
+- [x] **Phase 16 (Milestone 2): 토론 기억 전용 테이블(`agent.debate_insights`) DDL 및 개인화 벡터 DB 저장 연계**
+  - `agent.debate_insights` 테이블 DDL, `member_id` 격리 인덱스, HNSW 코사인 유사도 인덱스, RPC 함수(`agent.match_debate_insights`) 작성 (`scripts/init_agent_schema.sql`, `init_agent_schema.py`)
+  - SQLAlchemy ORM 모델 `DebateInsight` 정의 및 `AgentVectorRepository`에 `insert_debate_insight`, `search_member_debate_insights` 구축 (인메모리 폴백 일체화)
+  - 과거 토론 기억 회상 도구(`search_debate_memory`) 구현 및 `GENERIC_TOOLS` 등록으로 8개 페르소나 전체 공유 바인딩
+  - `/api/v1/chat` 및 실시간 SSE `/api/v1/chat/stream`에서 토론 마무리(`is_concluded=True`) 시 백그라운드 태스크로 `debate_summary` 자동 벡터화 적재 연동
+  - 수동/외부 저장용 API 엔드포인트 `POST /api/v1/memory/debate-insights` 추가
+  - 단위 테스트(`tests/unit/test_debate_memory.py`) 7종 작성 및 전체 75개 테스트 100% 그린 패스 (Ruff & Mypy 무결성 통과)
+
 
 
 

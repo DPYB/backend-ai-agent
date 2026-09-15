@@ -76,6 +76,18 @@ async def run_init_schema(seed: bool = False) -> None:
         )
         logger.info("Verification: table agent.scrap_vector exists = %s", table_exists)
 
+        # Verify agent.debate_insights existence
+        debate_table_exists = await conn.fetchval(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_schema = 'agent' AND table_name = 'debate_insights'
+            );
+            """
+        )
+        logger.info("Verification: table agent.debate_insights exists = %s", debate_table_exists)
+
         if seed:
             logger.info("Seeding dummy scrap data into agent.scrap_vector...")
             sample_member_id = uuid.UUID("550e8400-e29b-41d4-a716-446655440000")
@@ -113,7 +125,45 @@ async def run_init_schema(seed: bool = False) -> None:
                     s_memo,
                     emb_str,
                 )
-                logger.info(" -> Seeded: <%s>", s_title)
+                logger.info(" -> Seeded scrap: <%s>", s_title)
+
+            logger.info("Seeding dummy debate insights into agent.debate_insights...")
+            sample_debates = [
+                (
+                    sample_member_id,
+                    "session-sample-001",
+                    "데미안",
+                    "debate_critic",
+                    "알을 깨고 나오는 싱클레어의 내면 투쟁과 아프락사스를 향한 자기 구원의 여정을 미학적으로 탐구함. 선과 악의 이분법을 넘어 온전한 자아를 마주하는 용기에 대해 깊은 토론을 나눔.",
+                    "선과 악의 이분법 극복과 진정한 자아 발견",
+                ),
+                (
+                    sample_member_id,
+                    "session-sample-002",
+                    "불편한 편의점",
+                    "debate_counselor",
+                    "각자의 상처와 외로움을 안고 살아가는 현대인들에게 야간 편의점이 건네는 무조건적인 온기와 경청의 힘을 조명함. 작은 환대와 배려가 인간을 치유하는 과정에 공감함.",
+                    "단절된 관계의 회복과 따뜻한 연대의 가치",
+                ),
+            ]
+
+            for d_member, d_session, d_title, d_persona, d_summary, d_topic in sample_debates:
+                emb = generate_query_embedding(f"{d_title} {d_topic} {d_summary}")
+                emb_str = f"[{','.join(map(str, emb))}]"
+                await conn.execute(
+                    """
+                    INSERT INTO agent.debate_insights (member_id, session_id, book_title, persona_id, summary, topic, embedding)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7::vector)
+                    """,
+                    d_member,
+                    d_session,
+                    d_title,
+                    d_persona,
+                    d_summary,
+                    d_topic,
+                    emb_str,
+                )
+                logger.info(" -> Seeded debate insight: <%s> (%s)", d_title, d_persona)
 
             logger.info("Seeding completed successfully.")
 
