@@ -90,7 +90,6 @@
     - 국립도서관 표지 누락 시 교보문고 고화질 CDN(`https://contents.kyobobook.co.kr/sih/fit-in/458x0/pdt/{isbn}.jpg`) 0ms 무지연 자동 폴백 (`get_verified_cover_url`)
   - `/api/v1/chat` 응답(`ChatResponse.recommended_books`) 및 `/api/v1/chat/stream` SSE 이벤트(`event: books`, `event: done`)에 완벽 바인딩
   - 단위 테스트(`tests/unit/test_recommend_metadata.py`) 6종 작성 및 전체 55개 단위 테스트 100% 그린 패스 (Ruff & Mypy 100% 통과)
-
 - [x] **Phase 14.1: Prod 표준 인증(JWT 서명 검증), 게스트 모드 바이패스 및 core-api 규격 정석화**
   - 전사 공용 `JWT_SECRET_KEY` 및 `JWT_ALGORITHM(HS256)` 설정 반영 및 정식 서명/만료 검증 (`jwt.decode`)
   - 비인가/위조/만료 토큰 401 Unauthorized 즉시 거부 (BOLA 보안 취약점 원천 방어)

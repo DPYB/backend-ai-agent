@@ -50,4 +50,8 @@
   - `backend-core-api` 신규 인증 엔드포인트(`POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`) 구현 완료 확인
   - `backend-ai-agent` 로컬 Uvicorn 서버 기동 (`uv run uvicorn app.main:app --port 8000 --reload`)
   - `frontend-reader-web` 로컬 Vite 개발 서버 기동 (`npm run dev`)
-  - 프론트엔드 브라우저 접속 후 서재 등록 및 추천 플로우 검증
+  - 프론트엔드 브라우저 접속 후:
+    1. 로그인 및 기본 사서(CAT) 활성화 확인
+    2. 사서 채팅창에서 자연어 도서 추천 요청 (예: "오늘 비 오는데 읽을 만한 따뜻한 책 추천해줘")
+    3. 추천된 도서 카드(표지, 쪽수, 장르, 저자) 확인 및 **[등록 ➔]** 원클릭 클릭 시 `/register` 폼 100% 자동 채움 검증
+    4. 내 서재 등록 완료 및 `backend-core-api` DB 영속화 확인
