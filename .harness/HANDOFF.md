@@ -293,8 +293,36 @@
    - `test_api.py`, `test_memory_api.py`, `test_my_library_tool.py`, `test_rag_tool.py` 신규 단위 테스트 추가 및 전체 57개 단위 테스트 100% 그린 패스 (Ruff & Mypy 통과).
 
 ### 다음 세션에서 할 일
-- 사용자의 확인 및 요청 시 `feat/recommend-book-metadata` 브랜치 변경사항 커밋 및 푸시
-- **Phase 15: 4단계 다중 방어 가드레일 파이프라인 (0차 인증 ~ 1차 Safety ~ 2차 Input ~ 3차 Security/Jailbreak) 구축 착수**
+- `feat/recommend-book-metadata` PR #8 충돌 해결 및 develop 머지 완료 확인 (완료)
+- **Phase 14.2: 토론 파트너 4종 오마주 프롬프트 고도화 및 도서 추천 연계** 착수 및 완료
+
+---
+
+## 세션 12 (2026-09-15)
+
+### 진행한 작업
+1. **PR #8 충돌 해결 및 develop 머지 완료**:
+   - `develop` 브랜치 변경사항 충돌 5개 파일(`.harness/DECISIONS.md`, `HANDOFF.md`, `PLAN.md`, `STATE.md`, `app/api/schemas.py`) 완벽 해결
+   - DPYB PR 린터 정규식 오탐지 수정 및 CI 전체 패스(All Green) 확인 후 사람 직접 머지 원칙에 따라 PR #8 머지 완료
+   - 로컬 `develop` 브랜치 최신화 및 `feat/debate-personas-enhancement` 신규 작업 브랜치 분기
+2. **토론 파트너 4종 오마주 프롬프트 고도화 및 템플릿 표준화**:
+   - **표시명 `(오마주)` 형식 100% 적용**: `DEBATE_CRITIC`("평론가(이동진 오마주)"), `DEBATE_STORYTELLER`("이야기꾼(설민석 오마주)"), `DEBATE_COUNSELOR`("상담사(오은영 오마주)"), `DEBATE_OBSERVER`("관찰가(강형욱 오마주)")
+   - **사용자 제공 시스템 프롬프트 표준 템플릿 구조화**: `# 역할`, `# 말투 규칙`, `# 고정 표현 / 답변 포맷`, `# 톤앤매너`, `# 제약사항`, `# 토론 마무리 및 도서 추천 연계`, `# 예시 대화`, `# 토론 도구 사용 원칙`
+   - **필수 답변 포맷 탑재**:
+     - 평론가: `★ 별점` + `■ 한 줄 총평` + `◆ 오늘의 화두`
+     - 이야기꾼: `🏛️ 역사가 주는 교훈` + `🔥 함께 던지는 질문`
+     - 상담사: `🌱 마음 돌봄 질문` + 위기 시 ☎ 109 핫라인 지침 + 의학적 진단명 단정 금지
+     - 관찰가: `🔍 행동 시그널 총평` + `⚡ 현실 관찰 질문`
+   - **토론 마무리 시 실존 도서 1권 연계 추천 지침 연동**: 토론 종료/감사 발화 시 화두를 확장해 줄 다음 책을 자연스럽게 권유하도록 지침 탑재
+3. **단위 테스트 추가 및 전수 검증**:
+   - `tests/unit/test_personas.py`에 `test_debate_personas_homage_display_names`, `test_debate_personas_required_format_and_recommendation_guidelines` 추가
+   - `tests/unit/test_api.py` 표시명 assertion 갱신
+   - Ruff lint/format 통과, Mypy 타입 체크 무결성 통과, 단위 테스트 100% 그린 패스
+
+### 다음 세션에서 할 일
+- 사용자 컨펌 시 `feat/debate-personas-enhancement` 브랜치 커밋 및 푸시, PR 생성 보조
+- **Phase 15: 4단계 다중 방어 가드레일 파이프라인 (0차 인증 ~ 1차 Safety ~ 2차 Input ~ 3차 Security/Jailbreak) 구축** 착수
+
 
 
 

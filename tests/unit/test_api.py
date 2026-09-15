@@ -130,7 +130,7 @@ async def test_chat_endpoint_debate_mode():
         data = response.json()
         assert "reply" in data
         assert data["active_persona"] == "DEBATE_CRITIC"
-        assert data["display_name"] == "평론가"
+        assert data["display_name"] == "평론가(이동진 오마주)"
         assert data["mode"] == "DEBATE"
 
 
