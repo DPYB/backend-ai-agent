@@ -187,6 +187,18 @@ def _extract_debate_topic(messages: List[BaseMessage]) -> str:
     return "독서 토론의 화두를 확장해 줄 깊이 있는 인문/문학 도서"
 
 
+def extract_debate_book_title(messages: List[BaseMessage]) -> str:
+    """Extract the primary book title discussed in the conversation history."""
+    for msg in reversed(messages):
+        text = str(getattr(msg, "content", ""))
+        matches = re.findall(r"[《<「『](.*?)[》>」』]", text)
+        for m in matches:
+            cleaned = m.strip()
+            if cleaned:
+                return cleaned
+    return "독서 토론"
+
+
 def _extract_debate_summary(ai_content: str) -> Optional[str]:
     """Extract a concise debate summary from the concluding response text."""
     if not ai_content:

@@ -5,6 +5,8 @@ import logging
 from fastapi import APIRouter, HTTPException, status
 
 from app.api.schemas import (
+    DebateInsightVectorizeRequest,
+    DebateInsightVectorizeResponse,
     RecordVectorizeRequest,
     RecordVectorizeResponse,
     ScrapVectorizeRequest,
@@ -97,4 +99,50 @@ async def vectorize_reading_record(request: RecordVectorizeRequest) -> RecordVec
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"독서 기록 벡터화 처리 중 오류가 발생했습니다: {str(e)}",
+        ) from e
+
+
+@router.post(
+    "/debate-insights",
+    response_model=DebateInsightVectorizeResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def vectorize_debate_insight(
+    request: DebateInsightVectorizeRequest,
+) -> DebateInsightVectorizeResponse:
+    """Vectorize a debate insight and insert into agent.debate_insights.
+
+    - Combines book title, topic, and debate summary
+    - Generates 768-dim embedding (via Google Gemini or fallback)
+    - Saves into agent.debate_insights partitioned by member_id
+    """
+    try:
+        embedding_text = f"도서: {request.book_title}\n논제: {request.topic or ''}\n토론 요약: {request.summary}".strip()
+        embedding = generate_query_embedding(embedding_text)
+
+        from app.infrastructure.db.repository import get_agent_vector_repository
+
+        repo = get_agent_vector_repository()
+        record = await repo.insert_debate_insight(
+            member_id=request.member_id,
+            session_id=request.session_id,
+            book_title=request.book_title,
+            persona_id=request.persona_id,
+            summary=request.summary,
+            topic=request.topic,
+            embedding=embedding,
+        )
+
+        insight_id = str(record.get("id", "")) if record else None
+
+        return DebateInsightVectorizeResponse(
+            success=True,
+            insight_id=insight_id,
+            message="토론 통찰 요약이 성공적으로 벡터화되어 토론 기억에 적재되었습니다.",
+        )
+    except Exception as e:
+        logger.exception("Failed to vectorize debate insight: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"토론 통찰 벡터화 처리 중 오류가 발생했습니다: {str(e)}",
         ) from e

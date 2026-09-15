@@ -4,7 +4,7 @@ import json
 import logging
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, Header, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
@@ -17,7 +17,7 @@ from app.api.schemas import (
     SwitchSuggestionResponse,
 )
 from app.core.config import settings
-from app.domain.graph.nodes import extract_message_text
+from app.domain.graph.nodes import extract_debate_book_title, extract_message_text
 from app.domain.graph.workflow import ALL_PERSONA_NODES, create_agent_graph
 from app.domain.personas import (
     CAT_ID,
@@ -34,6 +34,40 @@ logger = logging.getLogger(__name__)
 
 api_router = APIRouter(prefix="/api/v1")
 _graph = create_agent_graph()
+
+
+async def save_debate_insight_task(
+    member_id: str,
+    session_id: str,
+    book_title: str,
+    persona_id: str,
+    summary: str,
+    topic: Optional[str] = None,
+) -> None:
+    """Background task to vectorize and store debate insight in agent.debate_insights."""
+    try:
+        from app.domain.memory.rag_tool import generate_query_embedding
+        from app.infrastructure.db.repository import get_agent_vector_repository
+
+        content_to_embed = f"도서: {book_title}\n논제: {topic or ''}\n토론 요약: {summary}".strip()
+        embedding = generate_query_embedding(content_to_embed)
+        repo = get_agent_vector_repository()
+        await repo.insert_debate_insight(
+            member_id=member_id,
+            session_id=session_id,
+            book_title=book_title,
+            persona_id=persona_id,
+            summary=summary,
+            topic=topic,
+            embedding=embedding,
+        )
+        logger.info(
+            "Background debate insight vectorized and saved for member %s (book: %s)",
+            member_id,
+            book_title,
+        )
+    except Exception as e:
+        logger.error("Failed to vectorize debate insight in background: %s", e)
 
 
 @api_router.get("/health", response_model=HealthResponse, tags=["Health"])
@@ -257,6 +291,7 @@ async def _prepare_chat_context(
 @api_router.post("/chat", response_model=ChatResponse, tags=["Chat"])
 async def chat_with_persona(
     request: ChatRequest,
+    background_tasks: BackgroundTasks,
     authorization: Optional[str] = Header(default=None),
 ) -> ChatResponse:
     """Chat with the persona-driven AI librarian or debate partner.
@@ -339,6 +374,23 @@ async def chat_with_persona(
                     )
                 )
 
+        is_concluded = bool(result_state.get("is_concluded", False))
+        debate_summary = result_state.get("debate_summary")
+
+        # Auto-persist debate insight to agent.debate_insights in background if concluded
+        effective_mid = initial_state.get("member_id")
+        if is_concluded and debate_summary and effective_mid:
+            book_title = extract_debate_book_title(final_messages)
+            background_tasks.add_task(
+                save_debate_insight_task,
+                member_id=str(effective_mid),
+                session_id=session_id,
+                book_title=book_title,
+                persona_id=current_active_persona,
+                summary=debate_summary,
+                topic=None,
+            )
+
         return ChatResponse(
             session_id=session_id,
             reply=last_ai_msg or "답변을 정리하고 있습니다.",
@@ -347,8 +399,8 @@ async def chat_with_persona(
             mode=persona_mode,
             switch_suggestion=switch_suggestion,
             recommended_books=recommended_books,
-            is_concluded=bool(result_state.get("is_concluded", False)),
-            debate_summary=result_state.get("debate_summary"),
+            is_concluded=is_concluded,
+            debate_summary=debate_summary,
         )
 
     except Exception as e:
@@ -368,6 +420,7 @@ def _format_sse(event_type: str, data: Any) -> str:
 @api_router.post("/chat/stream", tags=["Chat"])
 async def chat_stream_with_persona(
     request: ChatRequest,
+    background_tasks: BackgroundTasks,
     authorization: Optional[str] = Header(default=None),
 ) -> StreamingResponse:
     """Stream real-time chat responses chunk by chunk using Server-Sent Events (SSE).
@@ -523,6 +576,20 @@ async def chat_stream_with_persona(
                             "description": b.get("description"),
                         }
                     )
+
+            # Auto-persist debate insight to agent.debate_insights in background if concluded
+            effective_mid = initial_state.get("member_id")
+            if is_concluded and debate_summary and effective_mid:
+                book_title = extract_debate_book_title(final_messages)
+                background_tasks.add_task(
+                    save_debate_insight_task,
+                    member_id=str(effective_mid),
+                    session_id=session_id,
+                    book_title=book_title,
+                    persona_id=last_active_persona,
+                    summary=debate_summary,
+                    topic=None,
+                )
 
             # 4. Emit done event
             yield _format_sse(

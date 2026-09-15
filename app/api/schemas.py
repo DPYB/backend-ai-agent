@@ -237,3 +237,22 @@ class RecordVectorizeResponse(BaseModel):
     record_id: int = Field(..., description="The processed record ID")
     scrap_id: Optional[str] = Field(default=None, description="Created scrap vector record ID")
     message: str = Field(..., description="Result summary message")
+
+
+class DebateInsightVectorizeRequest(BaseModel):
+    """Request payload for vectorizing a debate insight/takeaway."""
+
+    member_id: str = Field(..., description="Unique member UUID", min_length=1)
+    session_id: str = Field(..., description="Debate conversation session ID", min_length=1)
+    book_title: str = Field(..., description="Title of the book discussed", min_length=1)
+    persona_id: str = Field(..., description="Debate partner persona ID", min_length=1)
+    summary: str = Field(..., description="Debate takeaway and summary text", min_length=1)
+    topic: Optional[str] = Field(default="", description="Core discussion topic/issue")
+
+
+class DebateInsightVectorizeResponse(BaseModel):
+    """Response payload after debate insight vectorization."""
+
+    success: bool = Field(..., description="Whether vectorization and insertion succeeded")
+    insight_id: Optional[str] = Field(default=None, description="Created debate insight record ID")
+    message: str = Field(..., description="Result summary message")

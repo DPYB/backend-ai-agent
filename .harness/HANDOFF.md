@@ -358,9 +358,44 @@
    - `.harness/DECISIONS.md`에 토론 피날레 4단계 플로우 분리 및 큐레이터 선위임 결정 추가
 
 ### 다음 세션에서 할 일
-- PR #10 충돌 해결 후 머지 및 develop 최신화 확인
-- **Milestone 2 (Phase 16)**: 토론 기억 전용 테이블(`agent.debate_insights`) DDL 및 개인화 벡터 DB 저장 연계 착수
-- 또는 **Milestone 3 (Phase 15)**: 4단계 다중 방어 보안 가드레일 파이프라인 (0차 인증 ~ 1차 Safety ~ 2차 Input ~ 3차 Security) 구축 착수
+- PR #10 충돌 해결 후 머지 및 develop 최신화 확인 (완료)
+- **Milestone 2 (Phase 16)**: 토론 기억 전용 테이블(`agent.debate_insights`) DDL 및 개인화 벡터 DB 저장 연계 착수 (완료)
+
+---
+
+## 세션 14 (2026-09-15)
+
+### 진행한 작업
+1. **작업 브랜치 생성 및 격리 개발**:
+   - DPYB 브랜치 규칙에 따라 `feat/debate-memory-vector` 분기 (`main` <- `develop` <- `feat/*`)
+2. **토론 기억 전용 테이블 DDL 및 RPC 함수 구현 (`scripts/init_agent_schema.sql`, `init_agent_schema.py`)**:
+   - 문장 스크랩 전용인 `scrap_vector`의 데이터 정합성을 지키기 위해 `agent.debate_insights` 테이블 신설 (`id`, `member_id`, `session_id`, `book_title`, `persona_id`, `summary`, `topic`, `embedding(768)`, `created_at`)
+   - `member_id` 격리 인덱스, HNSW 코사인 유사도 인덱스, 매칭 RPC 함수 `agent.match_debate_insights` 정의
+   - `init_agent_schema.py` 검증 로직 및 `--seed` 시딩에 토론 기억 샘플(데미안, 불편한 편의점) 추가
+3. **SQLAlchemy ORM 모델 및 Repository 구축 (`app/infrastructure/db/models.py`, `repository.py`)**:
+   - `DebateInsight` ORM 선언 (`__tablename__ = "debate_insights"`, `__table_args__ = {"schema": "agent"}`)
+   - `AgentVectorRepository`에 `insert_debate_insight` 및 `search_member_debate_insights` 메서드 구현 (Postgres DB 연동 및 인메모리 폴백 일체화)
+4. **토론 기억 회상 도구 구현 및 8개 페르소나 공유 바인딩 (`app/domain/memory/debate_memory_tool.py`, `app/domain/graph/tools.py`)**:
+   - `@tool("search_debate_memory")` 구현: 사용자 식별자(`member_id`)와 쿼리를 받아 과거 토론 통찰을 검색
+   - 비로그인 게스트 유저 바이패스 처리 (`member_id` 없을 시 DB 쿼리 없이 0ms 즉시 안내)
+   - `app/domain/graph/tools.py`의 `GENERIC_TOOLS`에 등록하여 동물 사서 4종 및 토론 파트너 4종 전체에 전사 바인딩
+5. **토론 피날레 시 백그라운드 자동 벡터화 적재 파이프라인 연동 (`app/api/router.py`, `app/api/v1/memory.py`)**:
+   - `/api/v1/chat` 및 실시간 SSE `/api/v1/chat/stream`에서 토론 마무리(`is_concluded=True` 및 `debate_summary` 존재 시) 백그라운드 태스크로 `summary`를 768차원 벡터화하여 `agent.debate_insights`에 자동 적재 (0ms 지연)
+   - 수동/외부 저장용 API 엔드포인트 `POST /api/v1/memory/debate-insights` 추가
+6. **품질 검증 및 단위 테스트 전수 통과**:
+   - `tests/unit/test_debate_memory.py` 신규 작성 (7개 테스트 100% 그린)
+   - 전체 75개 단위 테스트 100% 통과 (Success)
+   - Ruff 린트/포맷 통과, Mypy 정적 타입 체크(`45 source files`) 무결성 통과
+7. **하네스 문서 동기화**:
+   - `.harness/STATE.md`에 Phase 16 완료 반영
+   - `.harness/PLAN.md`에서 완료된 Milestone 2 제거
+   - `.harness/DECISIONS.md`에 토론 기억 테이블 분리 및 백그라운드 자동 적재 결정 기록
+
+### 다음 세션에서 할 일
+- 사용자의 커밋 및 PR 생성 승인 시 `feat/debate-memory-vector` 커밋/푸시 및 `develop` 대상 PR 생성 보조
+- **Milestone 3 (Phase 15)**: 4단계 다중 방어 보안 가드레일 파이프라인 (0차 인증 ~ 1차 Safety ~ 2차 Input ~ 3차 Security) 구축 착수
+- 또는 **Milestone 4**: 3대 레포(Core API + AI Agent + Frontend) 로컬 기동 및 풀스택 E2E 실화면 통합 테스트 진행
+
 
 
 
