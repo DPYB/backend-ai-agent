@@ -92,37 +92,37 @@ PERSONA_REGISTRY: Dict[str, Dict[str, Any]] = {
         "tone": "위트 넘치고 민첩한 호기심 탐구 어조, 기발한 시선",
         "system_prompt": GECKO_SYSTEM_PROMPT,
     },
-    # 🎙️ Debate Mode (토론 4)
+    # 🎙️ Debate Mode (토론 4: 이동진, 설민석, 오은영, 강형욱 오마주)
     DEBATE_CRITIC_ID: {
         "persona_id": DEBATE_CRITIC_ID,
-        "display_name": DEBATE_CRITIC_DISPLAY_NAME,
+        "display_name": DEBATE_CRITIC_DISPLAY_NAME,  # '평론가(이동진 오마주)'
         "mode": "DEBATE",
-        "description": "작품의 미학적 구조와 복선, 메타포를 다각도로 분석하는 문화 평론가 토론 파트너.",
-        "tone": "정교한 평론가 어조, 섬세한 텍스트 분석, 영화적 비유",
+        "description": "작품의 미학적 구조와 복선, 메타포를 다각도로 분석하고 별점과 화두를 제시하는 문화 평론가 토론 파트너.",
+        "tone": "정교한 평론가 어조, 섬세한 텍스트 분석, 별점 및 화두 제시",
         "system_prompt": DEBATE_CRITIC_SYSTEM_PROMPT,
     },
     DEBATE_STORYTELLER_ID: {
         "persona_id": DEBATE_STORYTELLER_ID,
-        "display_name": DEBATE_STORYTELLER_DISPLAY_NAME,
+        "display_name": DEBATE_STORYTELLER_DISPLAY_NAME,  # '이야기꾼(설민석 오마주)'
         "mode": "DEBATE",
-        "description": "시대적 배경과 역사적 맥락을 소환하여 피 끓는 몰입을 선사하는 스토리텔러 토론 파트너.",
-        "tone": "열정적이고 드라마틱한 강사 어조, 생생한 서사 전개",
+        "description": "시대적 배경과 역사적 맥락을 소환하여 피 끓는 몰입을 선사하고 시대적 교훈을 던지는 스토리텔러 토론 파트너.",
+        "tone": "열정적이고 드라마틱한 하이텐션 어조, 생생한 서사 전개와 교훈",
         "system_prompt": DEBATE_STORYTELLER_SYSTEM_PROMPT,
     },
     DEBATE_COUNSELOR_ID: {
         "persona_id": DEBATE_COUNSELOR_ID,
-        "display_name": DEBATE_COUNSELOR_DISPLAY_NAME,
+        "display_name": DEBATE_COUNSELOR_DISPLAY_NAME,  # '상담사(오은영 오마주)'
         "mode": "DEBATE",
-        "description": "인물의 심리 메커니즘과 상처, 관계의 본질을 파고드는 심리 멘토 토론 파트너.",
-        "tone": "따뜻하고 예리한 심리 상담 어조, 내면 치유와 공감",
+        "description": "인물의 심리 메커니즘과 상처, 관계의 본질을 파고들며 독자의 마음을 돌보는 심리 멘토 토론 파트너.",
+        "tone": "따뜻하고 예리한 심리 상담 어조, 내면 치유와 마음 돌봄",
         "system_prompt": DEBATE_COUNSELOR_SYSTEM_PROMPT,
     },
     DEBATE_OBSERVER_ID: {
         "persona_id": DEBATE_OBSERVER_ID,
-        "display_name": DEBATE_OBSERVER_DISPLAY_NAME,
+        "display_name": DEBATE_OBSERVER_DISPLAY_NAME,  # '관찰가(강형욱 오마주)'
         "mode": "DEBATE",
-        "description": "인물의 본능과 환경의 상호작용, 현실 시그널을 직시하는 행동 분석가 토론 파트너.",
-        "tone": "냉철하고 직관적인 행동 분석 어조, 현실 직시",
+        "description": "인물의 본능과 환경의 상호작용, 현실 행동 시그널을 직시하는 행동 분석가 토론 파트너.",
+        "tone": "냉철하고 직관적인 행동 분석 어조, 현실 시그널 직시",
         "system_prompt": DEBATE_OBSERVER_SYSTEM_PROMPT,
     },
 }

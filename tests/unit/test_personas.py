@@ -59,3 +59,47 @@ def test_persona_prompt_integrity():
 
     assert len(ids) == 8
     assert len(display_names) == 8
+
+
+def test_debate_personas_homage_display_names():
+    """Verify all 4 debate personas use the standardized '(오마주)' display name format."""
+    critic = PERSONA_REGISTRY[DEBATE_CRITIC_ID]
+    storyteller = PERSONA_REGISTRY[DEBATE_STORYTELLER_ID]
+    counselor = PERSONA_REGISTRY[DEBATE_COUNSELOR_ID]
+    observer = PERSONA_REGISTRY[DEBATE_OBSERVER_ID]
+
+    assert critic["display_name"] == "평론가(이동진 오마주)"
+    assert storyteller["display_name"] == "이야기꾼(설민석 오마주)"
+    assert counselor["display_name"] == "상담사(오은영 오마주)"
+    assert observer["display_name"] == "관찰가(강형욱 오마주)"
+
+
+def test_debate_personas_required_format_and_recommendation_guidelines():
+    """Verify each debate persona prompt enforces required answer formats and book recommendation link."""
+    # Critic: Star rating, one-line review, discourse question
+    critic_prompt = PERSONA_REGISTRY[DEBATE_CRITIC_ID]["system_prompt"]
+    assert "★ 별점:" in critic_prompt
+    assert "■ 한 줄 총평:" in critic_prompt
+    assert "◆ 오늘의 화두:" in critic_prompt
+    assert "토론 마무리 및 도서 추천 연계" in critic_prompt
+
+    # Storyteller: Historical lesson, existential question, high-tension call
+    storyteller_prompt = PERSONA_REGISTRY[DEBATE_STORYTELLER_ID]["system_prompt"]
+    assert "🏛️ 역사가 주는 교훈:" in storyteller_prompt
+    assert "🔥 함께 던지는 질문:" in storyteller_prompt
+    assert "독자님!" in storyteller_prompt
+    assert "토론 마무리 및 도서 추천 연계" in storyteller_prompt
+
+    # Counselor: Mind care question, 109 crisis hotline, no medical diagnosis
+    counselor_prompt = PERSONA_REGISTRY[DEBATE_COUNSELOR_ID]["system_prompt"]
+    assert "🌱 마음 돌봄 질문:" in counselor_prompt
+    assert "109" in counselor_prompt
+    assert "진단명" in counselor_prompt
+    assert "토론 마무리 및 도서 추천 연계" in counselor_prompt
+
+    # Observer: Behavioral signal review, reality observation question
+    observer_prompt = PERSONA_REGISTRY[DEBATE_OBSERVER_ID]["system_prompt"]
+    assert "🔍 행동 시그널 총평:" in observer_prompt
+    assert "⚡ 현실 관찰 질문:" in observer_prompt
+    assert "행동 시그널" in observer_prompt
+    assert "토론 마무리 및 도서 추천 연계" in observer_prompt
