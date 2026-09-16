@@ -441,7 +441,20 @@ async def _run_persona_node(
     # 2. If recommendation/curation intent is present and books are not yet curated,
     # immediately delegate to curator_node to verify real books without an extra LLM call
     if not state.get("curated_books"):
-        recom_keywords = ["추천", "골라줘", "권해줘", "어떤 책", "읽을만한", "책 찾아"]
+        recom_keywords = [
+            "추천",
+            "골라줘",
+            "권해줘",
+            "어떤 책",
+            "읽을만한",
+            "책 찾아",
+            "뭘 읽",
+            "무슨 책",
+            "책 좀",
+            "도서 추천",
+            "책 하나",
+            "책 알려줘",
+        ]
         if any(kw in last_user_msg for kw in recom_keywords):
             logger.info("Recommendation intent detected. Delegating directly to curator_node.")
             return {
@@ -463,6 +476,7 @@ async def _run_persona_node(
             "\n\n[도서 큐레이터가 엄선 및 검증한 국립중앙도서관 실존 도서 목록]\n"
             f"{books_desc}\n\n"
             "지침: 위의 검증된 실존 도서를 당신 고유의 어조와 캐릭터 감성으로 독자에게 다정하게 소개해 주십시오.\n"
+            "- [마크다운 도서 카드 헤딩 준수]: 각 추천 도서를 소개할 때는 반드시 `### 📖 도서명` 형식의 마크다운 3단계 헤딩을 별도의 줄에 명시하십시오. (예: `### 📖 불편한 편의점`). 이 헤딩 규격이 있어야 화면에 도서 카드와 [서재에 등록 ➔] 버튼이 렌더링됩니다.\n"
             "- [절대 준수]: 도서의 제목과 저자명(작가)은 위 목록에 적힌 그대로 정확하게 일치시켜 언급해야 합니다. 작가 이름을 임의로 다른 작가(예: 김애란 등)로 바꾸거나 날조하지 마십시오.\n"
             "- [중복 호출 금지]: 도서 추천 도구(recommend_books 등)를 다시 호출하지 마십시오. 이미 큐레이터가 최적의 책을 엄선했으므로, 위 목록의 책들을 독자에게 소개하는 데 집중하십시오.\n"
             "- 존재하지 않는 가짜 책을 임의로 지어내지 마십시오."

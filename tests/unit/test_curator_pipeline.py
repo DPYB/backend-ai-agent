@@ -1,7 +1,7 @@
 from typing import cast
 
 import pytest
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 from app.domain.graph.curator_node import book_curator_node
 from app.domain.graph.state import AgentState
@@ -102,3 +102,77 @@ async def test_weather_client_fallback():
     weather = await client.get_current_weather(37.5665, 126.9780)
     # Open-Meteo is free and accessible; weather is string if online, or None if timeout/offline
     assert weather is None or isinstance(weather, str)
+
+
+@pytest.mark.asyncio
+async def test_recommendation_intent_delegation_keywords():
+    """Verify various recommendation queries like '뭘 읽으면 좋을까' delegate directly to curator_node."""
+    from app.domain.graph.nodes import cat_node
+
+    queries = [
+        "뭘 읽으면 좋을까",
+        "오늘 같은 날 무슨 책이 좋을까?",
+        "따뜻한 위로가 되는 책 좀 추천해줘",
+        "도서 추천 부탁해",
+        "가볍게 볼 만한 책 하나 골라줘",
+    ]
+
+    for q in queries:
+        state = {
+            "messages": [HumanMessage(content=q)],
+            "member_id": "test-member",
+            "active_persona": "CAT",
+            "librarian_name": "블루",
+            "mode": "LIBRARIAN",
+            "switch_suggestion": None,
+            "context_summary": None,
+            "handoff_target": None,
+            "curator_request": None,
+            "curated_books": None,
+        }
+        res = await cat_node(cast(AgentState, state))
+        assert "curator_request" in res, f"Query '{q}' should delegate to curator_node"
+        assert res["curator_request"] == q
+
+
+@pytest.mark.asyncio
+async def test_curated_books_markdown_heading_instruction(monkeypatch):
+    """Verify system prompt contains ### 📖 title markdown heading instruction when curated_books exist."""
+    from app.domain.graph.nodes import cat_node
+
+    captured_prompt = None
+
+    class DummyLLM:
+        async def ainvoke(self, messages, config=None):
+            nonlocal captured_prompt
+            captured_prompt = messages[0].content
+            return AIMessage(content="### 📖 불편한 편의점\n이 책을 추천합니다냥.")
+
+    monkeypatch.setattr("app.domain.graph.nodes._get_llm", lambda tools=None: DummyLLM())
+
+    state = {
+        "messages": [HumanMessage(content="뭘 읽으면 좋을까")],
+        "member_id": "test-member",
+        "active_persona": "CAT",
+        "librarian_name": "블루",
+        "mode": "LIBRARIAN",
+        "switch_suggestion": None,
+        "context_summary": None,
+        "handoff_target": None,
+        "curator_request": None,
+        "curated_books": [
+            {
+                "title": "불편한 편의점",
+                "author": "김호연",
+                "publisher": "나무옆의자",
+                "isbn": "9791161571188",
+                "reason": "마음이 따뜻해지는 소설입니다.",
+            }
+        ],
+    }
+
+    res = await cat_node(cast(AgentState, state))
+    assert "messages" in res
+    assert captured_prompt is not None
+    assert "### 📖 도서명" in captured_prompt
+    assert "### 📖 불편한 편의점" in res["messages"][0].content
