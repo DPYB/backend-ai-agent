@@ -499,14 +499,47 @@
    - 로컬 `develop` 브랜치 체크아웃 및 최신 동기화(`git pull origin develop`) 완료.
 
 ### 다음 세션에서 할 일
-- `develop` 브랜치 기반 작업 브랜치 `feat/security-guardrails` 분기
-- **Milestone 3 (Phase 15)**: 4단계 다중 방어 보안 가드레일 파이프라인(`app/domain/guardrails/`) 구축 착수
-  - `safety_gate.py`: 자해/위기 키워드 감지, 도서명('자살론' 등) 오탐 방지, 8종 페르소나별 109 핫라인 공감 응답 (0ms, LLM 비용 $0)
-  - `input_gate.py`: 자모 난타, 숫자/이모지 단독 비정상 입력 감지 및 8종 페르소나별 즉각 안내 응답
-  - `security_gate.py`: 시스템 프롬프트 유출 시도, 탈옥(Jailbreak/DAN), 개인정보(주민등록번호 등) 0ms 사전 차단 게이트
-  - `shared_rules.py`: 시스템 프롬프트 레벨 공통 가드레일 (날씨 팩트 엄수, 도서 서비스 범위 밖 질문 정중 거절, 내부 메타데이터 은폐)
-  - `POST /api/v1/chat` 및 `POST /api/v1/chat/stream` 엔드포인트에 4단계 게이트 순차 연결
-  - 단위 테스트 `tests/unit/test_guardrails.py` 작성 및 전수 검증 (Ruff, Mypy, Pytest)
+- 사용자의 확인 및 요청 시 `feat/security-guardrails` 커밋 및 푸시, PR 생성 보조 (완료: 세션 18에서 구현 완료)
+
+---
+
+## 세션 18 (2026-09-16)
+
+### 진행한 작업
+1. **브랜치 정리 및 최신 동기화**:
+   - 머지 완료된 원격 과거 작업 브랜치(`feat/AI-14-curator-agent-pipeline`, `feat/chat-sse-streaming`, `feat/scrap-vectorization`, `feat/supabase-agent-schema`) 삭제 정리 (`git push origin --delete`)
+   - 머지 완료된 로컬 `feat/gemini-vision-ocr` 삭제 및 `develop` 브랜치 최신화 (`7e9919b`)
+   - DPYB 브랜치 컨벤션에 따라 작업 브랜치 `feat/security-guardrails` 분기
+2. **4단계 다중 방어 보안 가드레일 도메인 모듈 신설 (`app/domain/guardrails/`)**:
+   - `safety_gate.py`:
+     - **자해/자살(Harm to Self)**: 위기 정규식 감지, 학술/문학 도서명(에밀 뒤르켐 《자살론》, 카뮈 《시지프 신화》, 《인간 실격》 등) 오탐 방지, 8개 페르소나별 24시간 자살예방 상담전화 ☎ 109 공감 멘트 반환 (게코 위기 상황 시 `~크크` 엄격 생략)
+     - **타인 가해/살해/폭력(Harm to Others)**: "누굴 죽이고 싶다", "죽여버리고 싶다", "살인하고 싶다" 등 타인 위해 발화 감지 시 **자살 109 핫라인 오탐을 원천 차단**하고 8종 페르소나별 분노 진정 및 타인 가해 단호 거절 멘트 분기 제공 (추리소설/스릴러 분석 및 "더워 죽겠다" 일상 과장 오탐 방지)
+   - `input_gate.py`: 자모 난타(`ㅋㅋㅋㅋ`, `ㅠㅠ`), 숫자 단독(`12345`), 기호/이모지 단독(`🐱🐾`, `???`) 등 무의미/불완전 발화 감지 및 8개 페르소나별 호기심 유도 되묻기 멘트 반환
+   - `security_gate.py`: 시스템 프롬프트 유출 시도, DAN/탈옥(Jailbreak), 개인식별정보(주민등록번호, 신용카드 번호) 0ms 사전 차단 게이트
+   - `shared_rules.py`: 시스템 프롬프트 공통 가드레일(`SHARED_GUARDRAILS`) 작성
+   - `__init__.py`: 4단계 다중 방어 파이프라인 통합 평가 함수 `evaluate_guardrails` 구현 (1차 safety -> 2차 input -> 3차 security 순차 평가)
+3. **8개 페르소나 시스템 프롬프트 공통 가드레일 주입**:
+   - `app/domain/personas/__init__.py`의 `PERSONA_REGISTRY`에 `_with_guardrails` 래퍼 적용하여 8종 페르소나 시스템 프롬프트에 `SHARED_GUARDRAILS` 일괄 주입
+4. **API 엔드포인트 연동 (`POST /api/v1/chat`, `POST /api/v1/chat/stream`)**:
+   - 0차: JWT 서명 검증 및 게스트 모드 분기 (기구현)
+   - 1차~3차: `evaluate_guardrails` 평가
+   - 가드레일 트리거 시 LangGraph 호출을 건너뛰고 0ms 지연 / $0 LLM 비용으로 즉각 반환
+   - Redis 세션에 유저 발화와 가드레일 응답을 정상 기록하여 대화 맥락 일관성 보존
+   - SSE 실시간 스트리밍(`/api/v1/chat/stream`)에서도 동일하게 `metadata` -> `token` (가드레일 텍스트) -> `done`으로 매끄럽게 스트리밍 완료
+5. **품질 검증 및 단위 테스트 전수 통과**:
+   - `tests/unit/test_guardrails.py` 신규 작성: 17개 단위 테스트 작성 (자해/자살 109 핫라인, 타인 가해 109 미노출 및 분노 진정 검증, 도서명 예외 오탐 방지, 추리소설 통과, 자모/숫자/이모지, 프롬프트 유출/탈옥/PII, 게코 크크 생략, 라우터 LangGraph 미호출 0ms 검증, SSE 스트리밍 검증, SHARED_GUARDRAILS 전 페르소나 주입 검증)
+   - Pytest 전체 100개 단위 테스트 100% 그린 패스 (`100 passed in 36.37s`)
+   - Ruff 린트/포맷 100% 통과 (`All checks passed`)
+   - Mypy 정적 타입 체크 100% 무결성 통과 (`Success: no issues found in 76 source files`)
+6. **하네스 문서 동기화**:
+   - `.harness/STATE.md`에 Phase 15 (Milestone 3) 완료 반영
+   - `.harness/PLAN.md`에서 완료된 Milestone 3 제거
+   - `.harness/DECISIONS.md`에 4단계 다중 방어 가드레일 아키텍처 결정 기록
+
+### 다음 세션에서 할 일
+- 사용자의 확인 및 승인 시 `feat/security-guardrails` 커밋 및 푸시, PR 생성 보조 (완료: 세션 18에서 커밋/푸시 및 PR 생성 완료)
+- **Milestone 4**: 3대 서비스(Core API + AI Agent + Frontend) 풀스택 통합 테스트 및 연동 검증 진행 (새 세션에서 착수)
+
 
 
 
