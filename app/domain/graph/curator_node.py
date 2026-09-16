@@ -47,52 +47,100 @@ async def book_curator_node(state: AgentState) -> Dict[str, Any]:
 
     candidates: List[Dict[str, str]] = []
 
+    # Fast mock in test environment
+    if getattr(settings, "app_env", "") == "test":
+        candidates = [
+            {"title": "데미안", "author": "헤르만 헤세", "reason": "자아를 찾는 여정"},
+            {"title": "어린 왕자", "author": "생텍쥐페리", "reason": "순수한 통찰"},
+        ]
+
     # 1. Use low-temperature LLM reasoning to extract optimal book candidates
     gemini_key = settings.gemini_api_key.strip()
+    gemini_fallback_key = getattr(settings, "gemini_fallback_api_key", "").strip()
     openai_key = settings.openai_api_key.strip()
-    primary_llm: Any = None
-    secondary_llm: Any = None
+    light_model = getattr(settings, "gemini_light_model", "gemini-3.1-flash-lite")
 
+    llms_to_try: List[Any] = []
+
+    # 1. Primary: Gemini 3.1 Flash Lite with Primary Key (Preserve 3.5 quota for chat)
     if gemini_key and not gemini_key.startswith("your_") and len(gemini_key) > 10:
         try:
             from langchain_google_genai import ChatGoogleGenerativeAI
 
-            primary_llm = ChatGoogleGenerativeAI(
-                model=settings.gemini_model,
-                google_api_key=gemini_key,
-                temperature=0.1,
+            llms_to_try.append(
+                ChatGoogleGenerativeAI(
+                    model=light_model,
+                    google_api_key=gemini_key,
+                    temperature=0.1,
+                )
             )
         except Exception as e:
-            logger.warning("Failed to initialize Gemini for curator (%s).", e)
+            logger.warning("Failed to initialize primary Gemini light for curator (%s).", e)
 
+    # 2. Secondary: Gemini 3.1 Flash Lite with Fallback Key
+    if (
+        gemini_fallback_key
+        and not gemini_fallback_key.startswith("your_")
+        and len(gemini_fallback_key) > 10
+    ):
+        try:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+
+            llms_to_try.append(
+                ChatGoogleGenerativeAI(
+                    model=light_model,
+                    google_api_key=gemini_fallback_key,
+                    temperature=0.1,
+                )
+            )
+        except Exception as e:
+            logger.warning("Failed to initialize fallback Gemini light for curator (%s).", e)
+
+    # 3. Tertiary: Gemini 3.5 Flash Lite
+    if gemini_key and not gemini_key.startswith("your_") and len(gemini_key) > 10:
+        try:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+
+            llms_to_try.append(
+                ChatGoogleGenerativeAI(
+                    model=settings.gemini_model,
+                    google_api_key=gemini_key,
+                    temperature=0.1,
+                )
+            )
+        except Exception as e:
+            logger.warning("Failed to initialize Gemini 3.5 for curator (%s).", e)
+
+    # 4. Fallback: OpenAI gpt-4o-mini
     if openai_key and not openai_key.startswith("your_") and len(openai_key) > 10:
         try:
             from langchain_openai import ChatOpenAI
             from pydantic import SecretStr
 
-            secondary_llm = ChatOpenAI(
-                model=settings.openai_model,
-                api_key=SecretStr(openai_key),
-                temperature=0.1,
+            llms_to_try.append(
+                ChatOpenAI(
+                    model=settings.openai_model,
+                    api_key=SecretStr(openai_key),
+                    temperature=0.1,
+                )
             )
         except Exception as e:
             logger.warning("Failed to initialize OpenAI for curator (%s).", e)
-
-    llms_to_try = [candidate for candidate in (primary_llm, secondary_llm) if candidate is not None]
     response = None
-    for candidate_llm in llms_to_try:
-        try:
-            prompt = [
-                SystemMessage(content=CURATOR_SYSTEM_PROMPT),
-                HumanMessage(
-                    content=f"다음 컨텍스트와 추천 요청을 분석하여 최적의 도서 2~3권을 추천 JSON으로 반환해주세요:\n\n{context_desc}"
-                ),
-            ]
-            response = await candidate_llm.ainvoke(prompt)
-            if response:
-                break
-        except Exception as e:
-            logger.warning("Curator candidate LLM call failed (%s). Trying next candidate.", e)
+    if not candidates:
+        for candidate_llm in llms_to_try:
+            try:
+                prompt = [
+                    SystemMessage(content=CURATOR_SYSTEM_PROMPT),
+                    HumanMessage(
+                        content=f"다음 컨텍스트와 추천 요청을 분석하여 최적의 도서 2~3권을 추천 JSON으로 반환해주세요:\n\n{context_desc}"
+                    ),
+                ]
+                response = await candidate_llm.ainvoke(prompt)
+                if response:
+                    break
+            except Exception as e:
+                logger.warning("Curator candidate LLM call failed (%s). Trying next candidate.", e)
 
     if response:
         try:

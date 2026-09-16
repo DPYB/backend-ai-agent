@@ -26,9 +26,12 @@ class Settings(BaseSettings):
         alias="CORS_ORIGINS",
     )
 
-    # Google Gemini AI (Primary Free Tier: 1,500 RPD / 45,000 RPM per month)
+    # Google Gemini AI (Smart Workload Routing & Multi-Key Free Tier)
     gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
-    gemini_model: str = Field(default="gemini-flash-latest", alias="GEMINI_MODEL")
+    gemini_fallback_api_key: str = Field(default="", alias="GEMINI_FALLBACK_API_KEY")
+    gemini_model: str = Field(default="gemini-3.5-flash-lite", alias="GEMINI_MODEL")
+    gemini_light_model: str = Field(default="gemini-3.1-flash-lite", alias="GEMINI_LIGHT_MODEL")
+    gemma_emergency_model: str = Field(default="gemma-4-31b-it", alias="GEMMA_EMERGENCY_MODEL")
     gemini_embedding_model: str = Field(
         default="text-embedding-004",
         alias="GEMINI_EMBEDDING_MODEL",

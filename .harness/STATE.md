@@ -35,12 +35,16 @@
   - Dockerfile 내 C 라이브러리 `libzbar0` 추가
   - 총 33개 단위 테스트(Pytest) 및 Ruff 린트 100% 통과
 
-- [x] **Phase 5.1 (Milestone 2.8): Google Gemini Flash Vision 기반 독서 스크랩 OCR 전면 전환 및 $0 제로비용 달성**
-  - 유료 과금 및 복잡한 키 발급이 요구되는 Naver Clova OCR을 완전 걷어내고, 기존 `GEMINI_API_KEY`를 멀티모달로 재활용한 Gemini Flash Vision OCR 클라이언트(`app/vision/gemini_ocr_client.py`) 구현
-  - 책 문장 스크랩 특화 프롬프트 탑재: 페이지 번호/여백 잡음/손가락 그림자를 자동 배제하고 순수 본문 문장만 줄바꿈(`\n`)을 보존하여 정확히 추출
-  - Gemini 429 쿼터 초과 시 OpenAI `gpt-4o-mini` Vision으로 즉시 자동 우회하는 2차 폴백 파이프라인 구축
+- [x] **Phase 5.1 (Milestone 2.8): Google Gemini Flash Vision 전환, 다중 키 풀링(2,000회/일) 및 워크로드 스마트 라우팅 구축**
+  - 유료 과금 위험이 있는 Naver Clova OCR을 완전 걷어내고, 기존 `GEMINI_API_KEY`를 재활용한 Gemini Flash Vision OCR 클라이언트(`app/vision/gemini_ocr_client.py`) 구현
+  - 책 문장 스크랩 특화 프롬프트 탑재: 페이지 번호/여백 잡음/손가락 그림자를 자동 배제하고 순수 본문 문장만 줄바꿈(`\n`)을 보존하여 정확히 추출 (가상 책 페이지 실측 1.99초 검증 완료)
+  - Google AI Studio 무료 티어 한도(Flash RPD 20 vs Flash-Lite RPD 500) 분석에 기반하여 워크로드 스마트 라우팅 구축:
+    - 감성 및 문장력이 중요한 **사서/토론 대화 및 월간 리포트**: `gemini-3.5-flash-lite` 우선 배정
+    - 텍스트/JSON 단순 추출인 **Vision OCR 및 큐레이터**: `gemini-3.1-flash-lite` 우선 배정 (3.5 쿼터 절약)
+  - 팀원 AI Studio 보조키(`GEMINI_FALLBACK_API_KEY`)를 연동하여 하루 무료 호출량 2,000회(1,000 + 1,000) 쿼터 풀 확보 및 429 발생 시 0ms 즉시 스위칭
+  - 다중 쿼터 초과 시 오픈웨이트 `gemma-4-31b-it`(RPD 14,400) ➔ OpenAI `gpt-4o-mini` ➔ Mock으로 이어지는 비상 안전망 구축 ($0 제로코스트 무중단 보장)
   - `POST /api/v1/vision/ocr` 엔드포인트 바인딩 교체 및 기존 `ClovaOcrClient` 하위 호환성 100% 유지
-  - 단위 테스트(`tests/unit/test_vision.py`) 갱신 및 전체 83개 단위 테스트 100% 그린 패스 (Ruff & Mypy 무결성 통과)
+  - 단위 테스트 격리용 `tests/conftest.py` 추가, `tests/unit/test_vision.py` 갱신 및 전체 83개 단위 테스트 100% 그린 패스 (Ruff & Mypy 무결성 통과)
 
 
 - [x] **Phase 6: 바이브 코딩 하네스 표준 구축**

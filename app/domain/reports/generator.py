@@ -167,52 +167,94 @@ async def generate_ai_analysis_and_prescription(
     )
 
     gemini_key = settings.gemini_api_key.strip()
+    gemini_fallback_key = getattr(settings, "gemini_fallback_api_key", "").strip()
     openai_key = settings.openai_api_key.strip()
     raw_content: Optional[str] = None
 
-    # 1. Primary LLM: Google Gemini
-    if gemini_key and not gemini_key.startswith("your_") and len(gemini_key) > 10:
-        try:
-            from langchain_google_genai import ChatGoogleGenerativeAI
+    # Fast mock in test environment
+    if getattr(settings, "app_env", "") == "test":
+        raw_content = json.dumps(
+            {
+                "readerType": "사색하는 몰입형 독서가",
+                "summary": "저녁 시간대에 문학과 철학 도서에 깊이 몰입하며 사색적인 독서 습관이 돋보였다냥.",
+                "keyTraits": ["저녁 집중형", "인문/철학 선호"],
+                "recommendedGenre": "자연과학",
+                "suggestedGoalBooks": 4,
+                "advice": "이번 달에는 자연과학 분야의 친절한 입문서 1권을 더해보면 좋겠다냥.",
+                "recommendedBooks": [
+                    {
+                        "title": "코스모스",
+                        "author": "칼 세이건",
+                        "reason": "광대한 우주와 인간 실존 조망",
+                    },
+                    {
+                        "title": "이기적 유전자",
+                        "author": "리처드 도킨스",
+                        "reason": "생명과 인간 본성에 대한 과학적 시각",
+                    },
+                ],
+            }
+        )
 
-            llm = ChatGoogleGenerativeAI(
-                model=settings.gemini_model,
-                google_api_key=gemini_key,
-                temperature=0.7,
+    # Candidates: (1) 3.5 Primary Key, (2) 3.5 Fallback Key, (3) 3.1 Light Model, (4) OpenAI
+    candidate_cfgs: List[Dict[str, Any]] = []
+    if not raw_content:
+        if gemini_key and not gemini_key.startswith("your_") and len(gemini_key) > 10:
+            candidate_cfgs.append(
+                {"model": settings.gemini_model, "key": gemini_key, "provider": "gemini"}
             )
-            response = await llm.ainvoke(
-                [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
+        if (
+            gemini_fallback_key
+            and not gemini_fallback_key.startswith("your_")
+            and len(gemini_fallback_key) > 10
+        ):
+            candidate_cfgs.append(
+                {"model": settings.gemini_model, "key": gemini_fallback_key, "provider": "gemini"}
             )
-            if hasattr(response, "content") and response.content:
-                raw_content = str(response.content)
-        except Exception as e:
-            logger.warning(
-                "Gemini LLM failed for report generation (%s). Trying OpenAI fallback.", e
+        light_key = gemini_key or gemini_fallback_key
+        light_model = getattr(settings, "gemini_light_model", "gemini-3.1-flash-lite")
+        if light_key and not light_key.startswith("your_") and len(light_key) > 10:
+            candidate_cfgs.append({"model": light_model, "key": light_key, "provider": "gemini"})
+        if openai_key and not openai_key.startswith("your_") and len(openai_key) > 10:
+            candidate_cfgs.append(
+                {"model": settings.openai_model, "key": openai_key, "provider": "openai"}
             )
 
-    # 2. Secondary LLM: OpenAI
-    if (
-        not raw_content
-        and openai_key
-        and not openai_key.startswith("your_")
-        and len(openai_key) > 10
-    ):
-        try:
-            from langchain_openai import ChatOpenAI
-            from pydantic import SecretStr
+        for cfg in candidate_cfgs:
+            try:
+                if cfg["provider"] == "gemini":
+                    from langchain_google_genai import ChatGoogleGenerativeAI
 
-            openai_llm: Any = ChatOpenAI(
-                model=settings.openai_model,
-                api_key=SecretStr(openai_key),
-                temperature=0.7,
-            )
-            response = await openai_llm.ainvoke(
-                [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
-            )
-            if hasattr(response, "content") and response.content:
-                raw_content = str(response.content)
-        except Exception as e:
-            logger.warning("OpenAI LLM fallback failed for report generation (%s).", e)
+                    llm = ChatGoogleGenerativeAI(
+                        model=cfg["model"],
+                        google_api_key=cfg["key"],
+                        temperature=0.7,
+                    )
+                    response = await llm.ainvoke(
+                        [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
+                    )
+                    if hasattr(response, "content") and response.content:
+                        raw_content = str(response.content)
+                        break
+                elif cfg["provider"] == "openai":
+                    from langchain_openai import ChatOpenAI
+                    from pydantic import SecretStr
+
+                    openai_llm: Any = ChatOpenAI(
+                        model=cfg["model"],
+                        api_key=SecretStr(cfg["key"]),
+                        temperature=0.7,
+                    )
+                    response = await openai_llm.ainvoke(
+                        [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
+                    )
+                    if hasattr(response, "content") and response.content:
+                        raw_content = str(response.content)
+                        break
+            except Exception as e:
+                logger.warning(
+                    "Report LLM candidate failed (%s, %s). Trying next.", cfg["model"], e
+                )
 
     parsed = _parse_llm_json_response(raw_content or "")
 

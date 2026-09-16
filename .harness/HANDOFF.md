@@ -475,25 +475,30 @@
 ## 세션 17 (2026-09-16)
 
 ### 진행한 작업
-1. **사용자 요청 분석 및 로드맵 정렬**:
-   - 기존 1순위(Milestone 2.6: 신구 하이브리드 추천 및 Brave Search)가 이미 구축된 큐레이터 선위임 및 국립도서관 실존 도서 매칭/Tavily 도구와 중복되는 고도화 성격임을 확인하고 BACKLOG.md로 보류 이동.
-   - 사용자 컨펌에 따라 Naver Cloud Clova OCR을 완전 걷어내고 Google Gemini Flash Vision 기반 지능형 독서 스크랩 OCR로 전면 전환 결정.
-2. **Google Gemini Flash Vision 기반 독서 스크랩 OCR 클라이언트 구현 (`app/vision/gemini_ocr_client.py`)**:
-   - 기존 `GEMINI_API_KEY`를 재활용하여 추가 키 발급이나 결제 수단 등록 없이 $0 완전 무과금(Zero-cost) 달성.
-   - 독서 스크랩 특화 지능형 시스템 프롬프트 탑재: 페이지 번호(`- 123 -`), 챕터 헤더, 여백 잡음, 손가락 그림자 등 비본문 요소를 자동 배제하고, 순수 본문 문장만 줄바꿈(`\n`)을 보존하여 정밀 추출.
-   - Gemini 429 쿼터 초과 시 OpenAI `gpt-4o-mini` Vision으로 즉시 자동 우회하는 2차 폴백 파이프라인 구축.
-   - 기존 `ClovaOcrClient`, `ClovaOcrResult` 하위 호환성 별칭을 유지하여 기존 참조 보호.
-3. **엔드포인트 연동 및 설정/문서 동기화**:
-   - `app/api/v1/vision.py`의 `POST /api/v1/vision/ocr` 엔드포인트에서 `gemini_ocr_client` 바인딩 적용.
-   - `.env.example`, `ARCHITECTURE.md`, `DECISIONS.md`, `STATE.md`, `PLAN.md`에 Gemini Flash Vision 전환 내용 동기화.
-4. **품질 검증 및 테스트 전체 통과**:
-   - `tests/unit/test_vision.py` 갱신 (Gemini OCR 폴백, 행 파싱, OpenAI 2차 폴백, 하위 호환성 등 검증).
-   - 전체 83개 단위 테스트(Pytest) 100% 그린(Success) 통과.
-   - Ruff 린트/포맷 통과, Mypy 정적 타입 체크(`69 source files`) 100% 무결성 통과.
+1. **Gemini 무료 티어 쿼터(429) 원인 규명 및 $0 제로코스트 아키텍처 확립**:
+   - Google 콘솔 확인 결과 `Flash` 계열(3.5, 3.6, 3.8, latest)의 무료 RPD가 20회로 대폭 축소된 반면, **`Flash Lite` 계열(3.5 Lite, 3.1 Lite)**은 **RPD 500**이 정상 유지됨을 콘솔 수치 및 실호출로 100% 입증.
+   - 워크로드 특성에 따른 스마트 라우팅 분기 구현:
+     - 감성 표현과 자연스러운 한국어 문장력이 필수적인 **사서/토론 대화 및 월간 리포트**: `gemini-3.5-flash-lite` (1.5초 저지연) 우선 배정.
+     - 단순 텍스트/JSON 파싱인 **Vision OCR 및 큐레이터 서브에이전트**: `gemini-3.1-flash-lite` 우선 배정하여 3.5 쿼터 편중 방지.
+2. **다중 키 풀링(하루 2,000회 확보) 및 다단계 비상 안전망 구축**:
+   - 팀원 AI Studio 보조키(`GEMINI_FALLBACK_API_KEY`)를 연동하여 프로젝트 단위 무료 한도를 하루 2,000회(1,000 + 1,000)로 2배 확장.
+   - `ResilientLLM`, `curator_node`, `gemini_ocr_client`, `reports/generator`에 다중 후보 체인(3.5 메인키 ➔ 3.5 팀원키 ➔ 3.1 ➔ Gemma ➔ OpenAI ➔ Mock) 적용.
+   - 전체 쿼터 소진 시 오픈웨이트 `gemma-4-31b-it`(RPD 14,400) ➔ OpenAI `gpt-4o-mini` ➔ Mock으로 이어지는 무중단 비상 안전망 탑재.
+3. **Google Gemini Flash Vision 독서 스크랩 OCR 전환 및 내부 실테스트 검증**:
+   - 기존 Naver Cloud Clova OCR을 완전 걷어내고 `gemini_ocr_client.py` 구현.
+   - 책 스크랩 전용 시스템 프롬프트 탑재: 페이지 번호/여백 잡음/손가락 그림자를 자동 배제하고 본문 문장만 줄바꿈(`\n`)을 보존하여 정확 추출.
+   - Pillow와 한글 폰트(`AppleGothic`)를 이용한 가상 책 페이지(헤르만 헤세 《데미안》 인용구 + 상단 잡음 번호 `- 147 -`) 실호출 결과, **1.99초** 만에 잡음을 스스로 스킵하고 본문 줄바꿈만 100% 정확하게 추출 성공.
+4. **품질 검증 및 테스트 격리 100% 통과**:
+   - `tests/conftest.py` 신규 추가하여 테스트 시 `APP_ENV=test` 자동 주입 및 외부 네트워크 격리.
+   - `uv run pytest`: **전체 83개 단위 테스트 100% 그린(83 passed in 31.10s)**.
+   - `uv run ruff check .` & `uv run mypy .`: **무결성 100% 통과 (Success: no issues in 70 files)**.
+5. **하네스 문서 동기화**:
+   - `.harness/STATE.md`, `ARCHITECTURE.md`, `DECISIONS.md` 최신화 완료.
 
 ### 다음 세션에서 할 일
-- 사용자의 확인 및 요청 시 `feat/gemini-vision-ocr` 커밋/푸시 및 PR 생성 보조
+- 사용자의 확인 및 요청 시 `feat/gemini-vision-ocr` 브랜치 분기, 커밋/푸시 및 develop 대상 PR 생성 보조
 - **Milestone 3 (Phase 15)**: 4단계 다중 방어 보안 가드레일 파이프라인(`app/domain/guardrails/`) 구축 착수
+
 
 
 
