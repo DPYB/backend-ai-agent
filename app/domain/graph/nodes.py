@@ -464,6 +464,7 @@ async def _run_persona_node(
             f"{books_desc}\n\n"
             "지침: 위의 검증된 실존 도서를 당신 고유의 어조와 캐릭터 감성으로 독자에게 다정하게 소개해 주십시오.\n"
             "- [절대 준수]: 도서의 제목과 저자명(작가)은 위 목록에 적힌 그대로 정확하게 일치시켜 언급해야 합니다. 작가 이름을 임의로 다른 작가(예: 김애란 등)로 바꾸거나 날조하지 마십시오.\n"
+            "- [중복 호출 금지]: 도서 추천 도구(recommend_books 등)를 다시 호출하지 마십시오. 이미 큐레이터가 최적의 책을 엄선했으므로, 위 목록의 책들을 독자에게 소개하는 데 집중하십시오.\n"
             "- 존재하지 않는 가짜 책을 임의로 지어내지 마십시오."
         )
 
@@ -498,7 +499,16 @@ async def _run_persona_node(
 
     prompt_messages = [SystemMessage(content=system_prompt)] + sanitized_messages
 
-    llm = _get_llm(tools=GENERIC_TOOLS)
+    # If books have already been curated, exclude recommendation tools to prevent duplicate LLM/API calls
+    active_tools = GENERIC_TOOLS
+    if curated_books:
+        active_tools = [
+            t
+            for t in GENERIC_TOOLS
+            if getattr(t, "name", "") not in ("recommend_books", "search_recent_books")
+        ]
+
+    llm = _get_llm(tools=active_tools)
     response = await llm.ainvoke(prompt_messages, config=config)
 
     suggestion, target = _detect_switch_intent(

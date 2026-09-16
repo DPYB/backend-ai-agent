@@ -308,3 +308,19 @@ class DebateInsightVectorizeResponse(BaseModel):
     success: bool = Field(..., description="Whether vectorization and insertion succeeded")
     insight_id: Optional[str] = Field(default=None, description="Created debate insight record ID")
     message: str = Field(..., description="Result summary message")
+
+
+class ClassifyGenreRequest(BaseModel):
+    """Request payload for book genre classification."""
+
+    title: str = Field(..., description="도서 제목", min_length=1)
+    author: Optional[str] = Field(default="", description="저자명")
+    isbn: Optional[str] = Field(default="", description="ISBN")
+    raw_category: Optional[str] = Field(default="", description="원본 카테고리/주제")
+
+
+class ClassifyGenreResponse(BaseModel):
+    """Response payload for book genre classification."""
+
+    genre: str = Field(..., description="표준 KDC 장르 코드 (LITERATURE, PHILOSOPHY 등)")
+    confidence: float = Field(default=1.0, description="분류 신뢰도 (0.0 ~ 1.0)")
