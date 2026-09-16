@@ -218,3 +218,81 @@ async def test_chat_stream_includes_recommended_books_in_done_event(monkeypatch)
         assert book["page_count"] == 268
         assert book["genre"] == "문학/소설"
         assert book["cover_url"].startswith("https://contents.kyobobook.co.kr")
+
+
+def test_genre_normalization_general_to_gyoyang():
+    """Test that GENERAL maps to 교양 in UI representations."""
+    from app.infrastructure.national_library_client import genre_to_korean, normalize_genre
+
+    assert genre_to_korean("GENERAL") == "교양"
+    assert normalize_genre("교양") == "GENERAL"
+    assert normalize_genre("총류") == "GENERAL"
+
+
+def test_short_title_subtitle_ranking():
+    """Test that short titles (e.g. '모순') match subtitles correctly without dropping."""
+    from app.infrastructure.national_library_client import NationalLibraryClient
+
+    client = NationalLibraryClient()
+    docs = [
+        {
+            "TITLE": "모순 : 양귀자 소설",
+            "AUTHOR": "양귀자",
+            "EA_ISBN": "9788998441012",
+            "PAGE": "300",
+            "PUBLISH_PREDATE": "20230101",
+        },
+        {
+            "TITLE": "모순의 인간 히틀러를 보며",
+            "AUTHOR": "홍길동",
+            "EA_ISBN": "9788998441999",
+            "PAGE": "250",
+            "PUBLISH_PREDATE": "20200101",
+        },
+    ]
+    ranked = client._filter_and_rank_monographs(docs, target_title="모순", target_author="양귀자")
+    assert len(ranked) >= 1
+    assert ranked[0]["TITLE"] == "모순 : 양귀자 소설"
+    # Unrelated long title should be dropped
+    titles = [item["TITLE"] for item in ranked]
+    assert "모순의 인간 히틀러를 보며" not in titles
+
+
+@pytest.mark.asyncio
+async def test_check_cover_alive_robustness(monkeypatch):
+    """Test cover check handles 34,150B placeholder and content-length presence safely."""
+    from app.infrastructure import national_library_client
+    from app.infrastructure.national_library_client import check_cover_alive
+
+    # Ensure app_env is not test for this test to hit logic
+    monkeypatch.setattr(national_library_client.settings, "app_env", "development")
+
+    class MockResponse:
+        def __init__(self, status_code: int, headers: dict):
+            self.status_code = status_code
+            self.headers = headers
+
+    class MockClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def head(self, url: str):
+            if "empty_cover" in url:
+                return MockResponse(200, {"content-length": "34150"})
+            elif "good_cover" in url:
+                return MockResponse(200, {"content-length": "45000"})
+            elif "no_cl_cover" in url:
+                return MockResponse(200, {})
+            return MockResponse(404, {})
+
+    monkeypatch.setattr(national_library_client.httpx, "AsyncClient", MockClient)
+
+    assert await check_cover_alive("https://contents.kyobobook.co.kr/empty_cover.jpg") is False
+    assert await check_cover_alive("https://contents.kyobobook.co.kr/good_cover.jpg") is True
+    assert await check_cover_alive("https://contents.kyobobook.co.kr/no_cl_cover.jpg") is True

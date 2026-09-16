@@ -73,12 +73,13 @@ GENRE_KO_TO_EN: Dict[str, str] = {
     "역사": "HISTORY",
     "지리": "HISTORY",
     "총류": "GENERAL",
+    "교양": "GENERAL",
     "일반": "GENERAL",
     "일반도서": "GENERAL",
 }
 
 GENRE_EN_TO_KO: Dict[str, str] = {
-    "GENERAL": "총류",
+    "GENERAL": "교양",
     "PHILOSOPHY": "철학",
     "RELIGION": "종교",
     "SOCIAL_SCIENCE": "사회과학",
@@ -154,10 +155,17 @@ def map_kdc_to_genre(kdc: str = "", subject: str = "", title: str = "") -> str:
         if keyword in combined_hint:
             return mapped
 
-    if not kdc:
+    raw_code = kdc.strip() if kdc else ""
+    if not raw_code and subject:
+        # National library CIP often stores KDC major category digit in SUBJECT field (e.g. '8', '813')
+        subj_match = re.search(r"(\d{1,3})", subject.strip())
+        if subj_match:
+            raw_code = subj_match.group(1)
+
+    if not raw_code:
         return "GENERAL"
 
-    code_match = re.search(r"(\d{1,3})", kdc)
+    code_match = re.search(r"(\d{1,3})", raw_code)
     if not code_match:
         return "GENERAL"
 
@@ -213,8 +221,14 @@ def clean_author_name(author_str: str) -> str:
     text = re.sub(r"^[\(\[\{<\s]+", "", text).strip()
     text = re.sub(r"[\)\]\}>\s]+$", "", text).strip()
 
-    # Remove suffixes like '지음', '글', '저', '원작', '옮김', '역'
-    text = re.sub(r"\s*(?:지음|글|저|원작|지은이|글그림|공저)\b", "", text).strip()
+    # Remove suffixes like '지음', '글', '저', '원작', '옮김', '역', '[편]', '[저]'
+    text = re.sub(
+        r"[\(\[\{<\s]*(?:지음|글|저|원작|지은이|글·?그림|공저|옮김|역|편|편저|엮음)[\)\]\}>\s]*$",
+        "",
+        text,
+    ).strip()
+    text = re.sub(r"^[\(\[\{<\s]+", "", text).strip()
+    text = re.sub(r"[\)\]\}>\s]+$", "", text).strip()
     text = text.strip(" :()[]·,")
 
     return text if text else "저자 미상"
@@ -235,7 +249,7 @@ def get_verified_cover_url(cover_url: str, isbn: str) -> str:
 
 
 async def check_cover_alive(url: str, timeout: float = 1.0) -> bool:
-    """Check if cover image URL returns HTTP 200 OK (Fast HEAD request)."""
+    """Check if cover image URL returns HTTP 200 OK and is not a broken placeholder (Fast HEAD request)."""
     if not url or not url.startswith("http"):
         return False
     if settings.is_testing or getattr(settings, "app_env", "") == "test":
@@ -244,7 +258,19 @@ async def check_cover_alive(url: str, timeout: float = 1.0) -> bool:
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.head(url)
-            return resp.status_code == 200
+            if resp.status_code != 200:
+                return False
+            # Kyobo CDN returns HTTP 200 with exactly 34,150 bytes for missing book covers (empty gray placeholder)
+            if "contents.kyobobook.co.kr" in url:
+                raw_cl = resp.headers.get("content-length")
+                if raw_cl:
+                    try:
+                        cl = int(raw_cl)
+                        if cl == 34150 or cl < 1000:
+                            return False
+                    except ValueError:
+                        pass
+            return True
     except Exception:
         return False
 
@@ -334,6 +360,10 @@ class NationalLibraryClient:
             item_title = str(item.get("TITLE", ""))
             cleaned_item_title = re.sub(r"[《》<>\s]", "", item_title).lower()
 
+            # 국립도서관 표제에서 부제/책임표시/괄호 설명 분리하여 순수 본표제(Main Title) 추출 (예: '모순 : 양귀자 소설' -> '모순')
+            main_title_raw = re.split(r"[:=/(\[]", item_title)[0].strip()
+            cleaned_main_title = re.sub(r"[《》<>\s]", "", main_title_raw).lower()
+
             # 원제가 아닌데 해설서/요약집/문제집인 경우 페널티
             has_derivative_noise = False
             for noise in ["해설집", "요약집", "독후감", "문제집", "가이드북", "줄거리", "핵심정리"]:
@@ -346,22 +376,39 @@ class NationalLibraryClient:
             score = 0.0
 
             # 제목 일치도 점수
-            if cleaned_target_title == cleaned_item_title:
+            from difflib import SequenceMatcher
+
+            sim_ratio = SequenceMatcher(None, cleaned_target_title, cleaned_item_title).ratio()
+            main_sim = SequenceMatcher(None, cleaned_target_title, cleaned_main_title).ratio()
+            best_sim = max(sim_ratio, main_sim)
+
+            if (
+                cleaned_target_title == cleaned_item_title
+                or cleaned_target_title == cleaned_main_title
+            ):
                 score += 100.0
+            elif (
+                cleaned_target_title in cleaned_main_title
+                or cleaned_main_title in cleaned_target_title
+            ):
+                # 본표제 기준 포함 관계 (예: 짧은 제목 명작 '모순' 등 부제 분리 후 일치)
+                if main_sim >= 0.5:
+                    score += 60.0 + (main_sim * 20.0)
+                else:
+                    continue
             elif (
                 cleaned_target_title in cleaned_item_title
                 or cleaned_item_title in cleaned_target_title
             ):
-                score += 50.0
-            else:
-                # 타겟 제목의 2글자 이상 핵심 키워드가 책 제목에 포함되어 있는지 검증
-                target_words = [
-                    w for w in re.findall(r"[가-힣a-zA-Z0-9]+", target_title) if len(w) >= 2
-                ]
-                if target_words and any(w.lower() in cleaned_item_title for w in target_words):
-                    score += 20.0
+                # 전체 제목 기준 포함 관계 (짧은 단어가 긴 엉뚱한 문장에 포함된 경우 오매칭 방지)
+                if best_sim >= 0.5:
+                    score += 50.0 + (best_sim * 20.0)
                 else:
-                    continue  # 제목 연관성이 전혀 없는 엉뚱한 책은 즉시 제외
+                    continue  # 유사도가 너무 낮은 긴 문장 포함은 제외
+            elif best_sim >= 0.5:
+                score += 40.0 * best_sim
+            else:
+                continue  # 제목 연관성이 없는 엉뚱한 책은 즉시 제외
 
             # 저자 일치도 점수
             item_author = clean_author_name(str(item.get("AUTHOR", "")))
@@ -385,6 +432,10 @@ class NationalLibraryClient:
             # 표지 URL이 국립도서관 데이터에 이미 있으면 가산
             if str(item.get("TITLE_URL", "")).startswith("http"):
                 score += 5.0
+
+            # 정식 페이지 정보가 수록되어 있는 경우 우선순위 가산 (서지 완성도)
+            if parse_page_count(str(item.get("PAGE", ""))):
+                score += 8.0
 
             scored_candidates.append((score, item))
 
@@ -443,8 +494,6 @@ class NationalLibraryClient:
                                         kyobo_url = f"https://contents.kyobobook.co.kr/sih/fit-in/458x0/pdt/{clean_isbn}.jpg"
                                         if await check_cover_alive(kyobo_url):
                                             cover_url = kyobo_url
-                                        else:
-                                            cover_url = kyobo_url
 
                                     page_count = parse_page_count(
                                         str(candidate_item.get("PAGE", ""))
@@ -482,6 +531,53 @@ class NationalLibraryClient:
 
         # Graceful fallback while API key approval is pending or in test environment
         return self._generate_fallback_biblio(title, author)
+
+    async def search_by_isbn(self, isbn: str) -> Optional[Dict[str, Any]]:
+        """Search bibliography information by ISBN-13."""
+        clean_isbn = re.sub(r"[^0-9X]", "", isbn)
+        if not clean_isbn:
+            return None
+        if self.is_configured:
+            try:
+                params: Dict[str, Any] = {
+                    "cert_key": self.cert_key,
+                    "result_style": "json",
+                    "page_no": "1",
+                    "page_size": "1",
+                    "isbn": clean_isbn,
+                }
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    response = await client.get(self.api_url, params=params)
+                    if response.status_code == 200:
+                        data = response.json()
+                        docs = data.get("docs", [])
+                        if docs:
+                            item = docs[0]
+                            item_title = item.get("TITLE", "")
+                            item_author = clean_author_name(
+                                str(item.get("AUTHOR", "") or "저자 미상")
+                            )
+                            page_count = parse_page_count(str(item.get("PAGE", "")))
+                            genre = map_kdc_to_genre(
+                                str(item.get("KDC", "")),
+                                str(item.get("SUBJECT", "")),
+                                title=item_title,
+                            )
+                            kyobo_url = f"https://contents.kyobobook.co.kr/sih/fit-in/458x0/pdt/{clean_isbn}.jpg"
+                            return {
+                                "title": item_title,
+                                "author": item_author,
+                                "publisher": item.get("PUBLISHER", "출판사 미상"),
+                                "isbn": clean_isbn,
+                                "cover_url": kyobo_url,
+                                "page_count": page_count,
+                                "genre": genre,
+                                "description": item.get("SUBJECT", "") or f"《{item_title}》 정식 서지정보",
+                                "source": "NATIONAL_LIBRARY_API",
+                            }
+            except Exception as e:
+                logger.warning("Search by isbn failed (%s)", e)
+        return None
 
     def _generate_fallback_biblio(self, title: str, author: str = "") -> Dict[str, Any]:
         """Generate verified deterministic Korean book metadata with 30+ 10-genre classics."""

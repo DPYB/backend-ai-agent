@@ -29,6 +29,11 @@ CURATOR_SYSTEM_PROMPT = """당신은 'DPYB 도서 큐레이션 전문 분석관'
   - 1권 (고전): 시대를 초월한 스테디셀러 또는 세계 명작 (깊이와 내구성)
 총 2~3권 후보를 생성하되, 신간 1권 + 스테디셀러 1권의 균형을 반드시 맞추세요.
 
+[다양성 및 맥락 일치 원칙 — 필수]
+- 널리 알려진 소수의 고전이나 특정 작가에만 안주하지 마십시오.
+- 한국 현대문학, 세계문학, 인문, 과학, 예술 등 전 분야에 걸친 풍부한 도서 지식을 적극적으로 탐색하세요.
+- 사용자의 구체적인 질문, 감정의 결, 처한 상황(예: 번아웃, 새로운 시작, 이별, 사색, 일상의 피로 등)에 가장 깊이 공명하는 책을 독창적이고 균형 있게 선정하세요.
+
 [출력 형식 — 반드시 준수]
 다음 JSON 배열 형식으로만 응답하세요. 마크다운 코드블록이나 잡담을 붙이지 마세요:
 [
@@ -98,7 +103,7 @@ async def book_curator_node(state: AgentState) -> Dict[str, Any]:
                 ChatGoogleGenerativeAI(
                     model=light_model,
                     google_api_key=gemini_key,
-                    temperature=0.1,
+                    temperature=0.7,
                 )
             )
         except Exception as e:
@@ -117,7 +122,7 @@ async def book_curator_node(state: AgentState) -> Dict[str, Any]:
                 ChatGoogleGenerativeAI(
                     model=light_model,
                     google_api_key=gemini_fallback_key,
-                    temperature=0.1,
+                    temperature=0.7,
                 )
             )
         except Exception as e:
@@ -132,7 +137,7 @@ async def book_curator_node(state: AgentState) -> Dict[str, Any]:
                 ChatGoogleGenerativeAI(
                     model=settings.gemini_model,
                     google_api_key=gemini_key,
-                    temperature=0.1,
+                    temperature=0.7,
                 )
             )
         except Exception as e:
@@ -148,7 +153,7 @@ async def book_curator_node(state: AgentState) -> Dict[str, Any]:
                 ChatOpenAI(
                     model=settings.openai_model,
                     api_key=SecretStr(openai_key),
-                    temperature=0.1,
+                    temperature=0.7,
                 )
             )
         except Exception as e:
@@ -180,8 +185,13 @@ async def book_curator_node(state: AgentState) -> Dict[str, Any]:
 
             content = extract_message_text(response.content).strip()
 
-            # Clean json codeblocks if any
-            clean_json = re.sub(r"^```(?:json)?\s*", "", content, flags=re.MULTILINE)
+            # Extract JSON array using regex if surrounding text or markdown blocks exist
+            json_match = re.search(r"\[\s*\{.*\}\s*\]", content, re.DOTALL)
+            clean_json = (
+                json_match.group(0)
+                if json_match
+                else re.sub(r"^```(?:json)?\s*", "", content, flags=re.MULTILINE)
+            )
             clean_json = re.sub(r"\s*```$", "", clean_json, flags=re.MULTILINE).strip()
 
             parsed = json.loads(clean_json)

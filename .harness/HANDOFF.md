@@ -634,9 +634,48 @@
    - `.harness/PLAN.md`에서 백엔드 완료 태스크를 제거하고 남은 E2E 통합 스모크 테스트로 정리.
    - `.harness/DECISIONS.md` 최상단에 5대 이슈 원천 해소 아키텍처 결정 기록.
 
+---
+
+## 세션 19 (2026-09-16)
+
+### 진행한 작업
+1. **도서 추천 속도 및 이중 큐레이션 루프 원천 해소**:
+   - `app/domain/graph/nodes.py`: `curated_books`가 이미 `state`에 존재할 때 페르소나 노드가 도서 추천 도구(`recommend_books`, `search_recent_books`)를 재호출하지 못하도록 `active_tools`에서 동적 제외 및 시스템 프롬프트에 중복 호출 금지 지침 추가. (응답 지연 24초 -> 수 초대로 최적화)
+2. **도서 추천 다양성 확보 및 데미안 편중 해결**:
+   - `app/domain/graph/curator_node.py`: 큐레이터 LLM `temperature`를 `0.1` -> `0.7`로 상향.
+3. **국립중앙도서관 서지 검증 체인 정밀화**:
+   - `app/infrastructure/national_library_client.py`:
+     - `clean_author_name`: `문화체육관광부,한국도서관협회 [편]`, `(: 헤르만 헤세)` 등 앞뒤 특수문자 및 `[편]`, `[저]`, `지음`, `옮김` 등 역할어 완벽 정제.
+     - `map_kdc_to_genre`: KDC 코드가 비어있는 경우 `SUBJECT` 필드의 십진분류 단일 숫자(예: '8' -> 문학, '1' -> 철학) 폴백 연동.
+     - `_filter_and_rank_monographs`: `SequenceMatcher` 유사도 0.5 미만 무관한 도서 탈락, 짧은 제목 문장 포함 오매칭 방지, 페이지 정보 수록 도서 우선순위 가산(`+8.0`) 적용.
+     - `check_cover_alive`: 교보문고 CDN의 34,150바이트 빈 회색 플레이스홀더 이미지 감지 및 자동 배제.
+4. **프론트엔드 장르 라벨 친절화**:
+   - `frontend-reader-web/app/data/genres.js`: KDC 대분류 `GENERAL`의 표시 라벨을 생소한 '총류'에서 친숙한 '교양'으로 변경 및 별칭 추가.
+
+---
+
+## 세션 20 (2026-09-16)
+
+### 진행한 작업
+1. **짧은 도서명(《모순》, 《광장》 등) 국립도서관 서지 누락 버그 원천 방어**:
+   - `app/infrastructure/national_library_client.py`: 국립도서관 KORMARC 표제(`TITLE`)에서 부제/책임표시 앞 순수 본표제(`main_title`)를 분리(`re.split(r"[:=/(\[]")`)하여, 《모순》, 《광장》, 《토지》 등 2~3글자 대작이 부제 길이 때문에 유사도 0.5 미만으로 오인되어 탈락하던 치명적 결함을 완벽 해결하고 본표제 100% 매칭 달성.
+2. **프롬프트 내 작가 하드코딩 제거 및 보편적 다양성 원칙 확립**:
+   - `app/domain/graph/curator_node.py`: 특정 작가나 책 이름을 직접 적어두어 생기는 또 다른 편향을 방지하기 위해 하드코딩된 작가 목록을 제거하고, 전 분야 도서 지식과 사용자 맥락 중심의 보편적 다양성 원칙으로 프롬프트 정제.
+   - `temperature=0.7` 환경에서 LLM의 잡담이나 마크다운 혼입 시에도 `re.search(r"\[\s*\{.*\}\s*\]")`로 순수 JSON 배열만 안전하게 추출하도록 파싱 내결함성 확보.
+3. **교보 CDN 표지 오탐 방어 및 강제 할당 제거**:
+   - `check_cover_alive`: `Content-Length` 부재 시 정상 이미지가 오탐 탈락하지 않도록 `cl > 0` 조건 방어 적용.
+   - `search_monograph_by_title_author`: 표지 미생존 시 죽은 URL을 강제 할당하던 `else` 버그를 제거하여 무결성 확보.
+4. **KDC GENERAL '교양' 백엔드 동기화**:
+   - `GENRE_EN_TO_KO["GENERAL"] = "교양"` 및 `GENRE_KO_TO_EN["교양"] = "GENERAL"` 등록으로 프론트엔드와 100% 통일.
+5. **자가 검증 및 신규 단위 테스트 통과**:
+   - `tests/unit/test_recommend_metadata.py`: 짧은 제목 본표제 분리 매칭, 교양 장르 양방향 정규화, 교보 CDN 플레이스홀더 감지 등 3종 신규 단위 테스트 추가.
+   - `uv run pytest`: **129개 전체 단위 테스트 100% 그린 패스 통과 (`129 passed in 39.07s`)**.
+   - `uv run ruff check .` & `uv run ruff format .`: **린트/포맷팅 100% 통과 (0 errors, 0 warnings)**.
+   - `uv run mypy .`: **정적 타입 체크 80개 소스 파일 100% 무결성 통과 (Success: no issues found)**.
+
 ### 다음 세션에서 할 일
-- 프론트엔드 작업 완료 후 로컬 3대 서비스(Core API, AI Agent, Frontend) 통합 실시간 E2E 스모크 테스트 진행.
-- 사용자 승인 시 `feat/fix-chat-e2e-issues` 브랜치 커밋 및 푸시, PR 생성 보조.
+- 3개 서비스(Core API 8000, AI Agent 8001, Frontend Web 5173) 브라우저 실화면에서 추천 도서 다변화, 속도, 표지 노출 및 서재 담기 E2E 최종 확인.
+
 
 
 
