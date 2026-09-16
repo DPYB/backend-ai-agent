@@ -38,7 +38,9 @@ class GeminiOcrClient:
 
     def __init__(self) -> None:
         self.gemini_api_key = settings.gemini_api_key.strip()
+        self.gemini_fallback_api_key = getattr(settings, "gemini_fallback_api_key", "").strip()
         self.gemini_model = settings.gemini_model
+        self.gemini_light_model = getattr(settings, "gemini_light_model", "gemini-3.1-flash-lite")
         self.openai_api_key = settings.openai_api_key.strip()
         self.openai_model = settings.openai_model
 
@@ -58,11 +60,16 @@ class GeminiOcrClient:
         """Extract text from book image using Gemini Flash Vision (or OpenAI fallback)."""
         request_id = str(uuid.uuid4())
 
-        # 1. Check if Gemini key is available
+        # 1. Check if Gemini keys are available
         has_gemini = bool(
             self.gemini_api_key
             and not self.gemini_api_key.startswith("your_")
             and len(self.gemini_api_key) > 10
+        )
+        has_fallback_gemini = bool(
+            self.gemini_fallback_api_key
+            and not self.gemini_fallback_api_key.startswith("your_")
+            and len(self.gemini_fallback_api_key) > 10
         )
         has_openai = bool(
             self.openai_api_key
@@ -70,7 +77,7 @@ class GeminiOcrClient:
             and len(self.openai_api_key) > 10
         )
 
-        if not has_gemini and not has_openai:
+        if not has_gemini and not has_fallback_gemini and not has_openai:
             logger.warning("Neither Gemini nor OpenAI API keys are configured for OCR.")
             return GeminiOcrResult(
                 text="테스트 모드: Gemini OCR 설정이 되어 있지 않습니다.",
@@ -103,50 +110,76 @@ class GeminiOcrClient:
 
         extracted_text = ""
 
-        # 2. Try Primary LLM: Google Gemini Flash Vision
+        # Candidates to try: (1) Light Model with Primary Key, (2) Light Model with Fallback Key, (3) 3.5 Model, (4) OpenAI
+        candidate_configs: List[Dict[str, Any]] = []
         if has_gemini:
+            candidate_configs.append(
+                {"provider": "gemini", "model": self.gemini_light_model, "key": self.gemini_api_key}
+            )
+        if has_fallback_gemini:
+            candidate_configs.append(
+                {
+                    "provider": "gemini",
+                    "model": self.gemini_light_model,
+                    "key": self.gemini_fallback_api_key,
+                }
+            )
+        if has_gemini:
+            candidate_configs.append(
+                {"provider": "gemini", "model": self.gemini_model, "key": self.gemini_api_key}
+            )
+        if has_openai:
+            candidate_configs.append(
+                {"provider": "openai", "model": self.openai_model, "key": self.openai_api_key}
+            )
+
+        for cfg in candidate_configs:
             try:
-                from langchain_google_genai import ChatGoogleGenerativeAI
+                if cfg["provider"] == "gemini":
+                    from langchain_google_genai import ChatGoogleGenerativeAI
 
-                gemini_llm = ChatGoogleGenerativeAI(
-                    model=self.gemini_model,
-                    google_api_key=self.gemini_api_key,
-                    temperature=0.0,
-                )
-                res = await gemini_llm.ainvoke(messages)
-                content = getattr(res, "content", "")
-                if isinstance(content, list):
-                    extracted_text = "".join(
-                        part.get("text", "") if isinstance(part, dict) else str(part)
-                        for part in content
+                    gemini_llm = ChatGoogleGenerativeAI(
+                        model=cfg["model"],
+                        google_api_key=cfg["key"],
+                        temperature=0.0,
                     )
-                else:
-                    extracted_text = str(content)
-            except Exception as e:
-                logger.warning("Gemini Vision OCR call failed (%s). Attempting OpenAI fallback.", e)
+                    res = await gemini_llm.ainvoke(messages)
+                    content = getattr(res, "content", "")
+                    if isinstance(content, list):
+                        extracted_text = "".join(
+                            part.get("text", "") if isinstance(part, dict) else str(part)
+                            for part in content
+                        )
+                    else:
+                        extracted_text = str(content)
+                elif cfg["provider"] == "openai":
+                    from langchain_openai import ChatOpenAI
+                    from pydantic import SecretStr
 
-        # 3. Try Secondary LLM: OpenAI gpt-4o-mini Vision fallback
-        if not extracted_text.strip() and has_openai:
-            try:
-                from langchain_openai import ChatOpenAI
-                from pydantic import SecretStr
-
-                openai_llm = ChatOpenAI(
-                    model=self.openai_model,
-                    api_key=SecretStr(self.openai_api_key),
-                    temperature=0.0,
-                )
-                res = await openai_llm.ainvoke(messages)
-                content = getattr(res, "content", "")
-                if isinstance(content, list):
-                    extracted_text = "".join(
-                        part.get("text", "") if isinstance(part, dict) else str(part)
-                        for part in content
+                    openai_llm = ChatOpenAI(
+                        model=cfg["model"],
+                        api_key=SecretStr(cfg["key"]),
+                        temperature=0.0,
                     )
-                else:
-                    extracted_text = str(content)
+                    res = await openai_llm.ainvoke(messages)
+                    content = getattr(res, "content", "")
+                    if isinstance(content, list):
+                        extracted_text = "".join(
+                            part.get("text", "") if isinstance(part, dict) else str(part)
+                            for part in content
+                        )
+                    else:
+                        extracted_text = str(content)
+
+                if extracted_text.strip():
+                    break
             except Exception as e:
-                logger.error("OpenAI Vision OCR fallback also failed (%s).", e)
+                logger.warning(
+                    "OCR candidate failed for provider=%s, model=%s (%s). Trying next.",
+                    cfg["provider"],
+                    cfg["model"],
+                    e,
+                )
 
         # Clean markdown codeblocks if any
         clean_text = extracted_text.strip()

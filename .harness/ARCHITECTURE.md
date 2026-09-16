@@ -32,12 +32,12 @@
 | **Runtime & Language** | Python 3.12, `uv` | 경량 패키지 관리 및 초고속 실행 환경 |
 | **Web Framework** | FastAPI, Uvicorn | 비동기 고성능 REST API 서버, 자동 OpenAPI Docs |
 | **Agent Orchestration** | LangGraph, LangChain Core | 8개 페르소나 상태 관리, 도구 바인딩 및 Handoff |
-| **LLM & Embedding** | Google Gemini 3.6 Flash, `text-embedding-004` (768차원), OpenAI 폴백 | 대화 생성 및 텍스트 임베딩 벡터화 |
+| **LLM & Embedding** | Google Gemini 3.5 Flash Lite, 3.1 Flash Lite, `text-embedding-004` (768차원), Gemma 4 비상 안전망, OpenAI 폴백 | 대화 생성, 지능형 큐레이션 및 텍스트 임베딩 벡터화 |
 | **Vector Database & ORM** | Supabase pgvector (`agent.scrap_vector`, `agent.debate_insights`), SQLAlchemy 2.0, `asyncpg` | Transaction Pooler(6543) 연동, 회원별 코사인 유사도 검색, `agent` 스키마 격리 |
 
 | **Cache & Session** | Redis / Upstash Redis | 다회 대화 컨텍스트 유지 및 추천 결과 TTL 캐싱 |
 | **Computer Vision** | `pyzbar`, `Pillow`, `libzbar0` | 13자리 도서 바코드(EAN13/ISBN-13) 스캔 |
-| **External OCR** | Google Gemini Flash Vision ($0 Zero-cost, OpenAI 폴백) | 책 문장 스크랩 사진에서 잡음 제거 및 행 단위 본문 추출 |
+| **External OCR** | Google Gemini 3.1 Flash Lite Vision ($0 Zero-cost, OpenAI 폴백) | 책 문장 스크랩 사진에서 잡음 제거 및 행 단위 본문 추출 |
 | **Book & Weather Info** | 국립중앙도서관 Open API, Open-Meteo | 실존 도서 서지정보 100% 검증 및 실시간 날씨 연동 |
 
 ---
@@ -131,9 +131,12 @@ backend-ai-agent/
 APP_ENV=development
 PORT=8000
 
-# Google Gemini & OpenAI Fallback
+# Google Gemini & Multi-Key / Smart Routing Fallback
 GEMINI_API_KEY=
-GEMINI_MODEL=gemini-3.6-flash
+GEMINI_FALLBACK_API_KEY=
+GEMINI_MODEL=gemini-3.5-flash-lite
+GEMINI_LIGHT_MODEL=gemini-3.1-flash-lite
+GEMMA_EMERGENCY_MODEL=gemma-4-31b-it
 GEMINI_EMBEDDING_MODEL=text-embedding-004
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4o-mini

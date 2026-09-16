@@ -41,24 +41,39 @@ def extract_message_text(content: Any) -> str:
 
 
 class ResilientLLM:
-    """Wrapper that falls back to secondary LLM (OpenAI) and then deterministic mock."""
+    """Wrapper that tries candidates in sequence (Gemini Primary -> Gemini Secondary -> Light -> Gemma -> OpenAI -> Mock)."""
 
     def __init__(
         self,
+        candidate_llms: Optional[List[Any]] = None,
+        bound_tools: Optional[List[Any]] = None,
+        # Backward compatibility arguments
         primary_llm: Optional[Any] = None,
         secondary_llm: Optional[Any] = None,
-        bound_tools: Optional[List[Any]] = None,
     ):
-        self.primary_llm = primary_llm
-        self.secondary_llm = secondary_llm
+        if candidate_llms is not None:
+            self.candidate_llms = candidate_llms
+        else:
+            self.candidate_llms = [llm for llm in (primary_llm, secondary_llm) if llm is not None]
         self.bound_tools = bound_tools or []
 
+    @property
+    def primary_llm(self) -> Optional[Any]:
+        return self.candidate_llms[0] if self.candidate_llms else None
+
+    @property
+    def secondary_llm(self) -> Optional[Any]:
+        return self.candidate_llms[1] if len(self.candidate_llms) > 1 else None
+
     def bind_tools(self, tools: List[Any]) -> "ResilientLLM":
-        new_primary = self.primary_llm.bind_tools(tools) if self.primary_llm else None
-        new_secondary = self.secondary_llm.bind_tools(tools) if self.secondary_llm else None
+        new_candidates = []
+        for llm in self.candidate_llms:
+            try:
+                new_candidates.append(llm.bind_tools(tools))
+            except Exception:
+                new_candidates.append(llm)
         return ResilientLLM(
-            primary_llm=new_primary,
-            secondary_llm=new_secondary,
+            candidate_llms=new_candidates,
             bound_tools=tools,
         )
 
@@ -67,24 +82,22 @@ class ResilientLLM:
         messages: List[BaseMessage],
         config: Optional[RunnableConfig] = None,
     ) -> AIMessage:
-        if self.primary_llm:
+        # Fast deterministic mock in test environment to avoid slow network rate-limits
+        if getattr(settings, "app_env", "") == "test":
+            return self._generate_mock_response(messages)
+
+        for idx, candidate in enumerate(self.candidate_llms):
             try:
-                res = await self.primary_llm.ainvoke(messages, config=config)
+                res = await candidate.ainvoke(messages, config=config)
                 if hasattr(res, "content"):
                     res.content = extract_message_text(res.content)
                 return res
             except Exception as e:
-                logger.warning("Primary LLM call failed (%s). Trying secondary LLM.", e)
+                logger.warning("LLM Candidate #%d failed (%s). Trying next candidate.", idx + 1, e)
 
-        if self.secondary_llm:
-            try:
-                res = await self.secondary_llm.ainvoke(messages, config=config)
-                if hasattr(res, "content"):
-                    res.content = extract_message_text(res.content)
-                return res
-            except Exception as e:
-                logger.warning("Secondary LLM call failed (%s). Falling back to mock response.", e)
+        return self._generate_mock_response(messages)
 
+    def _generate_mock_response(self, messages: List[BaseMessage]) -> AIMessage:
         last_msg = str(messages[-1].content) if messages else ""
         system_text = "".join(str(m.content) for m in messages if isinstance(m, SystemMessage))
         if "마무리" in last_msg or "피날레" in last_msg or "피날레" in system_text:
@@ -118,44 +131,101 @@ class ResilientLLM:
 
 
 def _get_llm(tools: Optional[List[Any]] = None) -> ResilientLLM:
-    """Obtain LLM instance bound with tools (Gemini Primary -> OpenAI Secondary -> Mock Fallback)."""
+    """Obtain LLM instance bound with tools (Gemini 3.5 Primary -> Gemini 3.5 Secondary Key -> Gemini 3.1 Light -> Gemma Emergency -> OpenAI -> Mock)."""
+    candidates: List[Any] = []
     gemini_key = settings.gemini_api_key.strip()
+    gemini_fallback_key = getattr(settings, "gemini_fallback_api_key", "").strip()
     openai_key = settings.openai_api_key.strip()
-    primary: Any = None
-    secondary: Any = None
 
-    # 1. Primary: Google Gemini
+    # 1. Primary: Google Gemini 3.5 Flash Lite with Primary Key
     if gemini_key and not gemini_key.startswith("your_") and len(gemini_key) > 10:
         try:
             from langchain_google_genai import ChatGoogleGenerativeAI
 
-            primary = ChatGoogleGenerativeAI(
+            llm1: Any = ChatGoogleGenerativeAI(
                 model=settings.gemini_model,
                 google_api_key=gemini_key,
                 temperature=0.7,
             )
             if tools:
-                primary = primary.bind_tools(tools)
+                llm1 = llm1.bind_tools(tools)
+            candidates.append(llm1)
         except Exception as e:
-            logger.warning("Failed to initialize Gemini LLM (%s).", e)
+            logger.warning("Failed to initialize primary Gemini LLM (%s).", e)
 
-    # 2. Secondary: OpenAI
+    # 2. Secondary: Google Gemini 3.5 Flash Lite with Fallback Key (Teammate Key)
+    if (
+        gemini_fallback_key
+        and not gemini_fallback_key.startswith("your_")
+        and len(gemini_fallback_key) > 10
+    ):
+        try:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+
+            llm2: Any = ChatGoogleGenerativeAI(
+                model=settings.gemini_model,
+                google_api_key=gemini_fallback_key,
+                temperature=0.7,
+            )
+            if tools:
+                llm2 = llm2.bind_tools(tools)
+            candidates.append(llm2)
+        except Exception as e:
+            logger.warning("Failed to initialize fallback Gemini LLM (%s).", e)
+
+    # 3. Tertiary: Google Gemini 3.1 Flash Lite (Workload Light Model)
+    light_key = gemini_key or gemini_fallback_key
+    light_model = getattr(settings, "gemini_light_model", "gemini-3.1-flash-lite")
+    if light_key and not light_key.startswith("your_") and len(light_key) > 10:
+        try:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+
+            llm3: Any = ChatGoogleGenerativeAI(
+                model=light_model,
+                google_api_key=light_key,
+                temperature=0.7,
+            )
+            if tools:
+                llm3 = llm3.bind_tools(tools)
+            candidates.append(llm3)
+        except Exception as e:
+            logger.warning("Failed to initialize light Gemini LLM (%s).", e)
+
+    # 4. Emergency: Gemma 4 31B (14,400 RPD safety net)
+    emergency_model = getattr(settings, "gemma_emergency_model", "gemma-4-31b-it")
+    if light_key and not light_key.startswith("your_") and len(light_key) > 10:
+        try:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+
+            llm4: Any = ChatGoogleGenerativeAI(
+                model=emergency_model,
+                google_api_key=light_key,
+                temperature=0.7,
+            )
+            if tools:
+                llm4 = llm4.bind_tools(tools)
+            candidates.append(llm4)
+        except Exception as e:
+            logger.warning("Failed to initialize emergency Gemma LLM (%s).", e)
+
+    # 5. Fallback: OpenAI gpt-4o-mini
     if openai_key and not openai_key.startswith("your_") and len(openai_key) > 10:
         try:
             from langchain_openai import ChatOpenAI
             from pydantic import SecretStr
 
-            secondary = ChatOpenAI(
+            openai_llm: Any = ChatOpenAI(
                 model=settings.openai_model,
                 api_key=SecretStr(openai_key),
                 temperature=0.7,
             )
             if tools:
-                secondary = secondary.bind_tools(tools)
+                openai_llm = openai_llm.bind_tools(tools)
+            candidates.append(openai_llm)
         except Exception as e:
             logger.warning("Failed to initialize OpenAI LLM (%s).", e)
 
-    return ResilientLLM(primary_llm=primary, secondary_llm=secondary, bound_tools=tools)
+    return ResilientLLM(candidate_llms=candidates, bound_tools=tools)
 
 
 def _extract_debate_topic(messages: List[BaseMessage]) -> str:

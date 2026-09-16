@@ -52,6 +52,7 @@ async def test_gemini_ocr_fallback_when_unconfigured():
     """Verify GeminiOcrClient returns fallback when credentials are empty."""
     client = GeminiOcrClient()
     client.gemini_api_key = ""
+    client.gemini_fallback_api_key = ""
     client.openai_api_key = ""
 
     img_bytes = _create_dummy_image_bytes()
