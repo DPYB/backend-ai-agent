@@ -13,6 +13,8 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from app.api.schemas import (
     ChatRequest,
     ChatResponse,
+    ClassifyGenreRequest,
+    ClassifyGenreResponse,
     HealthResponse,
     PersonaInfo,
     RecommendedBook,
@@ -867,4 +869,41 @@ async def chat_stream_with_persona(
             "X-Accel-Buffering": "no",
             "Content-Type": "text/event-stream; charset=utf-8",
         },
+    )
+
+
+@api_router.post("/classify-genre", response_model=ClassifyGenreResponse)
+async def classify_genre(req: ClassifyGenreRequest) -> ClassifyGenreResponse:
+    """Classify book genre into standard KDC 10-genre enum code."""
+    from app.infrastructure.national_library_client import (
+        get_national_library_client,
+        map_kdc_to_genre,
+    )
+
+    client = get_national_library_client()
+
+    # 1. If ISBN is given, try fast search via National Library
+    if req.isbn and req.isbn.strip():
+        book_info = await client.search_by_isbn(req.isbn.strip())
+        if book_info and book_info.get("genre") and book_info["genre"] != "GENERAL":
+            return ClassifyGenreResponse(genre=book_info["genre"], confidence=1.0)
+
+    # 2. Map via KDC rules using subject, title, raw_category
+    genre = map_kdc_to_genre(
+        kdc="",
+        subject=req.raw_category or "",
+        title=req.title,
+    )
+    if genre and genre != "GENERAL":
+        return ClassifyGenreResponse(genre=genre, confidence=0.95)
+
+    # 3. Fallback search via title
+    if req.title:
+        book_info = await client.search_book(req.title, req.author or "")
+        if book_info and book_info.get("genre"):
+            return ClassifyGenreResponse(genre=book_info["genre"], confidence=0.9)
+
+    return ClassifyGenreResponse(
+        genre="LITERATURE" if "소설" in req.title or "시집" in req.title else "GENERAL",
+        confidence=0.8,
     )

@@ -572,7 +572,8 @@ class NationalLibraryClient:
                                 "cover_url": kyobo_url,
                                 "page_count": page_count,
                                 "genre": genre,
-                                "description": item.get("SUBJECT", "") or f"《{item_title}》 정식 서지정보",
+                                "description": item.get("SUBJECT", "")
+                                or f"《{item_title}》 정식 서지정보",
                                 "source": "NATIONAL_LIBRARY_API",
                             }
             except Exception as e:
