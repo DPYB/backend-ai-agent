@@ -2,6 +2,8 @@
 
 import json
 import logging
+import re
+from datetime import datetime, timedelta, timezone
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Query, status
@@ -14,9 +16,12 @@ from app.api.schemas import (
     HealthResponse,
     PersonaInfo,
     RecommendedBook,
+    SignalsResponse,
     SwitchSuggestionResponse,
+    WeatherSignal,
 )
 from app.core.config import settings
+from app.core.context import current_auth_token
 from app.domain.graph.nodes import extract_debate_book_title, extract_message_text
 from app.domain.graph.workflow import ALL_PERSONA_NODES, create_agent_graph
 from app.domain.guardrails import evaluate_guardrails
@@ -185,6 +190,77 @@ def extract_member_id_from_auth(
         ) from e
 
 
+def _build_signals(
+    weather_summary: Optional[str],
+    location_source: str,
+    message: str,
+) -> SignalsResponse:
+    """Construct structured weather, time-of-day, and mood signals for frontend badge display."""
+    cond: Optional[str] = None
+    temp: Optional[float] = None
+    if weather_summary:
+        text_lower = weather_summary.lower()
+        if "비" in text_lower or "소나기" in text_lower:
+            cond = "rainy"
+        elif "눈" in text_lower:
+            cond = "snowy"
+        elif "흐림" in text_lower or "구름" in text_lower:
+            cond = "cloudy"
+        elif "안개" in text_lower:
+            cond = "foggy"
+        elif "뇌우" in text_lower:
+            cond = "stormy"
+        else:
+            cond = "clear"
+
+        temp_match = re.search(r"기온\s*([-\d.]+)\s*°?C?", weather_summary)
+        if temp_match:
+            try:
+                temp = float(temp_match.group(1))
+            except ValueError:
+                pass
+
+    weather_sig = WeatherSignal(
+        condition=cond,
+        temperature=temp,
+        description=weather_summary or "날씨 정보 없음",
+        location_source=location_source,
+    )
+
+    kst = timezone(timedelta(hours=9))
+    now_kst = datetime.now(kst)
+    hour = now_kst.hour
+
+    if 5 <= hour < 8:
+        time_of_day = "dawn"
+    elif 8 <= hour < 17:
+        time_of_day = "day"
+    elif 17 <= hour < 21:
+        time_of_day = "evening"
+    else:
+        time_of_day = "night"
+
+    msg = message.lower()
+    if any(w in msg for w in ["신나", "모험", "짜릿", "도전"]):
+        mood = "adventurous"
+    elif any(w in msg for w in ["우울", "슬퍼", "눈물", "외로", "힘들"]):
+        mood = "calm"
+    elif any(w in msg for w in ["생각", "고민", "철학", "의미", "사색", "토론"]):
+        mood = "reflective"
+    elif any(w in msg for w in ["꿈", "환상", "신비", "판타지"]):
+        mood = "dreamy"
+    elif any(w in msg for w in ["긴장", "스릴", "추리", "미스터리"]):
+        mood = "thrilling"
+    else:
+        mood = "cozy"
+
+    return SignalsResponse(
+        weather=weather_sig if location_source != "none" else None,
+        time_of_day=time_of_day,
+        mood=mood,
+    )
+
+
 async def _prepare_chat_context(
     request: ChatRequest,
     authorization: Optional[str] = None,
@@ -199,6 +275,9 @@ async def _prepare_chat_context(
     # 3) None (Guest mode: unauthenticated user without random UUID generation)
     authenticated_member_id, raw_token = extract_member_id_from_auth(authorization)
     effective_member_id = authenticated_member_id or request.member_id or None
+
+    # Set request-scoped token for downstream tool Token Relay
+    current_auth_token.set(raw_token)
 
     # Default persona selection based on mode
     requested_mode = request.mode or "LIBRARIAN"
@@ -242,6 +321,8 @@ async def _prepare_chat_context(
 
     weather_client = get_weather_client()
     location_coords = None
+    location_source = "none"
+    weather_summary_for_signals: Optional[str] = None
 
     if request.location:
         location_coords = {
@@ -252,13 +333,60 @@ async def _prepare_chat_context(
             latitude=request.location.latitude,
             longitude=request.location.longitude,
         )
+        if weather_context:
+            location_source = "user"
+            weather_summary_for_signals = weather_context
+            weather_context = (
+                f"[위치 권한 허용됨 - 사용자 실제 위치의 실시간 날씨]: {weather_context}"
+            )
+        else:
+            weather_context = "[위치 권한 허용 상태이나 실시간 날씨 조회 실패]"
+            location_source = "none"
     else:
         # Fallback to Seoul standard weather (37.5665, 126.9780)
         seoul_weather = await weather_client.get_current_weather(37.5665, 126.9780)
         if seoul_weather:
             weather_context = f"[위치 권한 미허용 상태] 현재 서울 기준 날씨: {seoul_weather}"
+            location_source = "default_seoul"
+            weather_summary_for_signals = seoul_weather
         else:
             weather_context = "[위치 권한 미허용 상태]"
+            location_source = "none"
+
+    signals = _build_signals(weather_summary_for_signals, location_source, request.message)
+
+    # 3. Ground debate target book factual details to eliminate hallucinations
+    debate_book_info: Optional[Dict[str, Any]] = None
+    if requested_mode == "DEBATE" or target_persona.startswith("DEBATE_"):
+        from app.infrastructure.core_api_client import get_core_api_client
+        from app.infrastructure.national_library_client import get_national_library_client
+
+        core_client = get_core_api_client()
+        nl_client = get_national_library_client()
+
+        if request.book_id:
+            try:
+                b_details = await core_client.get_book_details(request.book_id)
+                if b_details and b_details.get("title"):
+                    debate_book_info = b_details
+            except Exception as e:
+                logger.warning("Failed to fetch book_id=%s from core-api: %s", request.book_id, e)
+
+        if not debate_book_info:
+            from app.domain.graph.nodes import extract_debate_book_title
+
+            extracted_title = extract_debate_book_title(history_messages)
+            if (
+                extracted_title
+                and extracted_title not in ("문학 일반", "독서 토론", "토론")
+                and len(extracted_title) <= 50
+            ):
+                try:
+                    nl_biblio = await nl_client.search_book(extracted_title)
+                    if nl_biblio:
+                        debate_book_info = nl_biblio
+                except Exception as e:
+                    logger.warning("Failed to search debate book from national library: %s", e)
 
     initial_state = {
         "messages": history_messages,
@@ -275,6 +403,10 @@ async def _prepare_chat_context(
         "location_coords": location_coords,
         "weather_context": weather_context,
         "action": request.action or "chat",
+        "book_id": request.book_id,
+        "topic": request.topic,
+        "debate_book_info": debate_book_info,
+        "signals": signals,
         "is_concluded": False,
         "debate_summary": None,
     }
@@ -356,6 +488,7 @@ async def chat_with_persona(
             mode=persona_mode,
             switch_suggestion=None,
             recommended_books=[],
+            signals=initial_state.get("signals"),
             is_concluded=False,
             debate_summary=None,
         )
@@ -451,6 +584,7 @@ async def chat_with_persona(
             mode=persona_mode,
             switch_suggestion=switch_suggestion,
             recommended_books=recommended_books,
+            signals=initial_state.get("signals"),
             is_concluded=is_concluded,
             debate_summary=debate_summary,
         )
@@ -509,6 +643,9 @@ async def chat_stream_with_persona(
                 if (request.librarian_name and persona_meta.get("mode") == "LIBRARIAN")
                 else persona_meta.get("display_name", active_persona)
             )
+            signals_obj = initial_state.get("signals")
+            signals_payload = signals_obj.model_dump() if signals_obj else None
+
             yield _format_sse(
                 "metadata",
                 {
@@ -517,6 +654,7 @@ async def chat_stream_with_persona(
                     "display_name": display_name,
                     "mode": persona_meta.get("mode", requested_mode),
                     "weather_context": weather_context,
+                    "signals": signals_payload,
                 },
             )
 
@@ -559,6 +697,7 @@ async def chat_stream_with_persona(
                         "mode": persona_meta.get("mode", requested_mode),
                         "switch_suggestion": None,
                         "recommended_books": [],
+                        "signals": signals_payload,
                         "is_concluded": False,
                         "debate_summary": None,
                     },
@@ -706,6 +845,7 @@ async def chat_stream_with_persona(
                     "mode": final_mode,
                     "switch_suggestion": switch_suggestion_data,
                     "recommended_books": formatted_books,
+                    "signals": signals_payload,
                     "is_concluded": is_concluded,
                     "debate_summary": debate_summary,
                 },

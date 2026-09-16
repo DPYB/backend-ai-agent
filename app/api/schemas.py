@@ -60,6 +60,16 @@ class ChatRequest(BaseModel):
         default="chat",
         description="Action intent: 'chat' (normal conversation) or 'conclude' (UI button instant wrap-up & curation)",
     )
+    book_id: Optional[str] = Field(
+        default=None,
+        description="Target book ID in user's bookshelf for debate mode",
+        examples=["book-123", "550e8400-e29b-41d4-a716-446655440000"],
+    )
+    topic: Optional[str] = Field(
+        default=None,
+        description="Debate topic or specific discussion agenda",
+        examples=["상실의 아픔과 성장의 의미"],
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -75,8 +85,8 @@ class ChatRequest(BaseModel):
     def populate_defaults_and_aliases(self) -> "ChatRequest":
         # 1. Do not auto-generate member_id; keep None for guest users
 
-        # 2. Map librarian_id to persona if provided
-        if self.librarian_id:
+        # 2. Map librarian_id to persona ONLY if mode is not DEBATE and persona was not explicitly set to a debate persona
+        if self.librarian_id and self.mode != "DEBATE":
             lib_id = self.librarian_id.strip().upper()
             mapping = {
                 "CAT": "CAT",
@@ -85,7 +95,7 @@ class ChatRequest(BaseModel):
                 "SEA_SLUG": "SEA_SLUG",
                 "GECKO": "GECKO",
             }
-            if lib_id in mapping:
+            if lib_id in mapping and (not self.persona or self.persona in mapping):
                 self.persona = mapping[lib_id]
 
         # 3. Assemble location from flat coordinates if not already present
@@ -133,6 +143,44 @@ class RecommendedBook(BaseModel):
     )
 
 
+class WeatherSignal(BaseModel):
+    """Weather signal details for frontend WeatherMoodBadge."""
+
+    condition: Optional[str] = Field(
+        default=None,
+        description="Standard weather condition ('clear', 'cloudy', 'rainy', 'snowy', 'stormy', 'foggy')",
+    )
+    temperature: Optional[float] = Field(
+        default=None,
+        description="Temperature in Celsius (온도)",
+    )
+    description: Optional[str] = Field(
+        default=None,
+        description="Human-readable weather description summary",
+    )
+    location_source: str = Field(
+        default="none",
+        description="Location origin: 'user', 'default_seoul', 'text_stated', or 'none'",
+    )
+
+
+class SignalsResponse(BaseModel):
+    """Contextual conversation signals for frontend mood and weather chips."""
+
+    weather: Optional[WeatherSignal] = Field(
+        default=None,
+        description="Weather context signal",
+    )
+    time_of_day: Optional[str] = Field(
+        default=None,
+        description="Time of day ('dawn', 'day', 'evening', 'night')",
+    )
+    mood: Optional[str] = Field(
+        default=None,
+        description="Conversation mood ('cozy', 'adventurous', 'reflective', 'dreamy', 'thrilling', 'calm')",
+    )
+
+
 class ChatResponse(BaseModel):
     """Response payload returned by AI librarian or debate partner."""
 
@@ -159,6 +207,10 @@ class ChatResponse(BaseModel):
     recommended_books: List[RecommendedBook] = Field(
         default_factory=list,
         description="Structured verified book recommendations for one-click bookshelf registration",
+    )
+    signals: Optional[SignalsResponse] = Field(
+        default=None,
+        description="Weather, time of day, and emotional mood context signals for badge display",
     )
     is_concluded: Optional[bool] = Field(
         default=False,

@@ -5,6 +5,7 @@ from typing import Optional
 
 from langchain_core.tools import tool
 
+from app.core.context import current_auth_token
 from app.infrastructure.core_api_client import get_core_api_client
 
 logger = logging.getLogger(__name__)
@@ -40,7 +41,8 @@ async def search_my_library(member_id: str, status_filter: Optional[str] = None)
 
     try:
         client = get_core_api_client()
-        bookshelf = await client.get_my_bookshelf(member_id=member_id)
+        token = current_auth_token.get()
+        bookshelf = await client.get_my_bookshelf(member_id=member_id, token=token)
         books = bookshelf.get("books", [])
 
         if status_filter:

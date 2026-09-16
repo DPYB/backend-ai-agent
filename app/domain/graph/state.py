@@ -74,6 +74,15 @@ class AgentState(TypedDict):
     # Action intent: 'chat' or 'conclude' (from ChatRequest.action)
     action: Optional[str]
 
+    # Target book ID for debate mode
+    book_id: Optional[str]
+
+    # Debate topic or agenda
+    topic: Optional[str]
+
+    # Factual book information (title, author, publisher, description) to ground debate personas against hallucination
+    debate_book_info: Optional[dict]
+
     # Whether the debate session has concluded with wrap-up curation
     is_concluded: Optional[bool]
 
