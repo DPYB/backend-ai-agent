@@ -156,6 +156,16 @@
   - Pydantic 스키마 정의 (`app/schemas/report.py`) 및 프론트엔드 CamelCase 직렬화 표준화
   - 신규 단위 테스트(`tests/unit/test_monthly_reports.py`) 4종 작성 및 전체 79개 단위 테스트 100% 그린 패스 (Ruff & Mypy 100% 통과)
 
+- [x] **Phase 15 (Milestone 3): 4단계 다중 방어 보안 가드레일 파이프라인 구축 및 무지연(0ms) $0 방어 달성**
+  - `app/domain/guardrails/` 도메인 패키지 신설 및 4단계 다중 방어 파이프라인 완성:
+    - `safety_gate.py`: 자해/자살 위기 키워드 정규식 감지, 도서명 예외 처리(에밀 뒤르켐의 《자살론》, 카뮈 《시지프 신화》 등 오탐 방지), 8개 페르소나별 24시간 ☎ 109 핫라인 공감 멘트 반환 (게코 위기 시 `~크크` 엄격 생략)
+    - `input_gate.py`: 자모 난타(`ㅋㅋㅋㅋ`, `ㅠㅠ`), 숫자 단독(`12345`), 기호/이모지 단독(`🐱🐾`, `???`) 등 무의미/불완전 입력 정규식 감지 및 8개 페르소나별 자연스러운 되묻기 멘트
+    - `security_gate.py`: 시스템 프롬프트 유출 시도, DAN/탈옥(Jailbreak), 개인정보(주민등록번호, 카드번호) 0ms 사전 차단 게이트
+    - `shared_rules.py`: 시스템 프롬프트 공통 가드레일(`SHARED_GUARDRAILS`)을 `PERSONA_REGISTRY`의 모든 페르소나 시스템 프롬프트에 자동 주입
+  - `POST /api/v1/chat` 및 실시간 SSE `POST /api/v1/chat/stream` 엔드포인트에 4단계 게이트 순차 연결 (차단 시 LangGraph 호출 없이 0ms 즉각 반환 및 Redis 세션 맥락 영속화)
+  - 단위 테스트(`tests/unit/test_guardrails.py`) 15종 작성 및 전체 98개 단위 테스트 100% 그린 패스 (Ruff 린트/포맷 통과, Mypy 타입 체크 무결성 76개 소스 파일 통과)
+
+
 
 
 

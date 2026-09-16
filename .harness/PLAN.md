@@ -6,22 +6,6 @@
 
 ## 전체 진행 계획 (사용자 승인 범위 총괄 로드맵)
 
-### 📌 Milestone 3: 4단계 다중 방어 보안 가드레일 파이프라인 구축 (Phase 15)
-
-> **0ms $0 비용으로 유해 발화, 무의미 입력, 프롬프트 탈취를 차단하는 다중 방어 체계**
-
-- [ ] **1. 가드레일 도메인 모듈 신설 (`app/domain/guardrails/`)**:
-  - `safety_gate.py`: 자해/자살 위기 발화 정규식(`CRISIS_KEYWORDS_PATTERN`), 도서명 예외 처리(`BOOK_TITLE_EXCLUSIONS_PATTERN`, '자살론' 등 오탐 방지), 8개 페르소나별 109 핫라인 맞춤 공감 응답 (0ms 무지연, LLM 비용 $0)
-  - `input_gate.py`: 자모 난타(`ㅋㅋㅋㅋ`), 숫자 단독(`12345`), 이모지 단독(`🐱🐾`) 비정상 입력 정규식 감지 및 8개 페르소나별 즉각 안내 응답
-  - `security_gate.py`: 시스템 프롬프트 유출 시도, 탈옥(Jailbreak / DAN / Ignore instructions), PII(주민등록번호 등) 사전 차단 게이트
-  - `shared_rules.py`: 시스템 프롬프트 레벨 공통 가드레일 (날씨 팩트 엄수, 도서 서비스 범위 밖 질문 정중 거절, 내부 메타데이터 은폐)
-- [ ] **2. API 엔드포인트(`POST /api/v1/chat`, `POST /api/v1/chat/stream`) 4단계 게이트 연동**:
-  - 0차: 인증 확인 (`evaluate_auth_gate`) ➔ 1차: `evaluate_safety_gate` ➔ 2차: `evaluate_input_gate` ➔ 3차: `evaluate_security_gate`
-  - 통과 시에만 LangGraph 실행 (일반/스트리밍 100% 동일 적용)
-- [ ] **3. 단위 테스트 작성 및 전수 검증 (`tests/unit/test_guardrails.py`)**
-
----
-
 ### 📌 Milestone 4: 3대 레포(Core API + AI Agent + Frontend) 풀스택 통합 테스트 및 연동 검증
 > **실제 로컬 기동 상태에서 토론 ➔ 마무리 ➔ 추천 카드 ➔ 서재 등록 화면 완벽 동작 실증**
 

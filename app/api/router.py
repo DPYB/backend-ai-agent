@@ -19,6 +19,7 @@ from app.api.schemas import (
 from app.core.config import settings
 from app.domain.graph.nodes import extract_debate_book_title, extract_message_text
 from app.domain.graph.workflow import ALL_PERSONA_NODES, create_agent_graph
+from app.domain.guardrails import evaluate_guardrails
 from app.domain.personas import (
     CAT_ID,
     DEBATE_CRITIC_ID,
@@ -308,6 +309,57 @@ async def chat_with_persona(
         session_mgr,
     ) = await _prepare_chat_context(request, authorization=authorization)
 
+    # 1st-3rd: Pre-LLM Guardrails evaluation (Safety -> Input -> Security)
+    guardrail_reply = evaluate_guardrails(
+        message=request.message,
+        persona_id=active_persona,
+        librarian_name=request.librarian_name,
+    )
+    if guardrail_reply:
+        logger.info(
+            "Pre-LLM guardrail triggered for session %s (persona: %s)",
+            session_id,
+            active_persona,
+        )
+        persona_meta = PERSONA_REGISTRY.get(active_persona, PERSONA_REGISTRY[CAT_ID])
+        if request.librarian_name and persona_meta.get("mode") == "LIBRARIAN":
+            display_name = request.librarian_name
+        else:
+            display_name = persona_meta.get("display_name", active_persona)
+        persona_mode = persona_meta.get("mode", requested_mode)
+
+        # Save guardrail interaction to Redis session
+        serializable_history = []
+        if initial_state.get("messages"):
+            for msg in initial_state["messages"][-9:]:
+                role = "user" if isinstance(msg, HumanMessage) else "assistant"
+                serializable_history.append({"role": role, "content": str(msg.content)})
+        serializable_history.append({"role": "assistant", "content": guardrail_reply})
+
+        await session_mgr.save_session(
+            session_id=session_id,
+            data={
+                "member_id": request.member_id,
+                "active_persona": active_persona,
+                "librarian_name": request.librarian_name,
+                "mode": persona_mode,
+                "context_summary": initial_state.get("context_summary"),
+                "messages": serializable_history,
+            },
+        )
+
+        return ChatResponse(
+            session_id=session_id,
+            reply=guardrail_reply,
+            active_persona=active_persona,
+            display_name=display_name,
+            mode=persona_mode,
+            switch_suggestion=None,
+            recommended_books=[],
+            is_concluded=False,
+            debate_summary=None,
+        )
+
     try:
         result_state = await _graph.ainvoke(initial_state)
 
@@ -441,6 +493,13 @@ async def chat_stream_with_persona(
         session_mgr,
     ) = await _prepare_chat_context(request, authorization=authorization)
 
+    # 1st-3rd: Pre-LLM Guardrails evaluation (Safety -> Input -> Security)
+    guardrail_reply = evaluate_guardrails(
+        message=request.message,
+        persona_id=active_persona,
+        librarian_name=request.librarian_name,
+    )
+
     async def event_generator() -> AsyncGenerator[str, None]:
         try:
             # 1. Emit metadata event
@@ -460,6 +519,51 @@ async def chat_stream_with_persona(
                     "weather_context": weather_context,
                 },
             )
+
+            # 1.5 If guardrail triggered, stream guidance token and complete without LLM
+            if guardrail_reply:
+                logger.info(
+                    "Streaming guardrail triggered for session %s (persona: %s)",
+                    session_id,
+                    active_persona,
+                )
+                yield _format_sse("token", {"delta": guardrail_reply})
+
+                # Persist to Redis session
+                serializable_history = []
+                if initial_state.get("messages"):
+                    for msg in initial_state["messages"][-9:]:
+                        role = "user" if isinstance(msg, HumanMessage) else "assistant"
+                        serializable_history.append({"role": role, "content": str(msg.content)})
+                serializable_history.append({"role": "assistant", "content": guardrail_reply})
+
+                await session_mgr.save_session(
+                    session_id=session_id,
+                    data={
+                        "member_id": request.member_id,
+                        "active_persona": active_persona,
+                        "librarian_name": request.librarian_name,
+                        "mode": persona_meta.get("mode", requested_mode),
+                        "context_summary": initial_state.get("context_summary"),
+                        "messages": serializable_history,
+                    },
+                )
+
+                yield _format_sse(
+                    "done",
+                    {
+                        "session_id": session_id,
+                        "reply": guardrail_reply,
+                        "active_persona": active_persona,
+                        "display_name": display_name,
+                        "mode": persona_meta.get("mode", requested_mode),
+                        "switch_suggestion": None,
+                        "recommended_books": [],
+                        "is_concluded": False,
+                        "debate_summary": None,
+                    },
+                )
+                return
 
             # 2. Iterate through LangGraph events
             accumulated_text = ""
