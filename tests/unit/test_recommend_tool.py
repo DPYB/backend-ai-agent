@@ -39,7 +39,7 @@ async def test_recommend_books_tool_and_cache():
     redis_mgr = get_redis_session_manager()
     import hashlib
 
-    cache_key = hashlib.md5(f"{query}:2".encode("utf-8")).hexdigest()
+    cache_key = hashlib.md5(f"recommend:{query}:2".encode("utf-8")).hexdigest()
     cached = await redis_mgr.get_cached_recommendation(cache_key)
     assert cached is not None
     assert len(cached) > 0

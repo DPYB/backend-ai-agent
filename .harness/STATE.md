@@ -165,6 +165,21 @@
   - `POST /api/v1/chat` 및 실시간 SSE `POST /api/v1/chat/stream` 엔드포인트에 4단계 게이트 순차 연결 (차단 시 LangGraph 호출 없이 0ms 즉각 반환 및 Redis 세션 맥락 영속화)
   - 단위 테스트(`tests/unit/test_guardrails.py`) 15종 작성 및 전체 98개 단위 테스트 100% 그린 패스 (Ruff 린트/포맷 통과, Mypy 타입 체크 무결성 76개 소스 파일 통과)
 
+- [x] **Phase 17 (Milestone 3.5): SDK 없는 초경량 Tavily REST 탐색(월 1,000건 무료) + 국립중앙도서관 4단계 실전 검증 체인 2-Track 하이브리드 추천 구축**
+  - Brave 유료화(신용카드 필수) 위험 차단 및 무거운 `tavily-python` SDK 없이 순수 `httpx` 비동기 20줄 REST 클라이언트로 Tavily(월 1,000건 무료 티어) 경량 연동 (`app/infrastructure/tavily_search_client.py`)
+  - 실시간 웹 트렌드/문학상/신조어 도서 탐색을 위한 온디맨드 Function Calling 도구 `search_recent_books` 신설 (`app/domain/recommend/search_books_tool.py`) 및 `GENERIC_TOOLS` 등록
+  - 대한민국 국립중앙도서관 정식 서지 API(`SearchApi.do`) 기반 4단계 실전 단행본 검증 체인 구축 (`app/infrastructure/national_library_client.py`):
+    - 1단계: 형태 필터링(13자리 `EA_ISBN` 필수, `FORM`/`TYPE_NAME` 단행본 확인, 50쪽 이상으로 팜플렛/논문/점자 컷)
+    - 2단계: 텍스트 유사도 매칭 및 파생작(해설집, 요약집, 문제집) 필터링
+    - 3단계: 동일 도서 경합 시 발행일(`PUBLISH_PREDATE`) 최신순 정렬 (개정판/최신본 우선)
+    - 4단계: 교보문고 공개 CDN 표지 생존 연동 및 0ms 무지연 제공
+    - 비상 안전망: 10대 KDC 분류 및 감정 테마별 30여 권 내장 카탈로그 확충 (0ms 오프라인 폴백 보장)
+  - 큐레이터 서브에이전트(`curator_node`) 신구(新舊) 하이브리드 헌법 탑재:
+    - [1권: 최신 트렌드/화제 도서(2023년 이후)] + [1권: 시대를 초월한 스테디셀러/고전] 1:1 페어링 원칙
+    - 후보 도서의 `era` 속성(`recent` vs `classic`) 부여 및 국립도서관 4단계 체인으로 100% 실존 검증
+  - `recommend_books` 도구 리팩토링: Tavily 실시간 탐색 + 국립중앙도서관 4단계 체인 + Redis 캐싱(TTL 1시간) 2-Track 하이브리드 파이프라인 완성
+  - 단위 테스트 신규 작성(`tests/unit/test_hybrid_curation.py`, 25개 테스트) 및 전체 125개 단위 테스트 100% 그린 패스 달성 (Ruff 린트/포맷 통과, Mypy 타입 무결성 79개 소스 파일 통과)
+
 
 
 
