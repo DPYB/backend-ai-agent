@@ -1,4 +1,4 @@
-"""Unit tests for Vision API (Barcode Scan & Clova OCR)."""
+"""Unit tests for Vision API (Barcode Scan & Google Gemini Flash Vision OCR)."""
 
 from io import BytesIO
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -9,7 +9,12 @@ from PIL import Image
 
 from app.main import app
 from app.vision.barcode_service import BarcodeService
-from app.vision.clova_ocr_client import ClovaOcrClient, ClovaOcrResult
+from app.vision.gemini_ocr_client import (
+    ClovaOcrClient,
+    ClovaOcrResult,
+    GeminiOcrClient,
+    GeminiOcrResult,
+)
 
 
 def _create_dummy_image_bytes(format: str = "JPEG") -> bytes:
@@ -43,56 +48,79 @@ def test_barcode_scan_with_mocked_isbn():
 
 
 @pytest.mark.asyncio
-async def test_clova_ocr_fallback_when_unconfigured():
-    """Verify ClovaOcrClient returns fallback when credentials are empty."""
-    client = ClovaOcrClient()
-    client.url = ""
-    client.secret_key = ""
+async def test_gemini_ocr_fallback_when_unconfigured():
+    """Verify GeminiOcrClient returns fallback when credentials are empty."""
+    client = GeminiOcrClient()
+    client.gemini_api_key = ""
+    client.openai_api_key = ""
 
     img_bytes = _create_dummy_image_bytes()
     result = await client.extract_text(img_bytes, "image/jpeg")
 
-    assert isinstance(result, ClovaOcrResult)
+    assert isinstance(result, GeminiOcrResult)
+    assert isinstance(result, ClovaOcrResult)  # Backward-compatibility alias
     assert "테스트 모드" in result.text
     assert len(result.lines) > 0
 
 
 @pytest.mark.asyncio
-async def test_clova_ocr_extract_text_mocked():
-    """Verify ClovaOcrClient correctly parses lineBreak into separate lines."""
-    client = ClovaOcrClient()
-    client.url = "https://mock.clova.api/general"
-    client.secret_key = "mock-secret"
+async def test_gemini_ocr_extract_text_mocked():
+    """Verify GeminiOcrClient correctly parses lines from Gemini Flash response."""
+    client = GeminiOcrClient()
+    client.gemini_api_key = "valid-test-key-1234567890"
 
-    mock_response_data = {
-        "images": [
-            {
-                "fields": [
-                    {"inferText": "첫", "inferConfidence": 0.99, "lineBreak": False},
-                    {"inferText": "번째", "inferConfidence": 0.98, "lineBreak": False},
-                    {"inferText": "줄입니다.", "inferConfidence": 0.97, "lineBreak": True},
-                    {"inferText": "두", "inferConfidence": 0.95, "lineBreak": False},
-                    {"inferText": "번째", "inferConfidence": 0.96, "lineBreak": True},
-                ]
-            }
-        ]
-    }
+    mock_response = MagicMock()
+    mock_response.content = "첫 번째 문장입니다.\n\n두 번째 문장입니다."
 
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = mock_response_data
-
-    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
-        mock_post.return_value = mock_resp
+    with patch(
+        "langchain_google_genai.ChatGoogleGenerativeAI.ainvoke",
+        new_callable=AsyncMock,
+        return_value=mock_response,
+    ):
         img_bytes = _create_dummy_image_bytes()
         result = await client.extract_text(img_bytes, "image/jpeg")
 
+        assert isinstance(result, GeminiOcrResult)
         assert len(result.lines) == 2
-        assert result.lines[0] == "첫 번째 줄입니다."
-        assert result.lines[1] == "두 번째"
-        assert "첫 번째 줄입니다.\n두 번째" == result.text
-        assert result.confidence is not None
-        assert result.confidence > 0.9
+        assert result.lines[0] == "첫 번째 문장입니다."
+        assert result.lines[1] == "두 번째 문장입니다."
+        assert "첫 번째 문장입니다.\n\n두 번째 문장입니다." in result.text
+        assert result.confidence == 0.98
+
+
+@pytest.mark.asyncio
+async def test_gemini_ocr_openai_fallback_when_gemini_fails():
+    """Verify GeminiOcrClient falls back to OpenAI when Gemini call fails."""
+    client = GeminiOcrClient()
+    client.gemini_api_key = "valid-test-gemini-key-12345"
+    client.openai_api_key = "valid-test-openai-key-12345"
+
+    mock_openai_response = MagicMock()
+    mock_openai_response.content = "오픈AI 폴백 추출 문장입니다."
+
+    with (
+        patch(
+            "langchain_google_genai.ChatGoogleGenerativeAI.ainvoke",
+            new_callable=AsyncMock,
+            side_effect=Exception("Gemini quota exceeded"),
+        ),
+        patch(
+            "langchain_openai.ChatOpenAI.ainvoke",
+            new_callable=AsyncMock,
+            return_value=mock_openai_response,
+        ),
+    ):
+        img_bytes = _create_dummy_image_bytes()
+        result = await client.extract_text(img_bytes, "image/jpeg")
+
+        assert isinstance(result, GeminiOcrResult)
+        assert result.lines == ["오픈AI 폴백 추출 문장입니다."]
+
+
+def test_clova_alias_compatibility():
+    """Verify backward-compatibility aliases work seamlessly."""
+    assert ClovaOcrClient is GeminiOcrClient
+    assert ClovaOcrResult is GeminiOcrResult
 
 
 @pytest.mark.asyncio

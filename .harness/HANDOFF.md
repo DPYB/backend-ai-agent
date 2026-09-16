@@ -467,9 +467,34 @@
    - `.harness/ARCHITECTURE.md`에 `GET /api/v1/reports/monthly` 엔드포인트 명세 추가
 
 ### 다음 세션에서 할 일
-- 사용자의 확인 및 요청 시 `feat/monthly-reading-report` 커밋 및 푸시, PR 생성 보조
-- `backend-core-api` 및 `frontend-reader-web`과 월간 독서 리포트 연동 E2E 테스트 진행
-- **Milestone 2.6 (Phase 17)**: 신구(新舊) 하이브리드 도서 추천 & Brave Search Ad-hoc 파이프라인 구축 또는 **Milestone 3 (Phase 15)** 보안 가드레일 착수
+- 사용자의 확인 및 요청 시 `feat/monthly-reading-report` 커밋 및 푸시, PR 생성 보조 (완료: 머지됨)
+- **Phase 5.1**: Google Gemini Flash Vision OCR 전면 전환 (세션 17에서 완료)
+
+---
+
+## 세션 17 (2026-09-16)
+
+### 진행한 작업
+1. **사용자 요청 분석 및 로드맵 정렬**:
+   - 기존 1순위(Milestone 2.6: 신구 하이브리드 추천 및 Brave Search)가 이미 구축된 큐레이터 선위임 및 국립도서관 실존 도서 매칭/Tavily 도구와 중복되는 고도화 성격임을 확인하고 BACKLOG.md로 보류 이동.
+   - 사용자 컨펌에 따라 Naver Cloud Clova OCR을 완전 걷어내고 Google Gemini Flash Vision 기반 지능형 독서 스크랩 OCR로 전면 전환 결정.
+2. **Google Gemini Flash Vision 기반 독서 스크랩 OCR 클라이언트 구현 (`app/vision/gemini_ocr_client.py`)**:
+   - 기존 `GEMINI_API_KEY`를 재활용하여 추가 키 발급이나 결제 수단 등록 없이 $0 완전 무과금(Zero-cost) 달성.
+   - 독서 스크랩 특화 지능형 시스템 프롬프트 탑재: 페이지 번호(`- 123 -`), 챕터 헤더, 여백 잡음, 손가락 그림자 등 비본문 요소를 자동 배제하고, 순수 본문 문장만 줄바꿈(`\n`)을 보존하여 정밀 추출.
+   - Gemini 429 쿼터 초과 시 OpenAI `gpt-4o-mini` Vision으로 즉시 자동 우회하는 2차 폴백 파이프라인 구축.
+   - 기존 `ClovaOcrClient`, `ClovaOcrResult` 하위 호환성 별칭을 유지하여 기존 참조 보호.
+3. **엔드포인트 연동 및 설정/문서 동기화**:
+   - `app/api/v1/vision.py`의 `POST /api/v1/vision/ocr` 엔드포인트에서 `gemini_ocr_client` 바인딩 적용.
+   - `.env.example`, `ARCHITECTURE.md`, `DECISIONS.md`, `STATE.md`, `PLAN.md`에 Gemini Flash Vision 전환 내용 동기화.
+4. **품질 검증 및 테스트 전체 통과**:
+   - `tests/unit/test_vision.py` 갱신 (Gemini OCR 폴백, 행 파싱, OpenAI 2차 폴백, 하위 호환성 등 검증).
+   - 전체 83개 단위 테스트(Pytest) 100% 그린(Success) 통과.
+   - Ruff 린트/포맷 통과, Mypy 정적 타입 체크(`69 source files`) 100% 무결성 통과.
+
+### 다음 세션에서 할 일
+- 사용자의 확인 및 요청 시 `feat/gemini-vision-ocr` 커밋/푸시 및 PR 생성 보조
+- **Milestone 3 (Phase 15)**: 4단계 다중 방어 보안 가드레일 파이프라인(`app/domain/guardrails/`) 구축 착수
+
 
 
 

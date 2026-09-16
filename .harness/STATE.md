@@ -35,6 +35,14 @@
   - Dockerfile 내 C 라이브러리 `libzbar0` 추가
   - 총 33개 단위 테스트(Pytest) 및 Ruff 린트 100% 통과
 
+- [x] **Phase 5.1 (Milestone 2.8): Google Gemini Flash Vision 기반 독서 스크랩 OCR 전면 전환 및 $0 제로비용 달성**
+  - 유료 과금 및 복잡한 키 발급이 요구되는 Naver Clova OCR을 완전 걷어내고, 기존 `GEMINI_API_KEY`를 멀티모달로 재활용한 Gemini Flash Vision OCR 클라이언트(`app/vision/gemini_ocr_client.py`) 구현
+  - 책 문장 스크랩 특화 프롬프트 탑재: 페이지 번호/여백 잡음/손가락 그림자를 자동 배제하고 순수 본문 문장만 줄바꿈(`\n`)을 보존하여 정확히 추출
+  - Gemini 429 쿼터 초과 시 OpenAI `gpt-4o-mini` Vision으로 즉시 자동 우회하는 2차 폴백 파이프라인 구축
+  - `POST /api/v1/vision/ocr` 엔드포인트 바인딩 교체 및 기존 `ClovaOcrClient` 하위 호환성 100% 유지
+  - 단위 테스트(`tests/unit/test_vision.py`) 갱신 및 전체 83개 단위 테스트 100% 그린 패스 (Ruff & Mypy 무결성 통과)
+
+
 - [x] **Phase 6: 바이브 코딩 하네스 표준 구축**
   - `AGENTS.md`, `CLAUDE.md`, `.kiro/steering/project.md` 및 `.harness/` 6대 관리 문서 구성
 
