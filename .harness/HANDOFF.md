@@ -492,12 +492,21 @@
    - `tests/conftest.py` 신규 추가하여 테스트 시 `APP_ENV=test` 자동 주입 및 외부 네트워크 격리.
    - `uv run pytest`: **전체 83개 단위 테스트 100% 그린(83 passed in 31.10s)**.
    - `uv run ruff check .` & `uv run mypy .`: **무결성 100% 통과 (Success: no issues in 70 files)**.
-5. **하네스 문서 동기화**:
+5. **하네스 문서 동기화 및 PR #15 머지 완료**:
    - `.harness/STATE.md`, `ARCHITECTURE.md`, `DECISIONS.md` 최신화 완료.
+   - 작업 브랜치 `feat/gemini-vision-ocr` 분기, 커밋/푸시 및 DPYB 표준 PR #15 생성.
+   - 중앙 CI 전체 통과(All Checks Passed) 확인 후 사용자 직접 머지(Squash and merge) 완료.
+   - 로컬 `develop` 브랜치 체크아웃 및 최신 동기화(`git pull origin develop`) 완료.
 
 ### 다음 세션에서 할 일
-- 사용자의 확인 및 요청 시 `feat/gemini-vision-ocr` 브랜치 분기, 커밋/푸시 및 develop 대상 PR 생성 보조
+- `develop` 브랜치 기반 작업 브랜치 `feat/security-guardrails` 분기
 - **Milestone 3 (Phase 15)**: 4단계 다중 방어 보안 가드레일 파이프라인(`app/domain/guardrails/`) 구축 착수
+  - `safety_gate.py`: 자해/위기 키워드 감지, 도서명('자살론' 등) 오탐 방지, 8종 페르소나별 109 핫라인 공감 응답 (0ms, LLM 비용 $0)
+  - `input_gate.py`: 자모 난타, 숫자/이모지 단독 비정상 입력 감지 및 8종 페르소나별 즉각 안내 응답
+  - `security_gate.py`: 시스템 프롬프트 유출 시도, 탈옥(Jailbreak/DAN), 개인정보(주민등록번호 등) 0ms 사전 차단 게이트
+  - `shared_rules.py`: 시스템 프롬프트 레벨 공통 가드레일 (날씨 팩트 엄수, 도서 서비스 범위 밖 질문 정중 거절, 내부 메타데이터 은폐)
+  - `POST /api/v1/chat` 및 `POST /api/v1/chat/stream` 엔드포인트에 4단계 게이트 순차 연결
+  - 단위 테스트 `tests/unit/test_guardrails.py` 작성 및 전수 검증 (Ruff, Mypy, Pytest)
 
 
 
