@@ -676,6 +676,32 @@
 ### 다음 세션에서 할 일
 - 3개 서비스(Core API 8000, AI Agent 8001, Frontend Web 5173) 브라우저 실화면에서 추천 도서 다변화, 속도, 표지 노출 및 서재 담기 E2E 최종 확인.
 
+---
+
+## 세션 21 (2026-09-17)
+
+### 진행한 작업
+1. **도서 추천 의도 감지 키워드 확장 (`app/domain/graph/nodes.py`)**:
+   - `recom_keywords`에 `"뭘 읽"`, `"무슨 책"`, `"책 좀"`, `"도서 추천"`, `"책 하나"`, `"책 알려줘"` 등을 추가하여 **"뭘 읽으면 좋을까"**와 같은 일상적 질문 시에도 큐레이터 서브에이전트(`curator_node`) 선위임 파이프라인이 100% 동작하도록 보강.
+   - 이를 통해 API 응답의 `recommended_books` 배열이 빈 배열로 내려가는 문제를 원천 해결.
+2. **프론트엔드 도서 카드 렌더링용 마크다운 헤딩 지침 주입 (`app/domain/graph/nodes.py`)**:
+   - `curated_books` 소개 시스템 프롬프트 지침에 각 추천 도서를 `### 📖 도서명` 형식의 마크다운 3단계 헤딩으로 작성하도록 명시.
+   - 프론트엔드 `MarkdownRenderer.jsx` 및 `LibrarianChat.jsx`에서 본문 마크다운 카드와 `[서재에 등록 ➔]` 버튼이 즉시 렌더링되도록 보장.
+3. **단위 테스트 추가 및 자가 검증 (Self-Validation)**:
+   - `tests/unit/test_curator_pipeline.py`:
+     - `test_recommendation_intent_delegation_keywords`: "뭘 읽으면 좋을까" 등 5종 발화 시 `curator_node` 선위임 검증.
+     - `test_curated_books_markdown_heading_instruction`: `curated_books` 존재 시 `### 📖 도서명` 헤딩 지침 주입 및 응답 포맷 검증.
+   - `uv run pytest`: **131개 전체 단위 테스트 100% 그린 패스 통과 (`131 passed in 46.23s`)**.
+   - `uv run ruff check .` & `uv run ruff format .`: **린트/포맷팅 100% 통과**.
+   - `uv run mypy .`: **정적 타입 체크 80개 소스 파일 무결성 통과 (Success: no issues found)**.
+4. **하네스 문서 동기화**:
+   - `.harness/STATE.md`에 Phase 22 완료 반영 완료.
+
+### 다음 세션에서 할 일
+- 프론트엔드 화면에서 "뭘 읽으면 좋을까" 질의 시 `recommended_books` 배열과 `### 📖 도서명` 카드 및 [서재에 등록 ➔] 버튼 렌더링 최종 확인.
+- 사용자 요청 시 PR 생성 및 리뷰 요청.
+
+
 
 
 
