@@ -30,7 +30,7 @@ async def test_national_library_search_fallback():
     assert res["title"] == "데미안"
     assert res["author"] == "헤르만 헤세"
     assert res["isbn"] == "9788937460449"
-    assert res["source"] == "NATIONAL_LIBRARY_PENDING_MOCK"
+    assert res["source"] == "NATIONAL_LIBRARY_FALLBACK_CATALOG"
 
     # Generic book
     res_generic = await client.search_book("임의의 소설")

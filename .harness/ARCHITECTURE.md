@@ -6,7 +6,7 @@
 
 ## 1. 시스템 개요 및 도메인 역할
 
-`backend-ai-agent`는 DPYB(Don't Paw-get Your Book) 시스템에서 **지능형 AI 페르소나 대화, 개인화 독서 기억 RAG(LangGraph, pgvector)**와 함께 **ISBN 바코드 스캔, 문장 스크랩 Clova OCR 등 독서 수집 기능 구현**을 전담하는 무상태(Stateless) 마이크로서비스입니다.
+`backend-ai-agent`는 DPYB(Don't Paw-get Your Book) 시스템에서 **지능형 AI 페르소나 대화, 개인화 독서 기억 RAG(LangGraph, pgvector)**와 함께 **ISBN 바코드 스캔, 문장 스크랩 Gemini Vision OCR 등 독서 수집 기능 구현**을 전담하는 무상태(Stateless) 마이크로서비스입니다.
 
 > **💡 책임 분리 원칙**: 무거운 이미지 처리(바코드 디코딩, OCR) 및 AI 추론은 본 레포에서 전담하되, 회원/도서/스크랩 등 모든 정형 데이터의 **순수 DB 영속화(RDBMS CRUD 및 영구 저장)는 `backend-core-api`에 전적으로 위임**합니다.
 

@@ -50,7 +50,7 @@ app = FastAPI(
         "AI Librarian & Personalization RAG Service for 'Don't Paw-get Your Book'.\n\n"
         "- **Persona-driven LangGraph Handoff**: Russian Blue (차분/지적) & Shoebill (열정/1타강사)\n"
         "- **Personalized RAG**: Supabase pgvector scrap_vector strictly partitioned by member_id\n"
-        "- **Book Recommendation**: Tavily Web Search + core-api book metadata + Redis cache"
+        "- **Book Recommendation**: Tavily Web Search + National Library verification + Redis cache"
     ),
     version="0.1.0",
     docs_url="/docs",

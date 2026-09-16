@@ -70,7 +70,7 @@ async def test_national_library_fallback_sample_catalog_metadata():
     assert biblio["author"] == "헤르만 헤세"
     assert biblio["isbn"] == "9788937460449"
     assert biblio["page_count"] == 240
-    assert biblio["genre"] == "문학"
+    assert biblio["genre"] == "문학/소설"
     assert "kyobobook.co.kr" in biblio["cover_url"]
 
 

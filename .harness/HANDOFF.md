@@ -540,6 +540,39 @@
 - 사용자의 확인 및 승인 시 `feat/security-guardrails` 커밋 및 푸시, PR 생성 보조 (완료: 세션 18에서 커밋/푸시 및 PR 생성 완료)
 - **Milestone 4**: 3대 서비스(Core API + AI Agent + Frontend) 풀스택 통합 테스트 및 연동 검증 진행 (새 세션에서 착수)
 
+---
+
+## 세션 19 (2026-09-16)
+
+### 진행한 작업
+1. **Brave 유료화 회피 및 무거운 SDK 없는 초경량 Tavily REST 클라이언트 연동**:
+   - Brave Search API의 유료화(신용카드 필수) 전환에 따른 과금 위험을 원천 차단하고, 월 1,000건 무료 티어를 제공하는 Tavily를 채택.
+   - 무거운 `tavily-python` SDK 설치 없이 순수 `httpx` 비동기 20줄 REST 클라이언트 구현 (`app/infrastructure/tavily_search_client.py`).
+   - 실시간 웹 트렌드/문학상/신조어 도서 탐색을 위한 온디맨드 Function Calling 도구 `search_recent_books` 신설 (`app/domain/recommend/search_books_tool.py`) 및 `GENERIC_TOOLS` 등록.
+2. **국립중앙도서관 4단계 실전 단행본 검증 체인 구축 (`app/infrastructure/national_library_client.py`)**:
+   - **1단계 (형태 필터링)**: 13자리 정식 `EA_ISBN` 검증, 단행본 확인, 50쪽 이상 팜플렛/논문/점자 배제.
+   - **2단계 (텍스트 매칭 & 파생작 컷)**: 제목/저자 일치도 점수화 및 해설집/요약집/문제집 감점 필터링.
+   - **3단계 (최신성 가산 정렬)**: 정규식 `(19\d{2}|20\d{2})` 기반 발행년도 추출 및 최신 번역/개정판 우선 정렬.
+   - **4단계 (교보문고 CDN 표지 연동)**: 국립도서관 표지 부재 시 교보 고화질 CDN 0ms 무지연 자동 바인딩.
+   - **비상 안전망**: 10대 KDC 분류별 대표 스테디셀러 30여 권 내장 카탈로그 확충 (0ms 오프라인 폴백 보장).
+3. **신구(新舊) 하이브리드 도서 큐레이션 파이프라인 완성 (`app/domain/graph/curator_node.py`, `recommend_tool.py`)**:
+   - 큐레이터 헌법 탑재: 모든 도서 추천 요청 시 **[1권: 최신 트렌드/화제작(2023년 이후)] + [1권: 시대를 초월한 스테디셀러/고전]** 1:1 페어링 도출.
+   - `recommend_books` 도구: Tavily 실시간 탐색 + 국립중앙도서관 4단계 체인 + Redis 캐싱(TTL 1시간) 2-Track 하이브리드 파이프라인 완성.
+4. **품질 검증 및 테스트 전체 통과 (100% 그린)**:
+   - `tests/unit/test_hybrid_curation.py` 신규 작성 (25개 테스트).
+   - `tests/unit/test_curator_pipeline.py`, `tests/unit/test_recommend_metadata.py`, `tests/unit/test_recommend_tool.py` 최신 규격 동기화.
+   - `uv run pytest`: **125개 전체 단위 테스트 100% 그린 패스 (`125 passed in 33.19s`)**.
+   - `uv run ruff check .` & `uv run mypy .`: **무결성 100% 통과 (Success: no issues found in 79 source files)**.
+5. **하네스 문서 동기화**:
+   - `.harness/STATE.md`에 Phase 17 완료 반영.
+   - `.harness/PLAN.md`에서 완료된 Milestone 3.5 제거.
+   - `.harness/DECISIONS.md`에 초경량 Tavily REST + 국립도서관 4단계 체인 아키텍처 결정 기록.
+   - `.harness/ARCHITECTURE.md` 최신화.
+
+### 다음 세션에서 할 일
+- 사용자의 확인 및 승인 시 작업 브랜치 커밋 및 푸시, PR 생성 보조.
+- **Milestone 4**: 3대 서비스(Core API + AI Agent + Frontend) 로컬 동시 기동 및 풀스택 E2E 실화면 연동 검증 착수.
+
 
 
 
