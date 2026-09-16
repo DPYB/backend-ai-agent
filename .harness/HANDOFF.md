@@ -570,8 +570,29 @@
    - `.harness/ARCHITECTURE.md` 최신화.
 
 ### 다음 세션에서 할 일
-- 사용자의 확인 및 승인 시 작업 브랜치 커밋 및 푸시, PR 생성 보조.
+- 사용자의 확인 및 승인 시 작업 브랜치 커밋 및 푸시, PR 생성 보조. (완료: PR #17 머지됨)
 - **Milestone 4**: 3대 서비스(Core API + AI Agent + Frontend) 로컬 동시 기동 및 풀스택 E2E 실화면 연동 검증 착수.
+
+---
+
+## 세션 20 (2026-09-16)
+
+### 진행한 작업
+1. **PR #17 머지 및 `develop` 최신 동기화**:
+   - DPYB 사람 직접 머지 원칙에 따라 GitHub 웹에서 PR #17 머지 완료 확인.
+   - 로컬 `develop` 브랜치 체크아웃 및 최신 풀(`git pull origin develop`) 완료 (`24d10fa`).
+   - 머지 완료된 로컬 및 원격 `feat/brave-search-hybrid-curation` 브랜치 정리(Delete & Prune) 완료.
+2. **DPYB 중앙 개발 표준 `.githooks` 프리커밋 훅 연동**:
+   - DPYB 조직 레포 변경사항을 반영하여 `.githooks/pre-commit` 등록.
+   - 소스 코드 변경 시 `.harness/STATE.md`가 스테이징에 포함되었는지 검사하고 누락 시 안내 경고를 출력하는 non-blocking hook 구성.
+   - 스크립트 실행 권한(`chmod +x .githooks/pre-commit`) 부여 및 로컬 `core.hooksPath` 바인딩 완료.
+3. **하네스 문서 동기화**:
+   - `.harness/STATE.md`에 Phase 19 완료 반영.
+
+### 다음 세션에서 할 일
+- `feat/githooks-pre-commit` 커밋 및 푸시, PR 생성 보조 (완료 시 사람 직접 머지).
+- **Milestone 4**: 3대 서비스(Core API + AI Agent + Frontend) 로컬 동시 기동 및 풀스택 E2E 실화면 연동 검증 착수.
+
 
 
 

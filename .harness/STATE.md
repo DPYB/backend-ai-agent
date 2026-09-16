@@ -180,6 +180,11 @@
   - `recommend_books` 도구 리팩토링: Tavily 실시간 탐색 + 국립중앙도서관 4단계 체인 + Redis 캐싱(TTL 1시간) 2-Track 하이브리드 파이프라인 완성
   - 단위 테스트 신규 작성(`tests/unit/test_hybrid_curation.py`, 25개 테스트) 및 전체 125개 단위 테스트 100% 그린 패스 달성 (Ruff 린트/포맷 통과, Mypy 타입 무결성 79개 소스 파일 통과)
 
+- [x] **Phase 19: DPYB 중앙 개발 표준 `.githooks` 프리커밋 훅 연동**
+  - 소스 코드 변경 시 `.harness/STATE.md` 동반 갱신 여부를 검증하고 누락 시 경고를 안내하는 non-blocking pre-commit 훅 반영 (`.githooks/pre-commit`)
+  - 실행 권한(`chmod +x`) 부여 및 `core.hooksPath` 표준화
+
+
 
 
 
