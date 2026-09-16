@@ -26,9 +26,9 @@ class Settings(BaseSettings):
         alias="CORS_ORIGINS",
     )
 
-    # Google Gemini AI (Primary Free Tier)
+    # Google Gemini AI (Primary Free Tier: 1,500 RPD / 45,000 RPM per month)
     gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
-    gemini_model: str = Field(default="gemini-3.6-flash", alias="GEMINI_MODEL")
+    gemini_model: str = Field(default="gemini-flash-latest", alias="GEMINI_MODEL")
     gemini_embedding_model: str = Field(
         default="text-embedding-004",
         alias="GEMINI_EMBEDDING_MODEL",

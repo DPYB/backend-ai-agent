@@ -60,6 +60,9 @@
 - **슬립 방지**: `/api/v1/health` 헬스체크 엔드포인트 호출 시 Supabase 핑(`scrap_vector` 1행 조회)을 수행하여 Render(15분) 및 Supabase(7일 미사용) 동시 활성화를 유지합니다.
 - **메모리 한도 준수**: Render 무료 티어(512MB RAM) 제약을 고려하여 불필요한 모델 로컬 적재를 피하고 API 호출 기반(Gemini Flash/Embedding)을 유지합니다.
 
+### 4.4 AI 자가 검증 필수 (Self-Validation)
+- **AI 자가 검증 필수**: 코드 수정 직후 반드시 `ruff check --fix .`, `mypy .`, `pytest`를 터미널에서 실행하고, 에러나 타입 경고가 0개가 될 때까지 스스로 터미널 로그를 보고 코드를 고칠 것.
+
 ---
 
 ## 5. 브랜치 & 커밋/PR 컨벤션

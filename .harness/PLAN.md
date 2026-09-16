@@ -6,24 +6,6 @@
 
 ## 전체 진행 계획 (사용자 승인 범위 총괄 로드맵)
 
-### 📌 Milestone 2.6: 신구(新舊) 하이브리드 도서 추천 & Brave Search Ad-hoc 파이프라인 구축 (Phase 17)
-
-> **국립중앙도서관 신간/사서추천 API + 교보문고 보강 ➔ Redis 1일 캐시 ➔ 큐레이터 신구 페어링 + Brave Search 예외 폴백**
-
-- [ ] **1. 국립중앙도서관 신간 수집 & 교보문고 폴백 클라이언트 고도화 (`app/infrastructure/`)**:
-  - `national_library_client.py`: 사서추천도서 및 최근 발행월 신간 도서 피드 수집 메서드 추가
-  - 교보문고 주간 베스트셀러/화제작 피드 보강 (try-except 격리, 타임아웃 2초, 실패 시 100% 도서관 단독 폴백)
-- [ ] **2. 신간 풀 Redis 캐싱 및 큐레이터 신구 조화 페어링 (`app/domain/graph/curator_node.py`)**:
-  - Redis `agent:weekly_hot_books` (TTL 24시간) 캐싱 연동
-  - `CURATOR_SYSTEM_PROMPT`에 "불멸의 명작 1권 + 최신 신간 풀 1권" 조화로운 하이브리드 페어링 지침 반영
-- [ ] **3. Case A/B 라우터 엣지케이스 방어 & Brave Search 연동 (`app/domain/graph/nodes.py`)**:
-  - 라우터에 고유명사(작가명/도서명) 및 초시의성("오늘", "방금") 감지 시 Case B(실시간 검색)로 우회하는 가드 추가
-  - `search_web` 도구에 Brave Search 무료 티어(월 2,000건) 연동 및 LLM 정제 파라미터 기반 Redis 캐싱(TTL 1시간)
-  - `[METRICS:RECOMMEND_FLOW]` case_type 로그 수집
-- [ ] **4. 단위 테스트 작성 및 전수 검증 (`tests/unit/test_recommend_pipeline.py`)**
-
----
-
 ### 📌 Milestone 3: 4단계 다중 방어 보안 가드레일 파이프라인 구축 (Phase 15)
 
 > **0ms $0 비용으로 유해 발화, 무의미 입력, 프롬프트 탈취를 차단하는 다중 방어 체계**

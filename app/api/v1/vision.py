@@ -1,4 +1,4 @@
-"""Vision API endpoints for Barcode Scanning and Naver Clova OCR."""
+"""Vision API endpoints for Barcode Scanning and Google Gemini Flash Vision OCR."""
 
 from typing import List, Optional
 
@@ -6,7 +6,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
 
 from app.vision.barcode_service import barcode_service
-from app.vision.clova_ocr_client import clova_ocr_client
+from app.vision.gemini_ocr_client import gemini_ocr_client
 
 router = APIRouter(prefix="/api/v1/vision", tags=["vision"])
 
@@ -19,7 +19,7 @@ class BarcodeScanResponse(BaseModel):
 
 
 class OcrResponse(BaseModel):
-    """Clova OCR text extraction result payload."""
+    """Gemini Flash Vision OCR text extraction result payload."""
 
     text: str = Field(description="줄바꿈으로 합쳐진 전체 OCR 텍스트")
     lines: List[str] = Field(description="줄단위 텍스트 목록")
@@ -43,7 +43,7 @@ async def scan_barcode(image: UploadFile = File(...)) -> BarcodeScanResponse:
 
 @router.post("/ocr", response_model=OcrResponse)
 async def perform_ocr(image: UploadFile = File(...)) -> OcrResponse:
-    """책 문장 이미지에서 Clova OCR 텍스트 추출."""
+    """책 문장 이미지에서 Google Gemini Flash Vision 지능형 OCR 텍스트 추출."""
     if not image.content_type or not image.content_type.startswith("image/"):
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
@@ -51,7 +51,7 @@ async def perform_ocr(image: UploadFile = File(...)) -> OcrResponse:
         )
 
     image_bytes = await image.read()
-    result = await clova_ocr_client.extract_text(image_bytes, image.content_type)
+    result = await gemini_ocr_client.extract_text(image_bytes, image.content_type)
     return OcrResponse(
         text=result.text,
         lines=result.lines,

@@ -17,8 +17,8 @@
          ├── POST /api/v1/vision/scan-barcode ───┤  ├── LangGraph (8-Node Personas)
          ├── POST /api/v1/vision/ocr ────────────┤  ├── Supabase pgvector (scrap_vector)
          ├── GET  /health (중앙 킵얼라이브) ────────┤  ├── Redis (Session & TTL Cache)
-                                                 │  ├── Google Gemini (LLM & Embedding)
-                                                 │  └── Naver Clova OCR API V2
+                                                 │  ├── Google Gemini (LLM, Embedding & Vision OCR)
+                                                 │  └── OpenAI Fallback
                                                  ▼
                                      [ backend-core-api ] (순수 DB 영속화 위임)
 ```
@@ -37,7 +37,7 @@
 
 | **Cache & Session** | Redis / Upstash Redis | 다회 대화 컨텍스트 유지 및 추천 결과 TTL 캐싱 |
 | **Computer Vision** | `pyzbar`, `Pillow`, `libzbar0` | 13자리 도서 바코드(EAN13/ISBN-13) 스캔 |
-| **External OCR** | Naver Cloud Clova OCR General API V2 | 책 문장 이미지에서 행 단위 텍스트 추출 |
+| **External OCR** | Google Gemini Flash Vision ($0 Zero-cost, OpenAI 폴백) | 책 문장 스크랩 사진에서 잡음 제거 및 행 단위 본문 추출 |
 | **Book & Weather Info** | 국립중앙도서관 Open API, Open-Meteo | 실존 도서 서지정보 100% 검증 및 실시간 날씨 연동 |
 
 ---
@@ -119,7 +119,7 @@ backend-ai-agent/
 | `POST` | `/api/v1/memory/debate-insights` | 토론 피날레 요약 및 통찰 768차원 벡터화 및 `agent.debate_insights` 적재 |
 | `POST` | `/api/v1/vectors/records` | `backend-core-api` 독서 기록(서평) 수신 및 `agent.scrap_vector` 자동 벡터화 적재 |
 | `POST` | `/api/v1/vision/scan-barcode` | 책 바코드 이미지 업로드 -> 13자리 ISBN 반환 |
-| `POST` | `/api/v1/vision/ocr` | 책 문장 이미지 업로드 -> Clova OCR 텍스트 반환 |
+| `POST` | `/api/v1/vision/ocr` | 책 문장 이미지 업로드 -> Google Gemini Flash Vision 지능형 OCR 텍스트 반환 (OpenAI 폴백) |
 | `GET` | `/api/v1/reports/monthly` | **사서 월간 독서 리포트** 단일 진입점 (Core 01~05 통계 + 토론 키워드 + AI 06 성향분석 & 07 처방 도서카드 병합) |
 
 
