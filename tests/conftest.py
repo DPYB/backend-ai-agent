@@ -14,6 +14,12 @@ settings.app_env = "test"
 
 @pytest.fixture(autouse=True)
 def setup_test_env(monkeypatch: pytest.MonkeyPatch):
-    """Automatically set APP_ENV=test for all unit tests."""
+    """Automatically set APP_ENV=test and bypass remote DB for all unit tests."""
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setattr(settings, "app_env", "test")
+
+    # Bypass remote DB in unit tests for fast in-memory test isolation
+    from app.infrastructure.db import repository, session
+
+    monkeypatch.setattr(session, "get_session_factory", lambda: None)
+    monkeypatch.setattr(repository, "get_session_factory", lambda: None)

@@ -5,8 +5,10 @@ from httpx import ASGITransport, AsyncClient
 
 from app.infrastructure.national_library_client import (
     NationalLibraryClient,
+    genre_to_korean,
     get_verified_cover_url,
     map_kdc_to_genre,
+    normalize_genre,
     parse_page_count,
 )
 from app.main import app
@@ -24,17 +26,25 @@ def test_parse_page_count():
 
 
 def test_map_kdc_to_genre():
-    """Test KDC classification and subject keyword genre mapping."""
-    assert map_kdc_to_genre("843.6") == "문학"
-    assert map_kdc_to_genre("813.7") == "문학"
-    assert map_kdc_to_genre("189.2") == "인문/철학"
-    assert map_kdc_to_genre("320.1") == "사회과학"
-    assert map_kdc_to_genre("400") == "자연과학"
-    assert map_kdc_to_genre("600") == "예술"
+    """Test KDC classification and subject keyword genre mapping into standard uppercase Enum."""
+    assert map_kdc_to_genre("843.6") == "LITERATURE"
+    assert map_kdc_to_genre("813.7") == "LITERATURE"
+    assert map_kdc_to_genre("189.2") == "PHILOSOPHY"
+    assert map_kdc_to_genre("320.1") == "SOCIAL_SCIENCE"
+    assert map_kdc_to_genre("400") == "NATURAL_SCIENCE"
+    assert map_kdc_to_genre("600") == "ARTS"
     # Subject keyword fallback
-    assert map_kdc_to_genre("", "따뜻한 위로의 힐링 소설") == "문학/소설"
-    assert map_kdc_to_genre("", "감성 산문과 에세이 모음") == "에세이"
-    assert map_kdc_to_genre("", "") == "일반도서"
+    assert map_kdc_to_genre("", "따뜻한 위로의 힐링 소설") == "LITERATURE"
+    assert map_kdc_to_genre("", "감성 산문과 에세이 모음") == "LITERATURE"
+    assert map_kdc_to_genre("", "") == "GENERAL"
+
+    # Bidirectional Korean / English interoperability
+    assert genre_to_korean("LITERATURE") == "문학"
+    assert genre_to_korean("PHILOSOPHY") == "철학"
+    assert normalize_genre("문학") == "LITERATURE"
+    assert normalize_genre("문학/소설") == "LITERATURE"
+    assert normalize_genre("에세이") == "LITERATURE"
+    assert normalize_genre("LITERATURE") == "LITERATURE"
 
 
 def test_get_verified_cover_url_kyobo_fallback():
@@ -70,7 +80,8 @@ async def test_national_library_fallback_sample_catalog_metadata():
     assert biblio["author"] == "헤르만 헤세"
     assert biblio["isbn"] == "9788937460449"
     assert biblio["page_count"] == 240
-    assert biblio["genre"] == "문학/소설"
+    assert biblio["genre"] == "LITERATURE"
+    assert genre_to_korean(biblio["genre"]) == "문학"
     assert "kyobobook.co.kr" in biblio["cover_url"]
 
 

@@ -1,7 +1,9 @@
 """FastAPI main application entry point for DPYB backend-ai-agent."""
 
 import logging
+import os
 from contextlib import asynccontextmanager
+from logging.handlers import RotatingFileHandler
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,10 +18,32 @@ from app.core.config import settings
 from app.infrastructure.core_api_client import get_core_api_client
 from app.infrastructure.redis_session import get_redis_session_manager
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
+# Configure dual logging: console (stdout) + rotating file (logs/app.log)
+log_format = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+os.makedirs("logs", exist_ok=True)
+
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+
+# Add handlers if not already present
+if not any(isinstance(h, RotatingFileHandler) for h in root_logger.handlers):
+    file_handler = RotatingFileHandler(
+        "logs/app.log",
+        maxBytes=10 * 1024 * 1024,  # 10 MB
+        backupCount=5,
+        encoding="utf-8",
+    )
+    file_handler.setFormatter(logging.Formatter(log_format))
+    root_logger.addHandler(file_handler)
+
+if not any(
+    isinstance(h, logging.StreamHandler) and not isinstance(h, RotatingFileHandler)
+    for h in root_logger.handlers
+):
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter(log_format))
+    root_logger.addHandler(console_handler)
+
 logger = logging.getLogger("backend-ai-agent")
 
 

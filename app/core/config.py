@@ -33,8 +33,12 @@ class Settings(BaseSettings):
     gemini_light_model: str = Field(default="gemini-3.1-flash-lite", alias="GEMINI_LIGHT_MODEL")
     gemma_emergency_model: str = Field(default="gemma-4-31b-it", alias="GEMMA_EMERGENCY_MODEL")
     gemini_embedding_model: str = Field(
-        default="text-embedding-004",
+        default="models/gemini-embedding-001",
         alias="GEMINI_EMBEDDING_MODEL",
+    )
+    gemini_embedding_dimension: int = Field(
+        default=768,
+        alias="GEMINI_EMBEDDING_DIMENSION",
     )
 
     # OpenAI API (Fallback / Alternative LLM)
@@ -79,7 +83,7 @@ class Settings(BaseSettings):
     )
 
     # backend-core-api REST Endpoint & Shared JWT Auth
-    core_api_base_url: str = Field(default="http://localhost:8080", alias="CORE_API_BASE_URL")
+    core_api_base_url: str = Field(default="http://localhost:8000", alias="CORE_API_BASE_URL")
     core_api_timeout_seconds: float = Field(default=5.0, alias="CORE_API_TIMEOUT_SECONDS")
     jwt_secret_key: str = Field(
         default="dont-paw-get-jwt-secret-change-in-prod-2026",

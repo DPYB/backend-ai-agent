@@ -369,10 +369,35 @@ async def _run_persona_node(
     if weather_context:
         system_prompt += (
             f"\n\n[날씨 및 위치 환경 정보]\n{weather_context}\n"
-            "지침: 사용자의 위치 권한이 미허용된 상태라면 날씨를 아는 체 지어내지 마십시오. "
-            "날씨를 언급해야 할 때는 '위치 권한이 없어 정확한 동네 날씨는 알 수 없지만, 서울 기준으로...' "
+            "지침:\n"
+            "- '[위치 권한 허용됨]' 상태인 경우: 사용자가 위치 권한을 승인하여 실제 현재 위치의 날씨가 전달되었습니다. "
+            "절대로 '위치 권한이 없다'고 말하지 마시고, 위 실시간 날씨(기온, 날씨 상태)를 사실 그대로 따뜻하고 자연스럽게 대화에 녹여내세요.\n"
+            "- '[위치 권한 미허용 상태]'인 경우: 날씨를 아는 체 지어내지 마시고, '위치 권한이 없어 정확한 동네 날씨는 알 수 없지만, 서울 기준으로...' "
             "또는 '계절의 문맥'으로 정직하고 자연스럽게 언급해야 합니다."
         )
+
+    # Inject debate target book factual grounding if in debate mode
+    is_debate = persona_id.startswith("DEBATE_")
+    debate_book = state.get("debate_book_info")
+    topic = state.get("topic")
+
+    if is_debate and debate_book:
+        b_title = debate_book.get("title", "")
+        b_author = debate_book.get("author", "")
+        b_publisher = debate_book.get("publisher", "")
+        b_desc = debate_book.get("description", "")
+        system_prompt += (
+            f"\n\n[📖 토론 대상 도서 팩트 정보 (환각 및 내용 날조 엄격 금지)]\n"
+            f"- 도서명: 《{b_title}》\n"
+            f"- 저자: {b_author}\n"
+            f"- 출판사: {b_publisher}\n"
+            f"- 도서 개요/줄거리: {b_desc}\n\n"
+            "지침: 당신은 위 도서의 실제 내용과 서지 정보에 엄격히 입각하여 깊이 있는 토론과 비평을 나누어야 합니다. "
+            "위의 실제 줄거리와 설정을 벗어나 책에 나오지 않는 가짜 인물이나 사건을 자의적으로 날조(환각)하지 마십시오. "
+            "모르는 세부 내용은 독자에게 책의 해당 구절을 물어보며 겸손하고 지적인 태도로 사유를 심화하십시오."
+        )
+    if is_debate and topic:
+        system_prompt += f"\n\n[💡 오늘의 토론 화두/논제]: {topic}"
 
     last_user_msg = ""
     for msg in reversed(state.get("messages", [])):
@@ -382,7 +407,6 @@ async def _run_persona_node(
 
     # 1. Conclude Intent Check (UI button action='conclude' or natural conclude phrasing)
     action = state.get("action") or "chat"
-    is_debate = persona_id.startswith("DEBATE_")
     conclude_keywords = [
         "토론 끝",
         "토론 마무리",

@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
 
@@ -31,16 +32,13 @@ def get_async_engine() -> Optional[AsyncEngine]:
             _engine = create_async_engine(
                 settings.async_database_url,
                 echo=False,
-                pool_pre_ping=True,
-                pool_recycle=300,
-                pool_size=5,
-                max_overflow=10,
+                poolclass=NullPool,
                 connect_args={
                     "statement_cache_size": 0,
                     "prepared_statement_cache_size": 0,
                 },
             )
-            logger.info("SQLAlchemy asyncpg engine initialized successfully.")
+            logger.info("SQLAlchemy asyncpg engine initialized successfully with NullPool.")
         except Exception as e:
             logger.warning("Failed to initialize asyncpg engine (%s). Fallback mode enabled.", e)
             _engine = None

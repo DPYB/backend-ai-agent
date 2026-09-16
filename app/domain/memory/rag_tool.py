@@ -14,17 +14,36 @@ logger = logging.getLogger(__name__)
 
 def generate_query_embedding(query: str, dimension: int = 768) -> List[float]:
     """Generate embedding vector using Google Gemini or deterministic fallback."""
-    if settings.gemini_api_key:
-        try:
-            from langchain_google_genai import GoogleGenerativeAIEmbeddings
+    from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
+    api_keys = [k for k in [settings.gemini_api_key, settings.gemini_fallback_api_key] if k]
+
+    for key_idx, api_key in enumerate(api_keys):
+        try:
             embeddings = GoogleGenerativeAIEmbeddings(  # type: ignore[call-arg]
                 model=settings.gemini_embedding_model,
-                google_api_key=settings.gemini_api_key,
+                google_api_key=api_key,
+                output_dimensionality=dimension,
             )
-            return embeddings.embed_query(query)
+            vec = embeddings.embed_query(query)
+            if vec and len(vec) == dimension:
+                norm = sum(x * x for x in vec) ** 0.5 or 1.0
+                return [x / norm for x in vec]
+            logger.warning(
+                "Gemini embedding generated dimension mismatch (got %d, expected %d).",
+                len(vec) if vec else 0,
+                dimension,
+            )
         except Exception as e:
-            logger.warning("Gemini embedding generation failed (%s), using fallback.", e)
+            key_label = "primary" if key_idx == 0 else "teammate fallback"
+            logger.warning(
+                "Gemini embedding generation with %s key failed (%s). %s",
+                key_label,
+                e,
+                "Retrying with teammate fallback key..."
+                if key_idx == 0 and len(api_keys) > 1
+                else "Using local pseudo-embedding fallback.",
+            )
 
     # Deterministic pseudo-embedding for testing or offline environment
     seed = int(hashlib.md5(query.encode("utf-8")).hexdigest(), 16)

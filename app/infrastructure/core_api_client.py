@@ -137,37 +137,13 @@ class CoreApiClient:
                 }
             logger.info("core-api library books endpoint returned status %d", response.status_code)
         except Exception as e:
-            logger.info("core-api bookshelf query failed (%s), using structured fallback", e)
+            logger.warning("core-api bookshelf query failed (%s)", e)
 
+        # Honest response: return empty bookshelf to prevent LLM hallucinations
         return {
-            "member_id": member_id or "mock-member",
-            "total_count": 3,
-            "books": [
-                {
-                    "book_id": "book-phm",
-                    "title": "프로젝트 헤일메리",
-                    "author": "앤디 위어",
-                    "status": "COMPLETED",
-                    "rating": 5,
-                    "created_at": "2026-08-15T10:00:00Z",
-                },
-                {
-                    "book_id": "book-dune",
-                    "title": "듄 (Dune)",
-                    "author": "프랭크 허버트",
-                    "status": "READING",
-                    "rating": 4,
-                    "created_at": "2026-09-01T15:30:00Z",
-                },
-                {
-                    "book_id": "book-demian",
-                    "title": "데미안",
-                    "author": "헤르만 헤세",
-                    "status": "WISH",
-                    "rating": None,
-                    "created_at": "2026-09-05T09:00:00Z",
-                },
-            ],
+            "member_id": member_id or "authenticated_user",
+            "total_count": 0,
+            "books": [],
         }
 
     async def get_monthly_report_stats(

@@ -593,6 +593,52 @@
 - `feat/githooks-pre-commit` 커밋 및 푸시, PR 생성 보조 (완료 시 사람 직접 머지).
 - **Milestone 4**: 3대 서비스(Core API + AI Agent + Frontend) 로컬 동시 기동 및 풀스택 E2E 실화면 연동 검증 착수.
 
+---
+
+## 세션 21 (2026-09-16)
+
+### 진행한 작업
+1. **로컬 E2E 5대 연동 이슈 원인 분석 및 백엔드(`backend-ai-agent`) 원천 해결**:
+   - **이슈 1 (날씨 Signals 누락)**:
+     - `WeatherSignal`, `SignalsResponse` Pydantic 모델 정의 및 `ChatResponse.signals` 필드 복원.
+     - `_build_signals` 유틸 함수를 구현하여 WMO 코드 기반 날씨 상태(`clear`, `cloudy`, `rainy` 등), 섭씨 기온, KST 시간대(`dawn`, `day`, `evening`, `night`), 감정 무드를 합성하여 `/chat` 및 실시간 SSE `/chat/stream`에 전달.
+   - **이슈 2 (도서 추천 메타데이터 및 장르 상호 보완)**:
+     - `app/infrastructure/national_library_client.py`: KDC 10대 분류 표준 Enum 매핑 및 국문/영문 상호 보완 변환 유틸(`normalize_genre`, `genre_to_korean`, `GENRE_KO_TO_EN`, `GENRE_EN_TO_KO`) 신설.
+     - 교보 CDN 표지 이미지(`cover_url`) 및 총 쪽수(`page_count`) 안정 공급 보장.
+   - **이슈 4 (빈 서재 거짓말 및 Token Relay)**:
+     - `CORE_API_BASE_URL`을 8080에서 실제 기동 포트인 8000으로 교정 (`app/core/config.py`, `.env`, `.env.example`).
+     - `CoreApiClient.get_my_bookshelf`에서 '프로젝트 헤일메리', '듄', '데미안' 등 하드코딩된 가짜 도서 목 데이터를 완전히 삭제하고, 미등록/빈 서재 시 `books: []`, `total_count: 0`을 정직하게 반환하도록 수정.
+     - `app/core/context.py` 내 `ContextVar`(`current_auth_token`)를 신설하여 요청 스코프 Bearer 토큰 릴레이 연동 (`app/domain/memory/my_library_tool.py`).
+   - **이슈 5 (토론 평론가 페르소나 덮어쓰기 차단 및 줄거리 팩트 그라운딩)**:
+     - `ChatRequest.populate_defaults_and_aliases`에서 `mode != "DEBATE"` 조건을 추가하여, 토론 모드 진입 시 `librarian_id`에 의해 페르소나가 `CAT`으로 강제 덮어쓰기되던 버그를 원천 차단.
+     - `ChatRequest` 및 `AgentState`에 `book_id`, `topic`, `debate_book_info` 필드 공식 추가.
+     - 토론 시작 시 대상 도서의 실제 서지·줄거리를 국립중앙도서관/Core-API로부터 사전 조회하여 토론 파트너 시스템 프롬프트에 `[토론 대상 도서 팩트 정보 (환각 방지)]`로 주입 (`app/domain/graph/nodes.py`), 줄거리 날조/거짓말 원천 봉쇄.
+2. **인프라/런타임 결함 보강 & 다중 키 임베딩 풀링 탑재**:
+   - `greenlet` 패키지 추가 (`uv add greenlet`): SQLAlchemy asyncpg 세션 및 엔진 dispose 시 `ValueError: No module named 'greenlet'` 크래시 원천 해결.
+   - `app/infrastructure/db/session.py`: Supabase Transaction Pooler(포트 6543) 및 비동기 이벤트 루프 격리를 위해 `NullPool` 적용 (이벤트 루프 간 커넥션 충돌 방지).
+   - `app/core/config.py`, `app/domain/memory/rag_tool.py`:
+     - 임베딩 모델을 `models/gemini-embedding-001` (MRL 768차원 매핑)로 갱신하여 404 에러 원천 해결.
+     - 메인 키 소진 시 **팀원 예비키(`GEMINI_FALLBACK_API_KEY`)로 0ms 즉시 스위칭(하루 1,000 + 1,000 = 2,000 RPD)**하는 다중 키 자동 재시도 폴백 파이프라인 탑재.
+     - L2 단위 벡터 정규화(`norm = 1.0`) 적용으로 코사인 유사도 연산 정밀도 보장.
+   - `app/api/router.py`: 토론 모드 서지 조회 시 질문 전문을 도서명으로 보내던 쿼리 오염을 `extract_debate_book_title` 기반으로 정제.
+   - `app/main.py`: 콘솔 및 자동 회전 파일 로깅(`logs/app.log`, 최대 10MB x 5개 백업) 이중 로거 구축 및 `.gitignore` 등록.
+3. **단위 테스트 갱신 및 AI 자가 검증 (100% 그린 패스)**:
+   - `tests/unit/test_my_library_tool.py`: 빈 서재 정직 응답(`total_count == 0`, `books == []`, "등록된 도서가 없습니다") 및 활성 서재 모킹 테스트로 갱신.
+   - `tests/unit/test_recommend_metadata.py`: 표준 Enum 매핑 및 양방향 한/영 정규화 유틸 검증으로 갱신.
+   - `tests/conftest.py`: 단위 테스트 실행 시 원격 Supabase DB 호출 격리 및 인메모리 바이패스 픽스처 보강.
+   - `uv run pytest`: **126개 전체 단위 테스트 100% 그린 패스 통과 (`126 passed in 40.48s`)**.
+   - `uv run ruff check .` & `uv run ruff format .`: **린트/포맷팅 100% 통과 (0 errors, 0 warnings)**.
+   - `uv run mypy .`: **정적 타입 체크 80개 소스 파일 무결성 통과 (Success: no issues found)**.
+4. **하네스 문서 동기화**:
+   - `.harness/STATE.md`에 Phase 20 완료 스냅샷 반영.
+   - `.harness/PLAN.md`에서 백엔드 완료 태스크를 제거하고 남은 E2E 통합 스모크 테스트로 정리.
+   - `.harness/DECISIONS.md` 최상단에 5대 이슈 원천 해소 아키텍처 결정 기록.
+
+### 다음 세션에서 할 일
+- 프론트엔드 작업 완료 후 로컬 3대 서비스(Core API, AI Agent, Frontend) 통합 실시간 E2E 스모크 테스트 진행.
+- 사용자 승인 시 `feat/fix-chat-e2e-issues` 브랜치 커밋 및 푸시, PR 생성 보조.
+
+
 
 
 

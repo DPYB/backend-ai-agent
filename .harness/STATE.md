@@ -180,9 +180,19 @@
   - `recommend_books` 도구 리팩토링: Tavily 실시간 탐색 + 국립중앙도서관 4단계 체인 + Redis 캐싱(TTL 1시간) 2-Track 하이브리드 파이프라인 완성
   - 단위 테스트 신규 작성(`tests/unit/test_hybrid_curation.py`, 25개 테스트) 및 전체 125개 단위 테스트 100% 그린 패스 달성 (Ruff 린트/포맷 통과, Mypy 타입 무결성 79개 소스 파일 통과)
 
-- [x] **Phase 19: DPYB 중앙 개발 표준 `.githooks` 프리커밋 훅 연동**
-  - 소스 코드 변경 시 `.harness/STATE.md` 동반 갱신 여부를 검증하고 누락 시 경고를 안내하는 non-blocking pre-commit 훅 반영 (`.githooks/pre-commit`)
-  - 실행 권한(`chmod +x`) 부여 및 `core.hooksPath` 표준화
+- [x] **Phase 20 (Milestone 4): 로컬 E2E 통합 테스트 5대 연동 이슈 원인 해결 및 인프라 안정화**
+  - **이슈 1 (날씨 Signals 누락)**: `WeatherSignal`, `SignalsResponse` Pydantic 모델 정의 및 `ChatResponse.signals` 복원. `_build_signals` 유틸 구현으로 날씨(맑음/흐림/비 등), 기온, KST 시간대(`dawn`, `day`, `evening`, `night`), 무드를 일관되게 제공하여 프론트엔드 `WeatherMoodBadge` 연동 정상화.
+  - **이슈 2 (도서 추천 메타데이터)**: KDC 10대 분류 표준 Enum(`LITERATURE`, `PHILOSOPHY` 등) 매핑 및 국문/영문 상호 보완 변환 헬퍼(`normalize_genre`, `genre_to_korean`, `GENRE_KO_TO_EN`, `GENRE_EN_TO_KO`) 구축. 교보 CDN 표지 URL 및 정수 쪽수(`page_count`) 안정 전달.
+  - **이슈 4 (빈 서재 가짜 목 데이터 및 Token Relay)**: Core API 기본 포트 불일치(8080 ➔ 8000) 수정. `CoreApiClient.get_my_bookshelf`에서 가짜 도서 목 데이터('프로젝트 헤일메리', '듄')를 영구 제거하여 미등록/빈 서재 시 정직하게 `books: []`, `total_count: 0` 반환. `ContextVar`(`current_auth_token`) 기반 Bearer Token Relay 연동으로 사용자별 실제 서재 완벽 격리.
+  - **이슈 5 (토론 페르소나 덮어쓰기 차단 및 팩트 그라운딩)**: `ChatRequest.populate_defaults_and_aliases`에서 토론 모드(`mode == "DEBATE"`) 시 `librarian_id`에 의해 페르소나가 `CAT`으로 강제 덮어쓰기되던 버그 원천 차단. `book_id`, `topic` 파라미터 추가 및 토론 시작 전 국립중앙도서관/Core-API 실제 서지·줄거리 조회 팩트 주입(`debate_book_info`)으로 줄거리 날조/거짓말 원천 차단. 질문 전문을 도서명으로 검색하던 쿼리 오염을 `extract_debate_book_title` 기반으로 정제.
+  - **인프라/런타임 안정화 & 다중 키 임베딩 폴백**:
+    - `greenlet` 패키지 추가 (`uv add greenlet`)로 SQLAlchemy asyncpg 세션/엔진 셧다운 크래시 원천 해결.
+    - Supabase Transaction Pooler(포트 6543) 환경 및 비동기 이벤트 루프 격리에 맞춘 `NullPool` 엔진 적용.
+    - Gemini 임베딩 모델을 `models/gemini-embedding-001` (MRL 768차원 매핑)로 갱신하여 404 에러 원천 차단. 메인 키 소진 시 **팀원 키(`GEMINI_FALLBACK_API_KEY`)로 즉시 자동 스위칭(1,000 + 1,000 = 2,000 RPD)**하는 다중 키 폴백 체계 완성.
+    - 콘솔 및 회전 파일 로깅(`logs/app.log`, 최대 10MB x 5개 백업) 이중 로깅 시스템 구축 및 `.gitignore` 등록.
+  - **자가 검증 완료**: 전체 126개 단위 테스트(Pytest) 100% 그린 패스 통과, Ruff 린트/포맷 통과, Mypy 정적 타입 체크 80개 파일 무결성 통과.
+
+
 
 
 
