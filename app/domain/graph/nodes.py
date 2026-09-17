@@ -145,7 +145,6 @@ def _get_llm(tools: Optional[List[Any]] = None) -> ResilientLLM:
             llm1: Any = ChatGoogleGenerativeAI(
                 model=settings.gemini_model,
                 google_api_key=gemini_key,
-                temperature=0.7,
             )
             if tools:
                 llm1 = llm1.bind_tools(tools)
@@ -165,7 +164,6 @@ def _get_llm(tools: Optional[List[Any]] = None) -> ResilientLLM:
             llm2: Any = ChatGoogleGenerativeAI(
                 model=settings.gemini_model,
                 google_api_key=gemini_fallback_key,
-                temperature=0.7,
             )
             if tools:
                 llm2 = llm2.bind_tools(tools)
@@ -183,7 +181,6 @@ def _get_llm(tools: Optional[List[Any]] = None) -> ResilientLLM:
             llm3: Any = ChatGoogleGenerativeAI(
                 model=light_model,
                 google_api_key=light_key,
-                temperature=0.7,
             )
             if tools:
                 llm3 = llm3.bind_tools(tools)

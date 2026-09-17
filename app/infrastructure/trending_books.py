@@ -36,6 +36,11 @@ DEFAULT_TRENDING_BOOKS: List[Dict[str, str]] = [
         "description": "미래 사회 변화와 개인의 생존 전략",
     },
     {
+        "title": "시대예보: 호명사회",
+        "author": "송길영",
+        "description": "스스로의 이름으로 살아가는 시대의 통찰",
+    },
+    {
         "title": "아주 작은 습관의 힘",
         "author": "제임스 클리어",
         "description": "매일 1%씩 달라지는 삶의 변화",
@@ -74,6 +79,26 @@ DEFAULT_TRENDING_BOOKS: List[Dict[str, str]] = [
         "author": "클레어 키건",
         "description": "용기와 침묵을 깨는 짧고 깊은 감동",
     },
+    {
+        "title": "작별하지 않는다",
+        "author": "한강",
+        "description": "지극한 사랑과 기억에 관한 찬란한 문학",
+    },
+    {
+        "title": "소년이 온다",
+        "author": "한강",
+        "description": "상처와 존엄을 응시하는 뜨거운 울림",
+    },
+    {
+        "title": "채식주의자",
+        "author": "한강",
+        "description": "폭력에 맞선 인간 존재의 깊은 고투",
+    },
+    {
+        "title": "지구 끝의 온실",
+        "author": "김초엽",
+        "description": "폐허 속에서 피어난 연대와 기억의 SF",
+    },
 ]
 
 
@@ -103,7 +128,12 @@ async def fetch_and_cache_trending_books(
                     }
                 )
 
-        logger.info("Parsed %d books from Yes24 RSS feed.", len(trending_books))
+        if trending_books:
+            logger.info("Successfully parsed %d books from Yes24 RSS feed.", len(trending_books))
+        else:
+            logger.info(
+                "RSS feed returned 0 entries (endpoint inactive). Using verified trending books pool."
+            )
     except Exception as e:
         logger.warning("Error fetching/parsing Yes24 RSS feed (%s). Using fallback pool.", e)
 

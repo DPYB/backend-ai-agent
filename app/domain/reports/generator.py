@@ -228,7 +228,6 @@ async def generate_ai_analysis_and_prescription(
                     llm = ChatGoogleGenerativeAI(
                         model=cfg["model"],
                         google_api_key=cfg["key"],
-                        temperature=0.7,
                     )
                     response = await llm.ainvoke(
                         [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]

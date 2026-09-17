@@ -2,6 +2,7 @@
 
 import logging
 import os
+import warnings
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
 
@@ -18,6 +19,13 @@ from app.api.v1.vision import router as vision_router
 from app.core.config import settings
 from app.infrastructure.core_api_client import get_core_api_client
 from app.infrastructure.redis_session import get_redis_session_manager
+
+# Mute repetitive upstream SDK warnings (Automatic Function Calling and fixed sampling parameters)
+warnings.filterwarnings("ignore", message=".*automatic function calling.*")
+warnings.filterwarnings("ignore", message=".*fixed sampling defaults.*")
+logging.getLogger("google.genai.models").setLevel(logging.ERROR)
+logging.getLogger("google_genai.models").setLevel(logging.ERROR)
+logging.getLogger("google.genai._extra_utils").setLevel(logging.ERROR)
 
 # Configure dual logging: console (stdout) + rotating file (logs/app.log)
 log_format = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
