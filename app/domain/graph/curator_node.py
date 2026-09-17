@@ -174,7 +174,6 @@ async def book_curator_node(state: AgentState) -> Dict[str, Any]:
                 raw_llm = ChatGoogleGenerativeAI(
                     model=light_model,
                     google_api_key=gemini_key,
-                    temperature=0.2,
                 )
                 structured_llms_to_try.append(raw_llm.with_structured_output(CuratorResponse))
             except Exception as e:
@@ -194,7 +193,6 @@ async def book_curator_node(state: AgentState) -> Dict[str, Any]:
                 raw_llm = ChatGoogleGenerativeAI(
                     model=light_model,
                     google_api_key=gemini_fallback_key,
-                    temperature=0.2,
                 )
                 structured_llms_to_try.append(raw_llm.with_structured_output(CuratorResponse))
             except Exception as e:
@@ -210,7 +208,6 @@ async def book_curator_node(state: AgentState) -> Dict[str, Any]:
                 raw_llm = ChatGoogleGenerativeAI(
                     model=settings.gemini_model,
                     google_api_key=gemini_key,
-                    temperature=0.2,
                 )
                 structured_llms_to_try.append(raw_llm.with_structured_output(CuratorResponse))
             except Exception as e:

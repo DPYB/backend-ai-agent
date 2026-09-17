@@ -233,6 +233,12 @@
     - Ruff 린트 및 포맷 정렬 100% 통과 (`All checks passed`, `85 files already formatted`).
     - Mypy 정적 타입 체크 80개 소스 파일 100% 무결성 통과 (`Success: no issues found`).
 
+- [x] **Phase 27: 시스템 경고(Fixed Sampling Temperature, AFC Warning) 소거 및 2026 트렌드 도서 풀 강화**
+  - **Gemini Flash Lite 고정 temperature 경고 원천 차단**: Google GenAI 엔진 차원에서 샘플링 temperature 조절을 제한하는 `gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`에 대해 `nodes.py`, `curator_node.py`, `reports/generator.py`, `gemini_ocr_client.py`의 `ChatGoogleGenerativeAI` 인스턴스화 시 불필요한 `temperature` 전달을 제거하여 `UserWarning: Model ... uses fixed sampling defaults` 소거.
+  - **Automatic Function Calling (AFC) 터미널 경고 억제**: `google-genai` SDK v2와 `langchain-google-genai`의 비동기 도구 바인딩 과도기적 경고(`Direct use of automatic function calling...`)를 `app/main.py`의 `warnings` 필터 및 전용 로거 레벨 조정으로 터미널 로그 오염 차단.
+  - **Yes24 폐기 RSS 피드 대응 및 2026 트렌드 도서 풀 강화**: Yes24의 404 미지원 엔드포인트 반환 시 불필요한 에러 로그 대신 안정적 풀 전환 안내 로깅으로 정돈하고, 한강 작가 주요작(작별하지 않는다, 소년이 온다, 채식주의자), 김초엽 《지구 끝의 온실》, 송길영 《시대예보: 호명사회》 등 2024~2026 대표작 풀 대폭 보강.
+  - **자가 검증 완료**: 전체 137개 단위 테스트 100% 그린 패스 통과 (`137 passed in 40.47s`), Ruff 린트 및 포맷 통과, Mypy 타입 체크 80개 파일 100% 무결성 통과.
+
 
 
 

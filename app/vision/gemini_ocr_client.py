@@ -175,7 +175,6 @@ class GeminiOcrClient:
                     gemini_llm = ChatGoogleGenerativeAI(
                         model=cfg["model"],
                         google_api_key=cfg["key"],
-                        temperature=0.0,
                     )
                     res = await gemini_llm.ainvoke(messages)
                     content = getattr(res, "content", "")
@@ -323,7 +322,6 @@ class GeminiOcrClient:
                     gemini_llm = ChatGoogleGenerativeAI(
                         model=cfg["model"],
                         google_api_key=cfg["key"],
-                        temperature=0.0,
                     )
                     res = await gemini_llm.ainvoke(messages)
                     content = getattr(res, "content", "")

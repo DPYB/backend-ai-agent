@@ -807,6 +807,35 @@
 - 사용자의 확인 및 요청 시 `feat/vision-cover-isbn-ocr` 브랜치 커밋 및 푸시, PR 생성 보조.
 - Milestone 6 (Phase 24: 국립도서관 다중 판본 표지·쪽수 생존 우선 매칭 및 등록 폼 장르 보존) 또는 프론트엔드 연동 지원.
 
+---
+
+## 세션 26 (2026-09-17)
+
+### 진행한 작업
+1. **작업 브랜치 분기**:
+   - `develop` 최신화 상태에서 DPYB 표준 규칙에 따라 `feat/system-warning-and-rss-fixes` 브랜치 생성.
+2. **Gemini Flash Lite 모델 Fixed Sampling Temperature 경고 원천 소거**:
+   - `gemini-3.5-flash-lite`, `gemini-3.1-flash-lite` 등 최신 Flash Lite 모델의 고정 샘플링 제한(`UserWarning: Model ... uses fixed sampling defaults`)에 대응.
+   - `app/domain/graph/nodes.py`, `app/domain/graph/curator_node.py`, `app/domain/reports/generator.py`, `app/vision/gemini_ocr_client.py`의 `ChatGoogleGenerativeAI` 인스턴스화 시 불필요한 `temperature` 파라미터 전달을 제거하여 경고 원천 차단.
+3. **Automatic Function Calling (AFC) 터미널 경고 억제**:
+   - `langchain-google-genai`와 `google-genai` SDK v2 간의 비동기 도구 바인딩 과도기적 경고(`Direct use of automatic function calling (AFC)...`)를 `app/main.py`의 `warnings` 필터 및 전용 로거 레벨 조정(`logging.getLogger("google.genai.models").setLevel(logging.ERROR)`)으로 터미널 로그 오염 차단.
+4. **Yes24 폐기 RSS 엔드포인트 대응 및 2026 트렌드 도서 풀 대폭 보강**:
+   - Yes24의 404 미지원 엔드포인트 호출 시 무의미한 에러 로그 대신 안정적 풀 전환 안내 로깅으로 정돈 (`app/infrastructure/trending_books.py`).
+   - 한강 작가 대표작(《작별하지 않는다》, 《소년이 온다》, 《채식주의자》), 김초엽 《지구 끝의 온실》, 송길영 《시대예보: 호명사회》 등 2024~2026 대표작 풀을 추가 보강하여 도서 큐레이터 오픈북 품질 강화.
+5. **품질 검증 및 AI 자가 검증 (Self-Validation) 100% 통과**:
+   - `uv run pytest`: **전체 137개 단위 테스트 100% 그린 패스 (`137 passed in 40.47s`)**.
+   - `uv run ruff check .` & `uv run ruff format .`: **린트/포맷 100% 통과 (`All checks passed`, `90 files already formatted`)**.
+   - `uv run mypy .`: **정적 타입 체크 80개 파일 100% 무결성 통과 (`Success: no issues found in 80 source files`)**.
+6. **하네스 문서 동기화**:
+   - `.harness/STATE.md`에 Phase 27 완료 반영.
+   - `.harness/PLAN.md`에서 완료된 Milestone 7 제거.
+   - `.harness/DECISIONS.md`에 시스템 경고 소거 및 트렌드 도서 풀 강화 결정 기록.
+
+### 다음 세션에서 할 일
+- 사용자의 확인 및 요청 시 `feat/system-warning-and-rss-fixes` 브랜치 커밋 및 푸시, PR 생성 보조.
+- Milestone 4 (프론트엔드 연동 3대 서비스 E2E 스모크 테스트) 진행.
+
+
 
 
 
