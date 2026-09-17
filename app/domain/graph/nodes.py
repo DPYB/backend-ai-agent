@@ -346,7 +346,28 @@ async def _run_persona_node(
     """Universal runner for any of the 8 persona nodes with custom librarian name support."""
     logger.info("Executing persona node: %s", persona_id)
     persona_meta = PERSONA_REGISTRY.get(persona_id, PERSONA_REGISTRY[CAT_ID])
-    system_prompt = persona_meta["system_prompt"]
+
+    # Determine if this is a debate persona
+    is_debate = persona_id.startswith("DEBATE_")
+
+    # For debate personas: dynamically choose opening vs turn prompt based on human message count
+    if is_debate:
+        all_messages = state.get("messages", [])
+        human_msg_count = sum(1 for m in all_messages if isinstance(m, HumanMessage))
+        if human_msg_count <= 1:
+            # First user message → use opening prompt with fixed format
+            system_prompt = persona_meta.get("opening_system_prompt", persona_meta["system_prompt"])
+        else:
+            # Subsequent turns → use turn prompt (no fixed format, mirroring + open question)
+            system_prompt = persona_meta.get("turn_system_prompt", persona_meta["system_prompt"])
+        logger.info(
+            "Debate persona %s: human_msg_count=%d, using %s prompt",
+            persona_id,
+            human_msg_count,
+            "opening" if human_msg_count <= 1 else "turn",
+        )
+    else:
+        system_prompt = persona_meta["system_prompt"]
 
     # Inject user-defined custom librarian name if provided
     custom_name = state.get("librarian_name")
@@ -361,9 +382,9 @@ async def _run_persona_node(
     if context_summary:
         system_prompt += f"\n\n[이전 대화 핵심 팩트 요약 (어조 제외)]\n{context_summary}"
 
-    # Inject real-time weather context if available
+    # Inject real-time weather context if available — ONLY for librarian mode, NOT debate mode
     weather_context = state.get("weather_context")
-    if weather_context:
+    if weather_context and not is_debate:
         system_prompt += (
             f"\n\n[날씨 및 위치 환경 정보]\n{weather_context}\n"
             "지침:\n"
@@ -374,7 +395,6 @@ async def _run_persona_node(
         )
 
     # Inject debate target book factual grounding if in debate mode
-    is_debate = persona_id.startswith("DEBATE_")
     debate_book = state.get("debate_book_info")
     topic = state.get("topic")
 
