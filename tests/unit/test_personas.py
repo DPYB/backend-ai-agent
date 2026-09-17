@@ -128,6 +128,8 @@ def test_librarian_personas_mbti_genre_and_endings():
     assert "~냥" in cat_prompt
     assert "사색가" in cat_prompt
     assert "[호출 명칭]" in cat_prompt
+    assert "동료 사서 안내" in cat_prompt
+    assert "누디" in cat_prompt
 
     # 2. Shoebill: ISTP, 자연과학/기술과학, ~두둥
     shoebill_prompt = PERSONA_REGISTRY[SHOEBILL_ID]["system_prompt"]
@@ -137,6 +139,8 @@ def test_librarian_personas_mbti_genre_and_endings():
     assert "~두둥" in shoebill_prompt
     assert "실용적인 탐구자" in shoebill_prompt
     assert "[호출 명칭]" in shoebill_prompt
+    assert "동료 사서 안내" in shoebill_prompt
+    assert "블루" in shoebill_prompt
 
     # 3. Sea Slug: INFP, 예술/문학, ~누누
     sea_slug_prompt = PERSONA_REGISTRY[SEA_SLUG_ID]["system_prompt"]
@@ -146,6 +150,8 @@ def test_librarian_personas_mbti_genre_and_endings():
     assert "~누누" in sea_slug_prompt
     assert "감성가" in sea_slug_prompt
     assert "[호출 명칭]" in sea_slug_prompt
+    assert "동료 사서 안내" in sea_slug_prompt
+    assert "게코" in sea_slug_prompt
 
     # 4. Gecko: ENFJ, 사회과학/언어/역사, ~크크
     gecko_prompt = PERSONA_REGISTRY[GECKO_ID]["system_prompt"]
@@ -155,6 +161,8 @@ def test_librarian_personas_mbti_genre_and_endings():
     assert "~크크" in gecko_prompt
     assert "공감형 탐구자" in gecko_prompt
     assert "[호출 명칭]" in gecko_prompt
+    assert "동료 사서 안내" in gecko_prompt
+    assert "누디" in gecko_prompt
 
 
 def test_debate_personas_opening_turn_prompt_split():
@@ -219,3 +227,46 @@ def test_debate_personas_turn_prompt_enforces_mirroring_and_open_questions():
         )
         # Must contain open question / ending question guidance
         assert "질문" in turn, f"{persona_id} turn prompt missing question guidance"
+
+
+def test_normalize_persona_comprehensive():
+    """Verify normalize_persona correctly resolves lowercase, aliases, and Korean names to canonical IDs."""
+    from app.domain.personas import normalize_persona
+
+    # Sea slug variations (Nudi)
+    assert normalize_persona("nudi") == SEA_SLUG_ID
+    assert normalize_persona("누디") == SEA_SLUG_ID
+    assert normalize_persona("달팽이") == SEA_SLUG_ID
+    assert normalize_persona("바다달팽이") == SEA_SLUG_ID
+    assert normalize_persona("sea_slug") == SEA_SLUG_ID
+    assert normalize_persona("LIBRARIAN_3") == SEA_SLUG_ID
+
+    # Shoebill variations
+    assert normalize_persona("shoebill") == SHOEBILL_ID
+    assert normalize_persona("stork") == SHOEBILL_ID
+    assert normalize_persona("슈빌") == SHOEBILL_ID
+    assert normalize_persona("황새") == SHOEBILL_ID
+
+    # Cat variations
+    assert normalize_persona("cat") == CAT_ID
+    assert normalize_persona("blue") == CAT_ID
+    assert normalize_persona("블루") == CAT_ID
+    assert normalize_persona("고양이") == CAT_ID
+    assert normalize_persona("RUSSIAN_BLUE") == CAT_ID
+
+    # Gecko variations
+    assert normalize_persona("gecko") == GECKO_ID
+    assert normalize_persona("게코") == GECKO_ID
+    assert normalize_persona("도마뱀") == GECKO_ID
+    assert normalize_persona("LIBRARIAN_4") == GECKO_ID
+
+    # Debate variations
+    assert normalize_persona("critic", default_mode="DEBATE") == DEBATE_CRITIC_ID
+    assert normalize_persona("이동진", default_mode="DEBATE") == DEBATE_CRITIC_ID
+    assert normalize_persona("설민석", default_mode="DEBATE") == DEBATE_STORYTELLER_ID
+    assert normalize_persona("오은영", default_mode="DEBATE") == DEBATE_COUNSELOR_ID
+    assert normalize_persona("강형욱", default_mode="DEBATE") == DEBATE_OBSERVER_ID
+
+    # Defaults
+    assert normalize_persona(None, default_mode="LIBRARIAN") == CAT_ID
+    assert normalize_persona("", default_mode="DEBATE") == DEBATE_CRITIC_ID

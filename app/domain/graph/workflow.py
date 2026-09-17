@@ -55,7 +55,10 @@ ALL_PERSONA_NODES = {
 
 def _get_node_for_persona(persona_id: str) -> str:
     """Return corresponding graph node name for a persona ID."""
-    return PERSONA_NODE_MAP.get(persona_id, "cat_node")
+    from app.domain.personas import normalize_persona
+
+    canonical = normalize_persona(persona_id)
+    return PERSONA_NODE_MAP.get(canonical, "cat_node")
 
 
 def route_entry(state: AgentState) -> str:

@@ -124,8 +124,63 @@ async def test_build_monthly_report_pipeline():
 
 
 @pytest.mark.asyncio
-async def test_get_monthly_report_endpoint_success():
+async def test_get_monthly_report_endpoint_success(monkeypatch: pytest.MonkeyPatch):
     """Verify GET /api/v1/reports/monthly returns 200 OK with combined JSON payload."""
+    from app.infrastructure.core_api_client import get_core_api_client
+
+    core_client = get_core_api_client()
+
+    async def mock_get_monthly_report_stats(year, month, token=None, member_id=None):
+        return {
+            "year": year,
+            "month": month,
+            "memberId": member_id or "11111111-1111-1111-1111-111111111111",
+            "librarian": {
+                "type": "CAT",
+                "name": "블루",
+                "level": 1,
+                "reportTitle": f"블루 사서의 {month}월 독서 리포트",
+            },
+            "overview": {
+                "completedBooksCount": 3,
+                "totalPagesRead": 832,
+                "totalDurationMinutes": 960,
+                "goalBooksCount": 4,
+                "goalAchievementRate": 75.0,
+            },
+            "habits": {
+                "weekdayDistribution": {"MON": 2, "TUE": 3},
+                "timeDistribution": {"evening": 12, "night": 10},
+                "weatherDistribution": {"clear": 15},
+                "avgCompletionDays": 6.5,
+                "longestStreakDays": 5,
+                "totalSessionCount": 34,
+                "avgSessionDurationMinutes": 28.2,
+            },
+            "preferences": {
+                "topGenres": [
+                    {"genre": "LITERATURE", "genreName": "문학", "count": 4, "percentage": 50.0}
+                ],
+                "topSubjects": ["실존주의"],
+                "weatherPreferences": [],
+            },
+            "balance": {
+                "genreBreakdown": [],
+                "dominantGenre": None,
+                "isBiased": False,
+                "diversityScore": 50,
+                "unreadGenres": ["자연과학"],
+            },
+            "traces": {
+                "mostScrappedBooks": [],
+                "featuredRecords": [],
+                "completedBooks": [],
+                "readingBooks": [],
+            },
+        }
+
+    monkeypatch.setattr(core_client, "get_monthly_report_stats", mock_get_monthly_report_stats)
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get(
