@@ -24,12 +24,14 @@ from app.api.schemas import (
 )
 from app.core.config import settings
 from app.core.context import current_auth_token
-from app.domain.graph.nodes import extract_debate_book_title, extract_message_text
+from app.domain.graph.nodes import (
+    extract_debate_book_title,
+    extract_message_text,
+)
 from app.domain.graph.workflow import ALL_PERSONA_NODES, create_agent_graph
 from app.domain.guardrails import evaluate_guardrails
 from app.domain.personas import (
     CAT_ID,
-    DEBATE_CRITIC_ID,
     PERSONA_REGISTRY,
 )
 from app.infrastructure.redis_session import (
@@ -269,7 +271,6 @@ async def _prepare_chat_context(
 ) -> Tuple[str, str, str, Dict[str, Any], Optional[str], RedisSessionManager]:
     """Prepare initial conversation context, weather info, and session state."""
     session_mgr = get_redis_session_manager()
-    session_id = request.session_id or "default"
 
     # Resolve member_id:
     # 1) Verified JWT Bearer token sub
@@ -281,32 +282,49 @@ async def _prepare_chat_context(
     # Set request-scoped token for downstream tool Token Relay
     current_auth_token.set(raw_token)
 
-    # Default persona selection based on mode
+    # Normalize persona using comprehensive matcher
+    from app.domain.personas import normalize_persona
+
     requested_mode = request.mode or "LIBRARIAN"
-    if request.persona:
-        target_persona = request.persona
+    raw_persona = request.librarian_id or request.persona
+    target_persona = normalize_persona(raw_persona, default_mode=requested_mode)
+
+    # 1. Automatic Session Partitioning by Persona ({raw_session_id}:{persona})
+    # For LIBRARIAN mode (where 4 librarians share the library shelf), if the incoming session_id
+    # does not already have the persona suffix, partition it at the DB level ({session}:{persona}).
+    # This physically isolates conversation threads between librarians (e.g. CAT vs SHOEBILL),
+    # ensuring 0% tone contamination and enabling each librarian to maintain its own independent thread.
+    raw_session_id = request.session_id or "default"
+    if requested_mode == "LIBRARIAN" and not raw_session_id.endswith(f":{target_persona}"):
+        partitioned_session_id = f"{raw_session_id}:{target_persona}"
     else:
-        target_persona = CAT_ID if requested_mode == "LIBRARIAN" else DEBATE_CRITIC_ID
+        partitioned_session_id = raw_session_id
 
-    # Normalize backward compatibility aliases
-    alias_map = {
-        "BLUE": "CAT",
-        "RUSSIAN_BLUE": "CAT",
-        "LIBRARIAN_3": "SEA_SLUG",
-        "LIBRARIAN_4": "GECKO",
-    }
-    target_persona = alias_map.get(target_persona, target_persona)
+    session_id = partitioned_session_id
+    logger.info(
+        "Chat context resolved: raw_persona=%s -> target_persona=%s, raw_session=%s -> session_id=%s (thread_id)",
+        raw_persona,
+        target_persona,
+        raw_session_id,
+        session_id,
+    )
 
-    # 1. Retrieve session history from Redis if exists
+    # Retrieve session history from Redis if exists for this partitioned session
     saved_session = await session_mgr.get_session(session_id)
     history_messages: List[BaseMessage] = []
     active_persona = target_persona
     context_summary = None
 
     if saved_session:
-        active_persona = request.persona or saved_session.get("active_persona", active_persona)
-        active_persona = alias_map.get(active_persona, active_persona)
+        saved_persona = saved_session.get("active_persona")
+        saved_persona = (
+            normalize_persona(saved_persona, default_mode=requested_mode) if saved_persona else None
+        )
+        active_persona = normalize_persona(
+            request.persona or saved_persona or target_persona, default_mode=requested_mode
+        )
         context_summary = saved_session.get("context_summary")
+
         for msg_data in saved_session.get("messages", []):
             role = msg_data.get("role")
             content = msg_data.get("content", "")
@@ -496,7 +514,8 @@ async def chat_with_persona(
         )
 
     try:
-        result_state = await _graph.ainvoke(initial_state)
+        run_config = {"configurable": {"thread_id": session_id}}
+        result_state = await _graph.ainvoke(initial_state, config=run_config)
 
         final_messages = result_state.get("messages", [])
         last_ai_msg = ""
@@ -717,7 +736,10 @@ async def chat_stream_with_persona(
             is_concluded = bool(initial_state.get("is_concluded", False))
             debate_summary = initial_state.get("debate_summary")
 
-            async for event in _graph.astream_events(initial_state, version="v2"):
+            run_config = {"configurable": {"thread_id": session_id}}
+            async for event in _graph.astream_events(
+                initial_state, version="v2", config=run_config
+            ):
                 kind = event.get("event")
                 node = event.get("metadata", {}).get("langgraph_node")
 

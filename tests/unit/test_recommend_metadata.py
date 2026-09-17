@@ -127,7 +127,7 @@ async def test_chat_response_includes_recommended_books(monkeypatch):
         }
     ]
 
-    async def mock_ainvoke(state):
+    async def mock_ainvoke(state, *args, **kwargs):
         return {
             **state,
             "messages": [AIMessage(content="데미안을 추천해 드려요냥!")],
@@ -183,7 +183,7 @@ async def test_chat_stream_includes_recommended_books_in_done_event(monkeypatch)
         }
     ]
 
-    async def mock_astream_events(state, version="v2"):
+    async def mock_astream_events(state, version="v2", *args, **kwargs):
         yield {
             "event": "on_chain_end",
             "name": "book_curator_node",

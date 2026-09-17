@@ -182,3 +182,37 @@ async def test_chat_endpoint_guest_mode_success():
         assert response.status_code == 200
         data = response.json()
         assert "reply" in data
+
+
+@pytest.mark.asyncio
+async def test_chat_persona_switch_sanitizes_history_tone():
+    """Verify switching persona automatically partitions session_id at DB level ({session}:{persona})."""
+    transport = ASGITransport(app=app)
+    test_session = "test-session-isolation-1234"
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # Turn 1: Chat with CAT
+        p1 = {
+            "session_id": test_session,
+            "message": "철학에 대해 알고 싶어",
+            "mode": "LIBRARIAN",
+            "persona": "CAT",
+        }
+        res1 = await client.post("/api/v1/chat", json=p1)
+        assert res1.status_code == 200
+        data1 = res1.json()
+        assert data1["active_persona"] == "CAT"
+        assert data1["session_id"] == f"{test_session}:CAT"
+
+        # Turn 2: Switch to GECKO with the same base session_id
+        p2 = {
+            "session_id": test_session,
+            "message": "역사 이야기도 들려줘",
+            "mode": "LIBRARIAN",
+            "persona": "GECKO",
+        }
+        res2 = await client.post("/api/v1/chat", json=p2)
+        assert res2.status_code == 200
+        data2 = res2.json()
+        assert data2["active_persona"] == "GECKO"
+        assert data2["display_name"] == "게코"
+        assert data2["session_id"] == f"{test_session}:GECKO"

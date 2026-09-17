@@ -1,6 +1,6 @@
 """Librarian and Debate personas registry aligned with core-api ENUM."""
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from app.domain.guardrails.shared_rules import SHARED_GUARDRAILS
 from app.domain.personas.cat import (
@@ -150,7 +150,97 @@ PERSONA_REGISTRY: Dict[str, Dict[str, Any]] = {
     },
 }
 
+
+def normalize_persona(raw_persona: Optional[str], default_mode: str = "LIBRARIAN") -> str:
+    """Safely normalize and match any persona ID, frontend alias, Korean name, or lowercase string
+
+    to an official PERSONA_REGISTRY key.
+
+    Returns:
+        Canonical persona ID (e.g. 'CAT', 'SHOEBILL', 'SEA_SLUG', 'GECKO', 'DEBATE_CRITIC', etc.)
+    """
+    if not raw_persona or not str(raw_persona).strip():
+        return CAT_ID if default_mode.upper() == "LIBRARIAN" else DEBATE_CRITIC_ID
+
+    cleaned = str(raw_persona).strip()
+    upper = cleaned.upper()
+
+    # 1. Direct registry hit
+    if upper in PERSONA_REGISTRY:
+        return upper
+
+    # 2. Comprehensive normalization alias mapping
+    alias_dict = {
+        # CAT / Blue
+        "CAT": CAT_ID,
+        "BLUE": CAT_ID,
+        "RUSSIAN_BLUE": CAT_ID,
+        "RUSSIANBLUE": CAT_ID,
+        "고양이": CAT_ID,
+        "블루": CAT_ID,
+        # SHOEBILL
+        "SHOEBILL": SHOEBILL_ID,
+        "STORK": SHOEBILL_ID,
+        "슈빌": SHOEBILL_ID,
+        "넙적부리황새": SHOEBILL_ID,
+        "넓적부리황새": SHOEBILL_ID,
+        "황새": SHOEBILL_ID,
+        # SEA_SLUG / Nudi
+        "SEA_SLUG": SEA_SLUG_ID,
+        "SEASLUG": SEA_SLUG_ID,
+        "SLUG": SEA_SLUG_ID,
+        "NUDI": SEA_SLUG_ID,
+        "NOODI": SEA_SLUG_ID,
+        "LIBRARIAN_3": SEA_SLUG_ID,
+        "LIBRARIAN3": SEA_SLUG_ID,
+        "누디": SEA_SLUG_ID,
+        "달팽이": SEA_SLUG_ID,
+        "바다달팽이": SEA_SLUG_ID,
+        "갯민숭달팽이": SEA_SLUG_ID,
+        # GECKO
+        "GECKO": GECKO_ID,
+        "GEKO": GECKO_ID,
+        "LIBRARIAN_4": GECKO_ID,
+        "LIBRARIAN4": GECKO_ID,
+        "게코": GECKO_ID,
+        "도마뱀": GECKO_ID,
+        "게코도마뱀": GECKO_ID,
+        # DEBATE PARTNERS
+        "DEBATE_CRITIC": DEBATE_CRITIC_ID,
+        "CRITIC": DEBATE_CRITIC_ID,
+        "이동진": DEBATE_CRITIC_ID,
+        "평론가": DEBATE_CRITIC_ID,
+        "DEBATE_STORYTELLER": DEBATE_STORYTELLER_ID,
+        "STORYTELLER": DEBATE_STORYTELLER_ID,
+        "설민석": DEBATE_STORYTELLER_ID,
+        "이야기꾼": DEBATE_STORYTELLER_ID,
+        "DEBATE_COUNSELOR": DEBATE_COUNSELOR_ID,
+        "COUNSELOR": DEBATE_COUNSELOR_ID,
+        "오은영": DEBATE_COUNSELOR_ID,
+        "상담사": DEBATE_COUNSELOR_ID,
+        "DEBATE_OBSERVER": DEBATE_OBSERVER_ID,
+        "OBSERVER": DEBATE_OBSERVER_ID,
+        "강형욱": DEBATE_OBSERVER_ID,
+        "관찰가": DEBATE_OBSERVER_ID,
+    }
+
+    if upper in alias_dict:
+        return alias_dict[upper]
+    if cleaned in alias_dict:
+        return alias_dict[cleaned]
+
+    # Partial / substring fallback
+    cleaned_lower = cleaned.lower()
+    for alias_key, target_id in alias_dict.items():
+        if alias_key.lower() == cleaned_lower:
+            return target_id
+
+    # Fallback to default
+    return CAT_ID if default_mode.upper() == "LIBRARIAN" else DEBATE_CRITIC_ID
+
+
 __all__ = [
+    "normalize_persona",
     "PERSONA_REGISTRY",
     "CAT_ID",
     "CAT_DISPLAY_NAME",

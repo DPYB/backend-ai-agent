@@ -259,6 +259,44 @@
   - **월간 리포트 사서 LLM 프롬프트 및 빌더 연동 (`app/domain/reports/generator.py`)**: `_build_llm_report_prompt` 통계 요약에 세션 횟수 및 1회 평균 집중 독서 시간을 주입하여 사서가 디테일한 몰입 칭찬 멘트를 합성하도록 개선하고, `build_monthly_report`에서 신규 필드 파싱 매핑 완료.
   - **자가 검증 완료 (Self-Validation)**: `tests/unit/test_monthly_reports.py` 신규 필드 및 엔드포인트 응답 검증 완료. 전체 141개 단위 테스트 100% 그린 패스 통과, Ruff 린트/포맷 통과, Mypy 정적 타입 체크 80개 파일 무결성 통과.
 
+- [x] **Phase 31 (Milestone 5): 사서 동료 자연스러운 소개 지침 및 DB 레벨 세션 자동 파티셔닝(`{session_id}:{persona}`)을 통한 어조 오염(`~냥`, `~크크` 혼합) 물리적 0% 격리**
+  - **사서 4종 동료 사서 안내 및 자연스러운 소개 지침 탑재 (`cat.py`, `shoebill.py`, `sea_slug.py`, `gecko.py`)**:
+    - 본인 담당 장르를 벗어난 분야 요청 시, 시스템 팝업을 강제하지 않고 자신의 고유 어조(~냥, ~두둥, ~누누, ~크크)로 전문 동료 사서(블루-철학/사색, 슈빌-과학/기술, 누디-문학/예술, 게코-역사/사회)를 다정하게 소개하고 사서 변경 이용을 자연스럽게 권유하는 표준 지침 적용.
+  - **사서 변경 추천 버튼(`switch_suggestion`) 오작동 및 노이즈 제거 (`nodes.py`)**:
+    - AI의 동료 소개나 사용자의 단순 사서명/동물명 언급 시 `switch_suggestion` 버튼이 무차별 발동되던 결함을 수정하여, 사용자의 명시적인 변경 의도("바꿔", "변경", "전환" 등)가 포함된 경우에만 정밀하게 버튼이 제안되도록 개선.
+  - **DB 레벨 사서별 세션 자동 파티셔닝 (`router.py`)**:
+    - 프론트엔드가 별도 파티셔닝 없이 공통 `session_id`를 보내더라도, 백엔드에서 사서 모드일 때 강제로 `{session_id}:{persona}`(예: `user_123:CAT`, `user_123:SHOEBILL`)로 세션 키를 자동 파티셔닝.
+    - Redis / LangGraph 세션 레벨에서 사서별 대화 스레드가 물리적으로 완벽 분리되어, 이전 사서의 말투와 대화 메시지가 새 사서의 히스토리에 섞이는 어조 오염을 물리적으로 0% 원천 차단.
+  - **자가 검증 완료 (Self-Validation)**:
+    - 신규 단위 테스트 추가 및 검증 완료 (`test_no_switch_intent_on_casual_mention_without_explicit_switch`, `test_chat_persona_switch_sanitizes_history_tone`, 사서 4종 동료 지침 검증).
+    - 전체 143개 단위 테스트(Pytest) 100% 그린 패스 통과 (`143 passed in 45.43s`).
+    - Ruff 린트 및 포맷 정렬 100% 통과 (`All checks passed`, `90 files already formatted`).
+    - Mypy 정적 타입 체크 80개 소스 파일 100% 무결성 통과 (`Success: no issues found in 80 source files`).
+
+- [x] **Phase 32 (Phase 27): nodes.py 규칙 기반 하드코딩 완전 제거 및 Tool Calling 기반 지능형 인텐트 라우팅 리팩토링**
+  - **`_detect_switch_intent` 및 하드코딩 사서 감지 맵 완벽 삭제**:
+    - 사서 전환은 프론트엔드 상단 UI 탭 전환 및 `{session_id}:{persona}` DB 세션 자동 파티셔닝에 완전 위임하고, 코드 내 if-else 기반 사서 감지 함수 및 키워드 검사를 전면 삭제.
+  - **하드코딩 키워드 배열(`conclude_keywords`, `recom_keywords`) 영구 제거**:
+    - 문자열 목록(`conclude_keywords`, `recom_keywords`)에 대한 단순 `in last_user_msg` 하드코딩 분기 검사를 제거 (단, 명시적 UI 버튼 요청인 `action == "conclude"`는 0ms 즉시 피날레 지원 유지).
+  - **Tool Calling 기반 인텐트 라우팅 구현 (`app/domain/graph/tools.py`, `nodes.py`)**:
+    - `@tool trigger_debate_conclude(reason: str)`: 사용자가 토론 종료/마무리 의사를 보일 때 LLM이 에이전트 도구로 자율 호출하여 `curator_node` 피날레 큐레이션으로 라우팅.
+    - `@tool request_book_curation(query: str)`: 사용자가 책 추천/큐레이션 의사를 표현할 때 LLM이 에이전트 도구로 자율 호출하여 `curator_node` 국립도서관 정밀 검증으로 라우팅.
+    - LLM 응답 후 `tool_calls` 검사를 통해 피날레 및 큐레이터 서브에이전트로 자연스럽게 위임되도록 파이프라인 통합.
+  - **ResilientLLM Mock 응답 내 캐릭터 붕괴 및 하드코딩 요약 제거**:
+    - `_generate_mock_response` 내에 남아있던 특정 페르소나(평론가의 별점/한줄평 등) 편향 텍스트를 제거하고, 어조를 타지 않는 안전하고 건조한 중립적 메시지로 축소하여 페르소나 붕괴 방지.
+  - **페르소나 ID 안전 정규화 체계 구축 (`app/domain/personas/__init__.py`)**:
+    - `normalize_persona` 함수를 신설하여 프론트엔드가 소문자(`nudi`, `gecko`), 한글명(`누디`, `게코`, `달팽이`, `황새`), 레거시 ID(`LIBRARIAN_3`, `stork`) 등 어떤 변형값으로 보내더라도 `SEA_SLUG`, `SHOEBILL`, `CAT`, `GECKO` 등 공식 `PERSONA_REGISTRY` 키로 100% 안전하게 매핑.
+    - 매칭 실패로 기본값 `CAT_ID`(고양이 말투)로 떨어져 발생하던 다중 인격 결함을 원천 차단.
+    - `schemas.py`, `router.py`, `nodes.py`, `workflow.py` 전반에 걸쳐 `normalize_persona` 일괄 적용.
+  - **LangGraph Configurable `thread_id` 명시적 주입 (`router.py`)**:
+    - `_graph.ainvoke` 및 `_graph.astream_events` 호출 시 `config={"configurable": {"thread_id": session_id}}`를 명시적으로 주입하여, 백엔드 Redis 파티셔닝뿐만 아니라 LangGraph 체크포인터/런타임 레벨에서도 `{session_id}:{persona}` 스레드가 완벽히 분리되도록 보장.
+    - 세션 컨텍스트 생성 시 `raw_persona -> target_persona`, `raw_session -> session_id (thread_id)` 추적 로그 명시.
+  - **자가 검증 완료 (Self-Validation)**:
+    - `test_personas.py` 내 `test_normalize_persona_comprehensive` 신규 테스트 추가 (12종 변형 매핑 검증 완료).
+    - 전체 144개 단위 테스트 100% 그린 패스 통과 (`144 passed in 39.38s`).
+    - Ruff 린트/포맷 100% 통과 (`All checks passed`).
+    - Mypy 정적 타입 체크 80개 소스 파일 100% 무결성 통과 (`Success: no issues found in 80 source files`).
+
 
 
 

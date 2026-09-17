@@ -128,7 +128,7 @@ async def test_debate_critic_node_generates_response():
 
 @pytest.mark.asyncio
 async def test_handoff_trigger_and_summarizer():
-    """Verify handoff detection and summarizer_node stripping tone to retain facts."""
+    """Verify session isolation and summarizer_node stripping tone to retain facts upon explicit handoff."""
     state = {
         "messages": [
             HumanMessage(content="1타 강사 슈빌로 바꿔주세요!"),
@@ -142,19 +142,23 @@ async def test_handoff_trigger_and_summarizer():
         "handoff_target": None,
     }
 
+    # With rule-based _detect_switch_intent removed, node keeps its session isolated and relies on frontend tab switching
     rb_res = await cat_node(state)
-    assert rb_res["handoff_target"] == SHOEBILL_ID
-    assert rb_res["switch_suggestion"] is not None
+    assert rb_res["active_persona"] == CAT_ID
+    assert rb_res.get("handoff_target") is None
+    assert rb_res.get("switch_suggestion") is None
 
+    # When handoff_target is explicitly passed to summarizer_node (e.g. via tab switch / state transfer),
+    # verify summarizer extracts factual context and sets active_persona
     state_for_summary = {
         "messages": state["messages"] + rb_res["messages"],
         "member_id": "test-uuid",
         "active_persona": CAT_ID,
         "librarian_name": None,
         "mode": "LIBRARIAN",
-        "switch_suggestion": rb_res["switch_suggestion"],
+        "switch_suggestion": None,
         "context_summary": None,
-        "handoff_target": rb_res["handoff_target"],
+        "handoff_target": SHOEBILL_ID,
     }
 
     summary_res = await summarizer_node(state_for_summary)
@@ -183,3 +187,25 @@ async def test_graph_end_to_end_invocation():
     assert len(final_state["messages"]) >= 2
     last_msg = final_state["messages"][-1]
     assert isinstance(last_msg, AIMessage)
+
+
+@pytest.mark.asyncio
+async def test_no_switch_intent_on_casual_mention_without_explicit_switch():
+    """Verify that merely mentioning a colleague or creature without '바꿔/변경' does NOT trigger switch_suggestion."""
+    state = {
+        "messages": [
+            HumanMessage(content="도마뱀이나 황새가 나오는 동물 동화책 추천해줘!"),
+        ],
+        "member_id": "test-uuid",
+        "active_persona": CAT_ID,
+        "librarian_name": None,
+        "mode": "LIBRARIAN",
+        "switch_suggestion": None,
+        "context_summary": None,
+        "handoff_target": None,
+    }
+
+    res = await cat_node(state)
+    # Should NOT trigger switch or handoff because user didn't ask to switch librarian
+    assert res.get("handoff_target") is None
+    assert res.get("switch_suggestion") is None

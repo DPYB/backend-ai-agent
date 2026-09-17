@@ -2,13 +2,13 @@
 
 import logging
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 
 from app.core.config import settings
-from app.domain.graph.state import AgentState, SwitchSuggestion
+from app.domain.graph.state import AgentState
 from app.domain.graph.tools import GENERIC_TOOLS
 from app.domain.personas import (
     CAT_ID,
@@ -100,16 +100,62 @@ class ResilientLLM:
     def _generate_mock_response(self, messages: List[BaseMessage]) -> AIMessage:
         last_msg = str(messages[-1].content) if messages else ""
         system_text = "".join(str(m.content) for m in messages if isinstance(m, SystemMessage))
+
+        # Check if bound tools contain routing tools and books are not yet curated in system_prompt
+        has_curated_books = "검증한 국립중앙도서관 실존 도서 목록" in system_text
+        bound_tool_names = [getattr(t, "name", "") for t in self.bound_tools]
+
+        # 1. Natural debate conclude trigger via tool call
+        if (
+            "trigger_debate_conclude" in bound_tool_names
+            and not has_curated_books
+            and any(
+                w in last_msg for w in ["마무리", "종료", "끝", "여기까지", "수고하셨", "그만할래"]
+            )
+        ):
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "trigger_debate_conclude",
+                        "args": {"reason": "사용자가 토론 마무리 의사를 표현함"},
+                        "id": "mock_call_conclude_1",
+                    }
+                ],
+            )
+
+        # 2. Book curation request trigger via tool call
+        if (
+            "request_book_curation" in bound_tool_names
+            and not has_curated_books
+            and any(
+                w in last_msg
+                for w in [
+                    "추천",
+                    "골라줘",
+                    "권해줘",
+                    "어떤 책",
+                    "읽을만한",
+                    "책 찾아",
+                    "뭘 읽",
+                    "무슨 책",
+                ]
+            )
+        ):
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "request_book_curation",
+                        "args": {"query": last_msg},
+                        "id": "mock_call_curation_1",
+                    }
+                ],
+            )
+
         if "마무리" in last_msg or "피날레" in last_msg or "피날레" in system_text:
             return AIMessage(
-                content=(
-                    "[토론 요약]\n"
-                    "오늘 우리는 텍스트에 내재된 상실과 인간의 실존적 고뇌에 대해 깊이 있는 대화를 나누었습니다.\n\n"
-                    "★ 별점: 4.5 / 5.0\n"
-                    "■ 한 줄 총평: 고통을 응시함으로써 비로소 피어나는 연대의 온기.\n\n"
-                    "오늘 나눈 사유의 여운을 이어갈 다음 책으로 추천해 드린 도서를 서재에 담아 깊이 음미해 보시길 바랍니다. "
-                    "풍요로운 대화 나눠주셔서 대단히 감사했습니다."
-                )
+                content="대화의 여운을 남기며, 오늘 나눈 사유를 바탕으로 추천해 드린 책을 서재에서 꼭 만나보시길 바랍니다. 감사합니다."
             )
         if "서재" in last_msg or "책장" in last_msg:
             return AIMessage(
@@ -290,65 +336,20 @@ def _extract_debate_summary(ai_content: str) -> Optional[str]:
     return ai_content[:200]
 
 
-def _detect_switch_intent(
-    last_user_message: str,
-    ai_content: str,
-    current_persona: str,
-) -> Tuple[Optional[SwitchSuggestion], Optional[str]]:
-    """Detect if handoff suggestion or immediate handoff should be triggered among 8 personas."""
-    text = (last_user_message + " " + ai_content).lower()
-
-    # Keyword to Persona mapping for intentional switching
-    switch_map = {
-        "슈빌": SHOEBILL_ID,
-        "1타": SHOEBILL_ID,
-        "블루": CAT_ID,
-        "고양이": CAT_ID,
-        "달팽이": SEA_SLUG_ID,
-        "누디": SEA_SLUG_ID,
-        "갯민숭달팽이": SEA_SLUG_ID,
-        "바다달팽이": SEA_SLUG_ID,
-        "심해": SEA_SLUG_ID,
-        "게코": GECKO_ID,
-        "도마뱀": GECKO_ID,
-        "평론가": DEBATE_CRITIC_ID,
-        "이동진": DEBATE_CRITIC_ID,
-        "이야기꾼": DEBATE_STORYTELLER_ID,
-        "설민석": DEBATE_STORYTELLER_ID,
-        "상담사": DEBATE_COUNSELOR_ID,
-        "오은영": DEBATE_COUNSELOR_ID,
-        "관찰가": DEBATE_OBSERVER_ID,
-        "강형욱": DEBATE_OBSERVER_ID,
-    }
-
-    explicit_change = "바꿔" in text or "변경" in text or "전환" in text
-
-    for keyword, target_persona_id in switch_map.items():
-        if target_persona_id != current_persona and keyword in text:
-            target_meta = PERSONA_REGISTRY.get(target_persona_id, {})
-            display_name = target_meta.get("display_name", target_persona_id)
-            suggestion: SwitchSuggestion = {
-                "suggested_persona": target_persona_id,
-                "display_name": display_name,
-                "reason": f"새로운 시선으로 대화를 이어갈 수 있도록 '{display_name}' 파트너로의 전환을 제안합니다.",
-            }
-            target = target_persona_id if explicit_change else None
-            return suggestion, target
-
-    return None, None
-
-
 async def _run_persona_node(
     state: AgentState,
     persona_id: str,
     config: Optional[RunnableConfig] = None,
 ) -> Dict[str, Any]:
     """Universal runner for any of the 8 persona nodes with custom librarian name support."""
-    logger.info("Executing persona node: %s", persona_id)
-    persona_meta = PERSONA_REGISTRY.get(persona_id, PERSONA_REGISTRY[CAT_ID])
+    from app.domain.personas import normalize_persona
+
+    canonical_persona_id = normalize_persona(persona_id)
+    logger.info("Executing persona node: %s (canonical: %s)", persona_id, canonical_persona_id)
+    persona_meta = PERSONA_REGISTRY.get(canonical_persona_id, PERSONA_REGISTRY[CAT_ID])
 
     # Determine if this is a debate persona
-    is_debate = persona_id.startswith("DEBATE_")
+    is_debate = canonical_persona_id.startswith("DEBATE_")
 
     # For debate personas: dynamically choose opening vs turn prompt based on human message count
     if is_debate:
@@ -422,30 +423,15 @@ async def _run_persona_node(
             last_user_msg = str(msg.content)
             break
 
-    # 1. Conclude Intent Check (UI button action='conclude' or natural conclude phrasing)
+    # 1. Conclude Intent Check (UI explicit action='conclude' or already concluded)
     action = state.get("action") or "chat"
-    conclude_keywords = [
-        "토론 끝",
-        "토론 마무리",
-        "여기까지",
-        "수고하셨",
-        "그만할래",
-        "토론 종료",
-        "끝내자",
-        "끝낼래",
-        "마무리하자",
-        "마무리할래",
-        "정리해줘",
-    ]
-    is_conclude_requested = (action == "conclude") or (
-        is_debate and any(kw in last_user_msg for kw in conclude_keywords)
-    )
+    is_conclude_requested = action == "conclude"
     is_already_concluded = bool(state.get("is_concluded"))
 
-    # If conclude is requested and books are not yet curated, delegate to curator_node
+    # If conclude is explicitly requested via UI and books are not yet curated, delegate to curator_node
     if (is_conclude_requested or is_already_concluded) and not state.get("curated_books"):
         logger.info(
-            "Conclude intent detected for persona %s. Delegating to curator_node for wrap-up books.",
+            "Conclude action detected for persona %s. Delegating to curator_node for wrap-up books.",
             persona_id,
         )
         debate_topic = _extract_debate_topic(state.get("messages", []))
@@ -454,30 +440,6 @@ async def _run_persona_node(
             "curator_request": f"토론 마무리 연계 추천: {debate_topic}",
             "is_concluded": True,
         }
-
-    # 2. If recommendation/curation intent is present and books are not yet curated,
-    # immediately delegate to curator_node to verify real books without an extra LLM call
-    if not state.get("curated_books"):
-        recom_keywords = [
-            "추천",
-            "골라줘",
-            "권해줘",
-            "어떤 책",
-            "읽을만한",
-            "책 찾아",
-            "뭘 읽",
-            "무슨 책",
-            "책 좀",
-            "도서 추천",
-            "책 하나",
-            "책 알려줘",
-        ]
-        if any(kw in last_user_msg for kw in recom_keywords):
-            logger.info("Recommendation intent detected. Delegating directly to curator_node.")
-            return {
-                "active_persona": persona_id,
-                "curator_request": last_user_msg,
-            }
 
     # Inject verified curated books if returned from curator_node
     curated_books = state.get("curated_books")
@@ -499,7 +461,7 @@ async def _run_persona_node(
             "- 존재하지 않는 가짜 책을 임의로 지어내지 마십시오."
         )
 
-    # 3. Inject finale & debate wrap-up instructions if concluding
+    # 2. Inject finale & debate wrap-up instructions if concluding
     is_conclude_active = is_conclude_requested or is_already_concluded
     if is_conclude_active:
         system_prompt += (
@@ -533,16 +495,42 @@ async def _run_persona_node(
     # If books have already been curated, exclude recommendation tools to prevent duplicate LLM/API calls
     active_tools = GENERIC_TOOLS
     if curated_books:
-        active_tools = [t for t in GENERIC_TOOLS if getattr(t, "name", "") != "search_recent_books"]
+        active_tools = [
+            t
+            for t in GENERIC_TOOLS
+            if getattr(t, "name", "") not in ("search_recent_books", "request_book_curation")
+        ]
 
     llm = _get_llm(tools=active_tools)
     response = await llm.ainvoke(prompt_messages, config=config)
 
-    suggestion, target = _detect_switch_intent(
-        last_user_msg,
-        str(response.content),
-        persona_id,
-    )
+    # Check for Agent Tool Calls (trigger_debate_conclude or request_book_curation)
+    tool_calls = getattr(response, "tool_calls", None) or []
+    for call in tool_calls:
+        call_name = call.get("name") if isinstance(call, dict) else getattr(call, "name", "")
+        call_args = call.get("args") if isinstance(call, dict) else getattr(call, "args", {})
+        if not isinstance(call_args, dict):
+            call_args = {}
+
+        if call_name == "trigger_debate_conclude":
+            logger.info("LLM invoked trigger_debate_conclude. Delegating to curator_node.")
+            debate_topic = _extract_debate_topic(state.get("messages", []))
+            return {
+                "active_persona": persona_id,
+                "curator_request": f"토론 마무리 연계 추천: {debate_topic}",
+                "is_concluded": True,
+            }
+
+        if call_name == "request_book_curation" and not curated_books:
+            curation_query = call_args.get("query") or last_user_msg
+            logger.info(
+                "LLM invoked request_book_curation with query '%s'. Delegating to curator_node.",
+                curation_query,
+            )
+            return {
+                "active_persona": persona_id,
+                "curator_request": curation_query,
+            }
 
     debate_summary: Optional[str] = None
     if is_conclude_active:
@@ -551,8 +539,8 @@ async def _run_persona_node(
     result: Dict[str, Any] = {
         "messages": [response],
         "active_persona": persona_id,
-        "switch_suggestion": suggestion,
-        "handoff_target": target,
+        "switch_suggestion": None,
+        "handoff_target": None,
         "is_concluded": is_conclude_active,
         "debate_summary": debate_summary,
     }
@@ -628,18 +616,15 @@ async def debate_observer_node(
 
 
 # ==============================================================================
-# 🔄 Summarizer Node (Persona Contamination Prevention)
+# 🔄 Summarizer Node & Fact Sanitizer (Persona Contamination Prevention)
 # ==============================================================================
-async def summarizer_node(state: AgentState) -> Dict[str, Any]:
-    """Strip persona-specific tone and extract pure factual context during handoff.
+async def summarize_conversation_facts(messages: List[BaseMessage]) -> str:
+    """Strip persona-specific tone and extract pure factual context from conversation messages.
 
-    Prevents persona contamination across all 8 personas.
+    Prevents persona and tone contamination across all 8 personas.
     """
-    target_persona = state.get("handoff_target") or CAT_ID
-    logger.info("Executing summarizer_node: handing off to %s", target_persona)
-
     conversation_text = ""
-    for msg in state["messages"][-6:]:
+    for msg in messages[-6:]:
         role = "사용자" if isinstance(msg, HumanMessage) else "사서/토론자"
         conversation_text += f"{role}: {msg.content}\n"
 
@@ -661,6 +646,18 @@ async def summarizer_node(state: AgentState) -> Dict[str, Any]:
             "- 사용자와 책에 대한 대화를 진행 중이었음.\n- 특정 취향과 질문에 대한 관심 표명."
         )
 
+    return fact_summary
+
+
+async def summarizer_node(state: AgentState) -> Dict[str, Any]:
+    """Strip persona-specific tone and extract pure factual context during handoff.
+
+    Prevents persona contamination across all 8 personas.
+    """
+    target_persona = state.get("handoff_target") or CAT_ID
+    logger.info("Executing summarizer_node: handing off to %s", target_persona)
+
+    fact_summary = await summarize_conversation_facts(state.get("messages", []))
     logger.info("Sanitized fact summary: %s", fact_summary)
 
     return {

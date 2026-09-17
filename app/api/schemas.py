@@ -85,18 +85,13 @@ class ChatRequest(BaseModel):
     def populate_defaults_and_aliases(self) -> "ChatRequest":
         # 1. Do not auto-generate member_id; keep None for guest users
 
-        # 2. Map librarian_id to persona ONLY if mode is not DEBATE and persona was not explicitly set to a debate persona
-        if self.librarian_id and self.mode != "DEBATE":
-            lib_id = self.librarian_id.strip().upper()
-            mapping = {
-                "CAT": "CAT",
-                "STORK": "SHOEBILL",
-                "SHOEBILL": "SHOEBILL",
-                "SEA_SLUG": "SEA_SLUG",
-                "GECKO": "GECKO",
-            }
-            if lib_id in mapping and (not self.persona or self.persona in mapping):
-                self.persona = mapping[lib_id]
+        # 2. Normalize persona and map librarian_id securely
+        from app.domain.personas import normalize_persona
+
+        effective_raw = (
+            self.librarian_id if (self.librarian_id and self.mode != "DEBATE") else self.persona
+        )
+        self.persona = normalize_persona(effective_raw, default_mode=self.mode or "LIBRARIAN")
 
         # 3. Assemble location from flat coordinates if not already present
         if not self.location and self.latitude is not None and self.longitude is not None:
