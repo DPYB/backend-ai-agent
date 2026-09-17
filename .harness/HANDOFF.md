@@ -989,3 +989,74 @@
 - 사용자의 확인 및 요청 시 `feat/reading-session-report-enhancement` 커밋 및 푸시, PR 생성 보조.
 - backend-core-api의 `reading_sessions` API 배포 후 통합 연동 확인.
 
+---
+
+## 세션 32 (2026-09-17)
+
+### 진행한 작업
+1. **작업 브랜치 분기**:
+   - `feat/librarian-colleague-intro-and-session-isolation` 생성
+2. **사서 4종 동료 사서 안내 및 자연스러운 소개 지침 탑재 (`app/domain/personas/`)**:
+   - `cat.py`, `shoebill.py`, `sea_slug.py`, `gecko.py` 4종 사서 시스템 프롬프트에 `# 동료 사서 안내 및 추천 원칙` 지침 추가.
+   - 타 장르 요청 시 기계적인 시스템 팝업을 띄우지 않고, 고유 어조(~냥, ~두둥, ~누누, ~크크)로 전문 동료 사서를 자연스럽게 소개하고 사서 변경 이용을 권유하도록 프롬프트 표준화.
+3. **사서 변경 추천 버튼(`switch_suggestion`) 정밀화 및 오발동 제거 (`app/domain/graph/nodes.py`)**:
+   - `_detect_switch_intent`에서 AI의 동료 언급이나 사용자의 단순 도서/동물 언급으로 인한 무차별 버튼 발동 결함 수정.
+   - 사용자의 명시적인 변경 발화("바꿔", "변경", "전환" 등)가 포함된 경우에만 정밀하게 버튼이 제안되도록 개선.
+4. **DB 레벨 사서별 세션 자동 파티셔닝 (`app/api/router.py`)**:
+   - 프론트엔드가 공통 `session_id`를 보내더라도, 백엔드에서 사서 모드 시 강제로 `{session_id}:{persona}`(예: `user_123:CAT`, `user_123:SHOEBILL`)로 Redis / LangGraph 세션 키를 자동 파티셔닝.
+   - DB 레벨에서 사서별 대화 스레드가 물리적으로 완벽히 격리되어, 이전 사서의 어조와 대화가 새 사서에게 전달되는 어조 오염을 물리적으로 0% 원천 차단.
+5. **품질 검증 및 테스트 전수 통과 (Self-Validation)**:
+   - 신규 단위 테스트 추가 및 세션 파티셔닝 검증 완료 (`test_api.py`, `test_graph_handoff.py`).
+   - `uv run pytest`: **전체 143개 단위 테스트 100% 그린 패스 (143 passed in 45.43s)**.
+   - `uv run ruff check .` & `uv run ruff format --check .`: **린트/포맷 100% 통과**.
+   - `uv run mypy .`: **80개 소스 파일 100% 무결성 통과**.
+6. **하네스 문서 동기화**:
+   - `.harness/PLAN.md` 완료 항목 제거 및 `.harness/STATE.md`에 Phase 31 완료 반영.
+
+### 다음 세션에서 할 일
+- 사용자의 컨펌 후 `feat/librarian-colleague-intro-and-session-isolation` 커밋 및 푸시, PR 생성 보조.
+- Milestone 4 프론트엔드 연동 E2E 통합 스모크 테스트 진행.
+
+---
+
+## 세션 25 (2026-09-17)
+
+### 진행한 작업
+1. **규칙 기반 `_detect_switch_intent` 및 하드코딩 키워드 감지 전면 제거**:
+   - `app/domain/graph/nodes.py`:
+     - 사서 변경 감지 함수 `_detect_switch_intent` 및 switch_map 삭제.
+     - 사서 변경은 프론트엔드 UI 상단 탭 전환과 이미 구현된 `{session_id}:{persona}` DB 세션 파티셔닝에 완전 위임.
+     - `conclude_keywords`, `recom_keywords` 문자열 리스트 및 단순 if-else 키워드 매칭 로직 영구 삭제.
+     - 명시적 UI 버튼 요청(`action == "conclude"`)은 LLM 불필요 호출 없이 즉시 피날레 큐레이션으로 직행하도록 0ms 처리 유지.
+2. **에이전트 Tool Calling 기반 지능형 라우팅 구현**:
+   - `app/domain/graph/tools.py`:
+     - `@tool trigger_debate_conclude(reason: str)`: 사용자의 토론 종료/마무리 의사를 LLM이 감지했을 때 호출하는 전용 도구 등록.
+     - `@tool request_book_curation(query: str)`: 사용자가 도서 추천/큐레이션 의사를 표현할 때 LLM이 자율 호출하는 전용 도구 등록.
+     - `GENERIC_TOOLS`에 등록하여 페르소나 에이전트와 LLM 바인딩 완성.
+   - `app/domain/graph/nodes.py`:
+     - LLM 응답 후 `response.tool_calls`를 검사하여 `trigger_debate_conclude` 호출 시 `curator_node` 피날레 큐레이션으로 라우팅(`is_concluded = True`), `request_book_curation` 호출 시 큐레이터 서브에이전트로 자연스럽게 위임하도록 구현.
+     - 테스트 환경(`app_env == "test"`)의 `_generate_mock_response`에서도 해당 도구 호출(`tool_calls`)을 모킹하여 CI/단위 테스트 무결성 보장.
+3. **페르소나 ID 안전 정규화 및 LangGraph Configurable thread_id 주입**:
+   - `app/domain/personas/__init__.py`:
+     - `normalize_persona`를 신설하여 소문자(`nudi`, `gecko`), 한글명(`누디`, `달팽이`, `게코`, `도마뱀`, `슈빌`, `황새`), 레거시 ID(`LIBRARIAN_3`, `stork`) 등 어떤 변형값도 canonical key로 100% 매핑.
+     - 매칭 실패 시 기본값 `CAT_ID`로 떨어져 고양이 말투가 나오던 버그 원천 해결.
+     - `schemas.py`, `router.py`, `nodes.py`, `workflow.py` 전반에 걸쳐 `normalize_persona` 적용.
+   - `app/api/router.py`:
+     - `_graph.ainvoke` 및 `_graph.astream_events` 호출 시 `config={"configurable": {"thread_id": session_id}}`를 명시적으로 주입하여 LangGraph 레벨에서도 `{session_id}:{persona}` 스레드가 완벽히 분리되도록 보장.
+     - 세션 식별 시 로깅 추가.
+4. **품질 검증 및 테스트 전수 통과 (Self-Validation)**:
+   - `tests/unit/test_personas.py`: `test_normalize_persona_comprehensive` 단위 테스트 추가.
+   - `tests/unit/test_recommend_metadata.py`: mock 시그니처 `*args, **kwargs` 호환성 보정.
+   - `uv run pytest`: **전체 144개 단위 테스트 100% 그린 패스 (144 passed in 39.38s)**.
+   - `uv run ruff check --fix .` & `uv run ruff format .`: **린트/포맷 100% 통과**.
+   - `uv run mypy .`: **80개 소스 파일 100% 무결성 통과 (Success: no issues found)**.
+5. **하네스 문서 동기화**:
+   - `.harness/STATE.md`에 Phase 32(Phase 27) 및 정규화/세션 주입 완료 반영.
+   - `.harness/PLAN.md`에서 완료된 Phase 27 체크리스트 제거.
+
+### 다음 세션에서 할 일
+- 사용자의 승인에 따라 변경 파일 커밋 및 푸시, PR 생성 보조.
+- Milestone 4 프론트엔드 연동 E2E 통합 스모크 테스트 진행.
+
+
+
