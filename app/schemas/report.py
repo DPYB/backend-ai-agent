@@ -64,7 +64,7 @@ class MonthlyOverview(CamelModel):
 
 
 class ReadingHabits(CamelModel):
-    """02. Reading habits (distribution, streaks)."""
+    """02. Reading habits (distribution, streaks, sessions)."""
 
     weekday_distribution: Dict[str, int] = Field(
         default_factory=dict, description="요일별 독서 횟수 (MON, TUE, ...)"
@@ -79,6 +79,12 @@ class ReadingHabits(CamelModel):
         default=None, description="평균 완독 소요 기간 (일)"
     )
     longest_streak_days: int = Field(default=0, description="해당 월 최장 연속 독서일 (Streak)")
+    total_session_count: int = Field(
+        default=0, description="해당 월 총 독서 세션 횟수 (reading_sessions 집계)"
+    )
+    avg_session_duration_minutes: Optional[float] = Field(
+        default=None, description="1회 평균 독서 집중 시간 (분 단위)"
+    )
 
 
 class GenrePreferenceItem(CamelModel):

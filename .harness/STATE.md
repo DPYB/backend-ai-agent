@@ -253,13 +253,12 @@
   - **자가 검증 완료**: 신규 단위 테스트 추가 및 전체 138개 단위 테스트 100% 그린 패스, Ruff 린트/포맷 100% 통과, Mypy 타입 체크 80개 파일 무결성 통과.
 
 
-- [x] **Phase 21 (Milestone 3): 토론 파트너 4종 턴 분리(오프닝 vs 티키타카) 및 날씨 격리 구현**
-  - 토론 4종(`debate_critic.py`, `debate_storyteller.py`, `debate_counselor.py`, `debate_observer.py`) 시스템 프롬프트를 `OPENING_PROMPT`(고정 포맷 포함)와 `TURN_PROMPT`(고정 포맷 금지 + 미러링 + 열린 질문)으로 완전 분리
-  - `PERSONA_REGISTRY`에 토론 4종의 `opening_system_prompt`, `turn_system_prompt` 메타데이터 등록
-  - `_run_persona_node`에 `human_msg_count ≤ 1 → 오프닝 프롬프트`, `> 1 → 턴 프롬프트` 동적 분기 로직 구현
-  - 날씨 컨텍스트(`weather_context`)를 토론 모드(`is_debate`)에서 완전 차단하여 날씨/무드 노이즈 원천 배제
-  - 신규 단위 테스트 3종 추가 (`test_debate_personas_opening_turn_prompt_split`, `test_debate_personas_opening_prompt_contains_fixed_formats`, `test_debate_personas_turn_prompt_enforces_mirroring_and_open_questions`)
-  - 전체 **141개 단위 테스트 100% 그린 패스** (Ruff 린트/포맷 통과, Mypy 정적 타입 체크 80개 파일 무결성 통과)
+- [x] **Phase 30 (Milestone 9): 독서 세션(reading_sessions) 데이터 기반 월간 리포트 및 사서 대화 컨텍스트 고도화**
+  - **스키마 확장 (`app/schemas/report.py`)**: `ReadingHabits` 모델에 `total_session_count: int`(기본값 0) 및 `avg_session_duration_minutes: Optional[float]` 필드 추가. CamelCase 직렬화로 프론트엔드에 `totalSessionCount`, `avgSessionDurationMinutes` 전달 보장.
+  - **CoreApiClient Fallback 동기화 (`app/infrastructure/core_api_client.py`)**: `get_monthly_report_stats` Fallback 목 데이터에 `totalSessionCount: 34`, `avgSessionDurationMinutes: 28.2`를 반영하여 core-api 미연결 오프라인 환경에서도 안전하게 렌더링 지원.
+  - **월간 리포트 사서 LLM 프롬프트 및 빌더 연동 (`app/domain/reports/generator.py`)**: `_build_llm_report_prompt` 통계 요약에 세션 횟수 및 1회 평균 집중 독서 시간을 주입하여 사서가 디테일한 몰입 칭찬 멘트를 합성하도록 개선하고, `build_monthly_report`에서 신규 필드 파싱 매핑 완료.
+  - **자가 검증 완료 (Self-Validation)**: `tests/unit/test_monthly_reports.py` 신규 필드 및 엔드포인트 응답 검증 완료. 전체 141개 단위 테스트 100% 그린 패스 통과, Ruff 린트/포맷 통과, Mypy 정적 타입 체크 80개 파일 무결성 통과.
+
 
 
 

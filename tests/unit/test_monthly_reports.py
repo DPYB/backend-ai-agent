@@ -142,6 +142,11 @@ async def test_get_monthly_report_endpoint_success():
         assert "librarian" in data
         assert "overview" in data
         assert "habits" in data
+        habits = data["habits"]
+        assert "totalSessionCount" in habits
+        assert "avgSessionDurationMinutes" in habits
+        assert habits["totalSessionCount"] == 34
+        assert habits["avgSessionDurationMinutes"] == 28.2
         assert "preferences" in data
         assert "balance" in data
         assert "traces" in data
