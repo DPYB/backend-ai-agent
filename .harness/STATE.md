@@ -233,12 +233,24 @@
     - Ruff 린트 및 포맷 정렬 100% 통과 (`All checks passed`, `85 files already formatted`).
     - Mypy 정적 타입 체크 80개 소스 파일 100% 무결성 통과 (`Success: no issues found`).
 
+- [x] **Phase 27: 시스템 경고(Fixed Sampling Temperature, AFC Warning) 소거 및 2026 트렌드 도서 풀 강화**
+  - **Gemini Flash Lite 고정 temperature 경고 원천 차단**: Google GenAI 엔진 차원에서 샘플링 temperature 조절을 제한하는 `gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`에 대해 `nodes.py`, `curator_node.py`, `reports/generator.py`, `gemini_ocr_client.py`의 `ChatGoogleGenerativeAI` 인스턴스화 시 불필요한 `temperature` 전달을 제거하여 `UserWarning: Model ... uses fixed sampling defaults` 소거.
+  - **Automatic Function Calling (AFC) 터미널 경고 억제**: `google-genai` SDK v2와 `langchain-google-genai`의 비동기 도구 바인딩 과도기적 경고(`Direct use of automatic function calling...`)를 `app/main.py`의 `warnings` 필터 및 전용 로거 레벨 조정으로 터미널 로그 오염 차단.
+  - **Yes24 폐기 RSS 피드 대응 및 2026 트렌드 도서 풀 강화**: Yes24의 404 미지원 엔드포인트 반환 시 불필요한 에러 로그 대신 안정적 풀 전환 안내 로깅으로 정돈하고, 한강 작가 주요작(작별하지 않는다, 소년이 온다, 채식주의자), 김초엽 《지구 끝의 온실》, 송길영 《시대예보: 호명사회》 등 2024~2026 대표작 풀 대폭 보강.
+  - **자가 검증 완료**: 전체 137개 단위 테스트 100% 그린 패스 통과 (`137 passed in 40.47s`), Ruff 린트 및 포맷 통과, Mypy 타입 체크 80개 파일 100% 무결성 통과.
+
+- [x] **Phase 28 (Milestone 8): 폐기된 RSS를 대체하는 Yes24 실시간 SSR 베스트셀러 웹 스크래퍼(`beautifulsoup4`) 구축**
+  - **하드코딩 및 폐기 RSS 영구 탈피**: 404 리다이렉트로 폐기된 Yes24 RSS와 임시 하드코딩 폴백을 걷어내고, 완벽한 서버 사이드 렌더링(SSR)인 Yes24 종합 베스트셀러 웹페이지(`https://www.yes24.com/Product/Category/BestSeller?categoryNumber=001&pageSize=40`)를 `httpx` 비동기 호출 및 `beautifulsoup4`로 1초 만에 실시간 파싱하는 스크래퍼 구현 (`app/infrastructure/trending_books.py`).
+  - **도서 메타데이터 및 수험서 노이즈 필터링**: `a.gd_name`(도서명), `span.info_auth`(저자), `span.info_pub`(출판사)를 완벽 추출하며, 문제집/수험서(기출, 자격증 등) 노이즈를 필터링하여 순수 문학·교양·인문 단행본 위주로 Redis에 24시간 TTL(`daily_trending_books`) 캐싱.
+  - **큐레이터 오픈북 실시간 연동**: 2026년 오늘 날짜 실제 베스트셀러 40권이 LLM 도서 큐레이터 프롬프트에 `[오늘의 화제작 오픈북]`으로 100% 실시간 자동 주입.
+  - **불필요한 의존성 정리**: 레거시 `feedparser` 패키지 완전 제거 및 `beautifulsoup4` 연동.
+  - **자가 검증 완료**: 신규 단위 테스트 추가 및 전체 137개 단위 테스트(Pytest) 100% 그린 패스, Ruff 린트/포맷 100% 통과, Mypy 정적 타입 체크 80개 파일 무결성 통과.
+
 - [x] **Phase 29: 기획 유연화(감정 맞춤 인생 도서 페어링), 괄호 찌꺼기 완벽 세척(`clean_book_title`) 및 다중 판본 표지 생존 우선 매칭**
   - **극단적 신구 조합 완화 및 감정 맞춤 페어링**: 억지로 '고전'을 강제하던 프롬프트를 탈피하여 [트렌드 도서 1권(오픈북 기반)] + [연도 무관, 사용자의 감정을 완벽히 관통하는 원픽 인생 도서 1권]으로 시스템 프롬프트 및 `BookCandidate` Pydantic 스키마 유연화 (`app/domain/graph/curator_node.py`).
   - **도서명 괄호 찌꺼기 세척 유틸 구축**: `clean_book_title` 유틸 구현으로 `(큰글자책)`, `(오디오북)`, `[양장]`, `<개정판>`, `(진중문고납품)` 등 괄호 쓰레기 텍스트 및 긴 부제를 싹쓸이 정제하여 Yes24 스크래퍼 및 국립도서관 API 검색에 적용 (`app/infrastructure/national_library_client.py`, `trending_books.py`).
   - **다중 판본 표지 생존 우선 매칭 및 오디오북 배제**: 국립도서관 검색 시 오디오북/전자책/납품용 판본을 엄격 제외하고, 상위 5개 판본 중 실제로 살아있는 표지(34,150B 플레이스홀더 배제 및 HTTP 200 검증)를 가진 정식 종이책 판본을 끝까지 찾아내 1순위로 선택. 《브람스를 좋아하세요》 등 오디오북/죽은 표지가 선택되던 결함을 완벽 해결하고 53KB 고화질 표지 및 253 쪽수 교차 보강 성공.
   - **자가 검증 완료**: 신규 단위 테스트 추가 및 전체 138개 단위 테스트 100% 그린 패스, Ruff 린트/포맷 100% 통과, Mypy 타입 체크 80개 파일 무결성 통과.
-
 
 
 

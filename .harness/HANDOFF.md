@@ -859,7 +859,7 @@
    - `.harness/DECISIONS.md`에 Yes24 실시간 SSR 웹 스크래퍼 채택 결정 기록.
 
 ### 다음 세션에서 할 일
-- 사용자의 확인 및 요청 시 `feat/system-warning-and-rss-fixes` 브랜치 변경 사항 커밋 및 푸시, PR #23 갱신 보조.
+- 사용자의 확인 및 요청 시 `feat/curator-pairing-and-biblio-clean` 브랜치 변경 사항 커밋 및 푸시, PR #24 갱신 보조.
 - Milestone 4 (프론트엔드 연동 3대 서비스 E2E 스모크 테스트) 진행.
 
 ---
@@ -888,11 +888,8 @@
    - `.harness/DECISIONS.md`에 기획 유연화, 도서명 정제, 표지 생존 우선 매칭 결정 기록.
 
 ### 다음 세션에서 할 일
-- 사용자의 확인 및 요청 시 `feat/system-warning-and-rss-fixes` 브랜치 변경 사항 커밋 및 푸시, PR #23 갱신.
+- develop 머지 충돌 해결 완료 및 PR #24 리뷰 승인 후 사람 직접 머지 대기.
 - Milestone 4 (프론트엔드 연동 3대 서비스 E2E 스모크 테스트) 진행.
-
-
-
 
 
 
