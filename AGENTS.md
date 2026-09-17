@@ -50,8 +50,7 @@
 
 ### 4.2 도구 및 스토리지 연동 규격
 - **`search_my_library`**: `backend-core-api`와 연동하여 사용자의 서재 도서 및 독서 상태(`READING`, `COMPLETED`, `WISH`)를 조회합니다.
-- **`search_scrap_memory`**: Supabase pgvector `scrap_vector` 테이블에서 오직 사용자의 과거 인상 깊은 문장과 메모만을 `member_id` 격리로 검색합니다. (추천 용도로 사용 금지)
-- **`recommend_books`**: Tavily 웹 검색 + `core-api` 도서 메타데이터 + Redis 캐싱(TTL 1시간)을 조합하여 맞춤 추천합니다.
+- **`search_recent_books`**: Tavily 경량 REST 탐색을 통해 최신 화제작 및 웹 트렌드 신간 도서를 실시간 검색합니다. (일반 도서 추천은 `curator_node`가 Yes24 RSS 오픈북 캐시 및 국립중앙도서관 4단계 검증 체인으로 신구 하이브리드 페어링을 전담합니다.)
 - **Vision API**: `pyzbar`, `Pillow`, `libzbar0`를 통한 바코드(ISBN-13) 스캔 및 Naver Cloud Clova OCR General API V2 연동을 무상태(Stateless)로 제공하여 `core-api`를 무거운 C-익스텐션 의존성으로부터 보호합니다.
 
 ### 4.3 제로비용(Zero-cost) 및 인프라 정책

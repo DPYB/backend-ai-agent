@@ -176,3 +176,70 @@ async def test_curated_books_markdown_heading_instruction(monkeypatch):
     assert captured_prompt is not None
     assert "### 📖 도서명" in captured_prompt
     assert "### 📖 불편한 편의점" in res["messages"][0].content
+
+
+def test_curator_structured_output_schema():
+    """Verify BookCandidate and CuratorResponse Pydantic validation."""
+    from app.domain.graph.curator_node import BookCandidate, CuratorResponse
+
+    candidate = BookCandidate(
+        title="소년이 온다",
+        author="한강",
+        reason="역사의 아픔을 위무하는 깊은 문장",
+        era="recent",
+    )
+    assert candidate.title == "소년이 온다"
+    assert candidate.era == "recent"
+
+    response = CuratorResponse(
+        recommendations=[
+            candidate,
+            BookCandidate(
+                title="데미안",
+                author="헤르만 헤세",
+                reason="불멸의 고전",
+                era="classic",
+            ),
+        ]
+    )
+    assert len(response.recommendations) == 2
+    dumped = response.model_dump()
+    assert "recommendations" in dumped
+    assert len(dumped["recommendations"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_curator_random_elegant_fallback():
+    """Verify _get_random_elegant_fallback returns 2 masterpieces with honest fallback reasons."""
+    from app.domain.graph.curator_node import _get_random_elegant_fallback
+
+    fallback = _get_random_elegant_fallback()
+    assert len(fallback) == 2
+    for b in fallback:
+        assert "title" in b
+        assert "author" in b
+        assert "reason" in b
+        assert "era" in b
+        assert "시스템 지연으로" in b["reason"] or "화제작" in b["reason"] or "명작" in b["reason"]
+
+
+@pytest.mark.asyncio
+async def test_trending_books_rss_and_caching():
+    """Verify fetch_and_cache_trending_books successfully populates Redis session."""
+    from app.infrastructure.redis_session import get_redis_session_manager
+    from app.infrastructure.trending_books import (
+        REDIS_TRENDING_BOOKS_KEY,
+        fetch_and_cache_trending_books,
+        get_trending_books_text,
+    )
+
+    books = await fetch_and_cache_trending_books()
+    assert len(books) > 0
+
+    redis_mgr = get_redis_session_manager()
+    cached = await redis_mgr.get(REDIS_TRENDING_BOOKS_KEY)
+    assert cached is not None
+
+    text = await get_trending_books_text(limit=10)
+    assert len(text) > 0
+    assert "- " in text

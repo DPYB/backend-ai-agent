@@ -18,7 +18,7 @@
                         ├── LangGraph 8-Node Head Personas (사서 4 + 토론 4)
                         ├── Supabase pgvector: scrap_vector (개인화 독서 기억 전용)
                         ├── My Library: search_my_library (core-api 내 서재/독서상태 조회)
-                        └── Book Recommender: recommend_books (Tavily 웹검색 + core-api)
+                        └── Book Curator: curator_node (오픈북 신간 + 고전 하이브리드 페어링)
 ```
 
 ---
@@ -49,7 +49,7 @@
 ### 3. 도구(Tools) 레이어
 - **`search_my_library`**: `core-api`와 연동하여 사용자가 서재에 등록한 도서 및 독서 상태(`READING`, `COMPLETED`, `WISH`) 조회.
 - **`search_scrap_memory`**: Supabase pgvector 기반으로 사용자의 문장/메모를 `member_id`(UUID)로 엄격히 격리 검색 (개인화 전용).
-- **`recommend_books`**: Tavily 웹검색 + `core-api` 도서 메타데이터 + Redis TTL 캐싱.
+- **`search_recent_books`**: Tavily 실시간 웹 검색 기반 최신 화제작 탐색 도구 (도서 추천은 큐레이터 노드가 전담).
 
 ---
 
@@ -74,8 +74,8 @@ backend-ai-agent/
 │   │   ├── memory/
 │   │   │   ├── rag_tool.py          # 개인화 전용 scrap_vector RAG 도구
 │   │   │   └── my_library_tool.py   # 내 서재 도서 및 독서상태 조회 도구
-│   │   ├── recommend/
-│   │   │   └── recommend_tool.py    # Tavily 웹검색 + core-api 책 조회 + Redis 캐시
+│   │   ├── tools/
+│   │   │   └── search_books_tool.py # Tavily 경량 웹검색 신간 탐색 도구
 │   │   └── graph/
 │   │       ├── state.py            # LangGraph State & switch_suggestion 정의
 │   │       ├── tools.py            # 공통 범용 도구 레지스트리

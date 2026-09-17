@@ -56,6 +56,14 @@ async def lifespan(app: FastAPI):
     redis_mgr = get_redis_session_manager()
     await redis_mgr.connect()
 
+    # Launch background task to cache daily trending books from Yes24 RSS (non-blocking)
+    if not settings.is_testing:
+        import asyncio
+
+        from app.infrastructure.trending_books import fetch_and_cache_trending_books
+
+        asyncio.create_task(fetch_and_cache_trending_books())
+
     yield
 
     logger.info("Shutting down backend-ai-agent services...")

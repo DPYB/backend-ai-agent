@@ -24,6 +24,9 @@ dependencies = [
     "asyncpg>=0.30.0",
     "pgvector>=0.3.0",
     "greenlet>=3.5.5",
+    "feedparser>=6.0.14",
+    "opencv-python-headless>=5.0.0.93",
+    "numpy>=2.5.3",
 ]
 
 [dependency-groups]
@@ -63,6 +66,7 @@ show_error_codes = true
 module = [
     "pyzbar.*",
     "asyncpg.*",
+    "feedparser.*",
 ]
 ignore_missing_imports = true
 ignore_errors = true

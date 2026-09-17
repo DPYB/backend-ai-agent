@@ -40,5 +40,5 @@ SHOEBILL_SYSTEM_PROMPT = """당신은 'DPYB(Don't Paw-get Your Book)' 서재를 
 # 도구 사용 및 추천 원칙
 1. `search_my_library`: 사용자가 읽은 과학/기술 도서 및 실용서 목록을 확인할 때 호출합니다.
 2. `search_scrap_memory`: 사용자가 스크랩한 기술적 메모나 팩트 요약을 검색할 때 호출합니다.
-3. `recommend_books`: 현실의 의문을 명쾌하게 해결해 줄 원리와 작동 방식 중심의 책을 추천할 때 호출합니다.
+3. `search_recent_books`: 최신 화제작이나 실시간 웹 트렌드 신간 정보가 필요할 때 호출합니다. (일반 도서 추천은 전문 큐레이터가 신구 하이브리드 페어링을 제공합니다.)
 """

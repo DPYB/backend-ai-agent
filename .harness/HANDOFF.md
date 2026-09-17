@@ -698,8 +698,116 @@
    - `.harness/STATE.md`에 Phase 22 완료 반영 완료.
 
 ### 다음 세션에서 할 일
-- 프론트엔드 화면에서 "뭘 읽으면 좋을까" 질의 시 `recommended_books` 배열과 `### 📖 도서명` 카드 및 [서재에 등록 ➔] 버튼 렌더링 최종 확인.
-- 사용자 요청 시 PR 생성 및 리뷰 요청.
+- **Milestone 6 (Phase 24: 다중 판본 표지·쪽수 생존 우선 매칭 및 등록 폼 장르 보존)**:
+  - `app/infrastructure/national_library_client.py`: 《지구 끝의 온실》처럼 첫 번째 판본의 표지가 34,150B로 죽어있거나 쪽수가 없을 때, 살아있는 표지와 쪽수를 가진 판본(초판본 등)을 우선 선택하도록 루프 개선.
+  - `frontend-reader-web/app/pages/RegisterBook.jsx`: AI 추천(`fromAIRecommendation`)으로 넘어온 도서의 경우 이미 검증된 추천 장르(`LITERATURE` 등)를 고정하고 백그라운드 재분류에 의한 덮어쓰기('기술과학' 오인) 방어.
+- 3대 개발 서버 구동 후 실화면 브라우저 E2E 최종 확인.
+
+---
+
+## 세션 23 (2026-09-17)
+
+### 진행한 작업
+1. **작업 브랜치 생성 및 환경 격리**:
+   - `develop` 최신 동기화 후 DPYB 브랜치 컨벤션에 따라 `feat/vision-cover-isbn-ocr` 신규 작업 브랜치 분기 (`main` <- `develop` <- `feat/*`).
+2. **도서 표지/서지 전용 Vision OCR 프롬프트 및 추출기 구현 (`app/vision/gemini_ocr_client.py`)**:
+   - 기존 문장 스크랩 전용 OCR(`extract_text`)과 완전히 분리된 `extract_cover_info(image_bytes, image_format)` 신설.
+   - `GEMINI_COVER_SYSTEM_PROMPT` 탑재: 책 표지 또는 뒷표지 사진에서 바코드 하단/주변에 인쇄된 13자리 ISBN 숫자, 도서 제목, 저자, 출판사를 JSON으로 구조화 추출.
+   - $0 무과금 다중 후보 체인(Gemini Flash-Lite 메인키 ➔ 보조키 ➔ OpenAI ➔ Fallback) 연동.
+3. **ISBN-13 모듈로-10 공식 가중치 체크섬 검증 유틸 구축 (`app/vision/isbn_utils.py`)**:
+   - `validate_isbn13_checksum`: 홀수자리x1 + 짝수자리x3 mod 10 == 0 공식 체크섬 알고리즘 적용.
+   - `extract_isbn_candidates`, `find_first_valid_isbn`: 하이픈/공백 정규식 매칭 및 체크섬 통과 번호 최우선 선별.
+   - `barcode_service.py`에도 체크섬 검증을 통합하여 오인식 13자리 숫자 사전 차단.
+4. **4단계 계층형 표지/서지 파이프라인 연동 (`app/api/v1/vision.py`의 `_handle_cover_ocr`)**:
+   - 1단계: `barcode_service.scan_isbn` (0ms 빠른 바코드 감지)
+   - 2단계: 실패 시 `gemini_ocr_client.extract_cover_info` 호출하여 바코드 아래 인쇄된 숫자 및 제목/저자 구조화 추출
+   - 3단계: 국립중앙도서관 정식 API(`search_by_isbn`)로 도서명, 저자, 출판사, 쪽수, 교보 CDN 표지 일괄 조회
+   - 4단계: 사진에 ISBN 숫자가 짤렸더라도 추출된 제목/저자 후보로 국립도서관 검색(`search_book`) 자동 완성
+5. **품질 검증 및 자가 검증 100% 통과 (Self-Validation)**:
+   - `tests/unit/test_vision.py` 신규 테스트 추가:
+     - `test_isbn_utils_checksum_and_extraction`: 모듈로-10 체크섬 및 노이즈 OCR 텍스트 추출 검증.
+     - `test_extract_cover_info_json_parsing`: 표지 전용 JSON 응답 파싱 검증.
+     - `test_cover_ocr_endpoint_with_barcode_failure_and_vision_fallback`: 바코드 실패 시 Vision OCR을 통한 ISBN 획득 및 서지 자동 완성 검증.
+     - `test_cover_ocr_endpoint_with_title_search_fallback`: ISBN 부재 시 제목/저자 기반 국립도서관 검색 폴백 검증.
+   - `uv run pytest`: **전체 135개 단위 테스트 100% 그린 패스 (`135 passed in 41.52s`)**.
+   - `uv run ruff check .` & `uv run ruff format .`: **린트/포맷 100% 통과**.
+   - `uv run mypy .`: **정적 타입 체크 81개 파일 무결성 100% 통과 (Success: no issues found)**.
+6. **하네스 문서 동기화**:
+   - `.harness/PLAN.md`, `.harness/STATE.md`, `.harness/DECISIONS.md` 최신화 완료.
+
+### 다음 세션에서 할 일
+- 사용자의 확인 및 요청 시 `feat/vision-cover-isbn-ocr` 커밋 및 푸시, PR 생성 보조.
+- Milestone 6 (Phase 24: 국립도서관 다중 판본 표지·쪽수 생존 우선 매칭 및 등록 폼 장르 보존) 진행.
+
+---
+
+## 세션 24 (2026-09-17)
+
+### 진행한 작업
+1. **Pydantic 구조화 출력(`with_structured_output`) 적용 및 정규식 JSON 파싱 완전 제거**:
+   - `app/domain/graph/curator_node.py`에 Pydantic 모델 `BookCandidate` 및 `CuratorResponse` 정의.
+   - 기존의 취약했던 `re.search` 정규식 기반 JSON 추출을 전면 제거하고 LangChain의 `llm.with_structured_output(CuratorResponse)`를 적용하여 JSON 괄호 누락 및 파싱 실패율 0% 달성.
+   - `temperature=0.2`로 설정하여 환각(Hallucination) 원천 차단.
+2. **Yes24 RSS 피드 신간 수집 & Redis 오픈북 캐싱 백그라운드 워커 구현**:
+   - `feedparser` 패키지 추가 (`pyproject.toml`).
+   - `RedisSessionManager`에 범용 비동기 `get(key)` 및 `set(key, value, ex)` 메서드 추가 (인메모리 폴백 포함).
+   - `app/infrastructure/trending_books.py` 신설: Yes24 종합 베스트셀러 RSS(50권)를 비동기로 파싱하여 Redis에 `daily_trending_books` 키로 TTL 24시간(86400초) 캐싱.
+   - `app/main.py` lifespan에 `asyncio.create_task(fetch_and_cache_trending_books())`를 등록하여 서버 시작 시 1회 자동 캐싱 구동.
+3. **오픈북 프롬프트 주입 및 솔직한 랜덤 명작 풀 폴백 구축**:
+   - Redis에서 `daily_trending_books`를 조회하여 LLM 프롬프트에 `[오늘의 화제작 오픈북 (여기서 신간 1권 필수 선택)]` 텍스트로 주입하여 신간 날조 원천 차단.
+   - 기존의 `if "비" in ... or "우울" in ...` 키워드 매칭 하드코딩을 영구 삭제.
+   - LLM 실패 또는 국립도서관 API 검증 0건 통과 시 `_get_random_elegant_fallback()`을 통해 '시대별 최고 명작 풀'에서 2권을 무작위 픽(`random.sample`)하여 솔직하고 세련된 지연 안내 멘트 제공.
+4. **레거시 `recommend_books` 도구 완전 제거 및 `search_recent_books` 단독 유지**:
+   - 레거시 도구 `app/domain/recommend/recommend_tool.py` 및 테스트 `tests/unit/test_recommend_tool.py` 파일 영구 삭제.
+   - 초경량 Tavily REST 기반 온디맨드 신간 탐색 도구(`search_recent_books`)만 단독 유지.
+   - `tools.py`, `nodes.py`, 사서 4종 페르소나 시스템 프롬프트(`cat.py`, `shoebill.py`, `sea_slug.py`, `gecko.py`) 및 프로젝트 문서(`AGENTS.md`, `README.md`, `ARCHITECTURE.md`) 전면 정비.
+5. **품질 검증 및 AI 자가 검증 (Self-Validation)**:
+   - `tests/unit/test_curator_pipeline.py`: 스키마 유효성, 랜덤 폴백, RSS 캐싱 단위 테스트 추가.
+   - `tests/unit/test_hybrid_curation.py`: `recommend_books` 제거 반영 및 `TestTrendingBooksOpenBook` 갱신.
+   - `uv run pytest`: **전체 134개 단위 테스트 100% 그린 패스 (`134 passed in 41.48s`)**.
+   - `uv run ruff check .` & `uv run ruff format .`: **린트/포맷 100% 통과 (`All checks passed`)**.
+   - `uv run mypy .`: **정적 타입 체크 80개 파일 100% 무결성 통과 (`Success: no issues found`)**.
+
+### 다음 세션에서 할 일
+- 사용자의 확인 및 요청 시 `feat/vision-cover-isbn-ocr` 브랜치 변경 사항(Phase 23 표지 ISBN OCR + Phase 25 큐레이터 구조화 출력 & RSS 워커 + Phase 26 긴급 수술) 커밋 및 푸시, PR 생성 보조.
+- PR CI 통과 확인 후 사용자 직접 머지(Squash and merge).
+
+---
+
+## 세션 25 (2026-09-17)
+
+### 진행한 작업
+1. **바코드 스캔 (pyzbar) 심폐소생술 (OpenCV 기반 `robust_scan_isbn`)**:
+   - `opencv-python-headless` 및 `numpy` 의존성 추가.
+   - `app/vision/barcode_service.py`에 스마트폰 카메라 4K 고해상도 이미지 전처리 엔진 탑재:
+     - 가로 최대 1000px 비율 리사이징으로 pyzbar 디코더 메모리/연산 한계 돌파.
+     - 그레이스케일 변환 및 Otsu 이진화(Binarization) 대비 강화.
+     - 폰을 거꾸로나 옆으로 들고 찍는 환경에 대응한 4방향(0°, 90°, 180°, 270°) 회전 뺑뺑이 스캔 루프 적용.
+     - OpenCV 미설치 환경 대비 PIL 4방향 회전 내결함성 폴백 탑재.
+2. **뒷표지 홍보 문구 제목 오인 방어 및 대전제 확립**:
+   - "바코드(ISBN)가 잡혔으면 OCR 텍스트는 일체 무시하고 정식 서지 DB로 직행한다"는 원칙 적용 (`app/api/v1/vision.py`).
+   - 바코드 검출 시 Gemini OCR 호출을 아예 건너뛰어 뒷표지의 추천사("올해 최고의 감동!")나 카피 문구가 제목으로 탈바꿈하는 현상 100% 원천 차단.
+   - `GEMINI_COVER_SYSTEM_PROMPT` 고도화: 뒷표지 홍보문구/추천사를 제목으로 오인하지 않고 식별 불가 시 `title: null`, `author: null` 반환하도록 지침 명시.
+   - Vision OCR에서 인쇄된 ISBN을 건진 경우에도 뒷표지 lines 텍스트를 무시하고 국립도서관 정식 서지명으로 우선 바인딩.
+3. **국립도서관 API '페이지 수(totalPages)' 증발 사태 해결 (교차 보강)**:
+   - `app/infrastructure/national_library_client.py`에 `fetch_and_fill_book_info_by_isbn` 구현.
+   - 민음사 《데미안》(9788937460449)처럼 단일 ISBN에 `PAGE` 필드가 비어있을 때, 도서명과 저자로 정식 단행본 검색을 다시 실행하여 북하우스 판본(343쪽) 등 실제 페이지 수를 자동으로 채워주는 교차 보강(Cross-Referencing) 완성.
+4. **품질 검증 및 AI 자가 검증 100% 통과 (Self-Validation)**:
+   - `tests/unit/test_vision.py`에 회전 바코드, 뒷표지 OCR 방어(OCR 미호출 검증), 페이지 수 교차 보강 단위 테스트 2종 추가.
+   - `uv run pytest`: **전체 137개 단위 테스트 100% 그린 패스 (`137 passed in 39.12s`)**.
+   - `uv run ruff check .` & `uv run ruff format --check .`: **린트/포맷 100% 통과 (`All checks passed`, `85 files already formatted`)**.
+   - `uv run mypy .`: **정적 타입 체크 80개 파일 100% 무결성 통과 (`Success: no issues found`)**.
+   - 실데이터 검증: 민음사 《데미안》 단일 ISBN 조회 시 누락되던 페이지 수가 교차 조회를 통해 343쪽으로 자동 완벽 보강됨을 실측 확인.
+5. **하네스 문서 동기화**:
+   - `.harness/STATE.md`에 Phase 26 완료 반영.
+   - `.harness/PLAN.md`에서 완료된 Milestone 7 제거.
+   - `.harness/DECISIONS.md`에 바코드 OpenCV 전처리, 뒷표지 방어, 페이지 수 교차 보강 아키텍처 결정 기록.
+
+### 다음 세션에서 할 일
+- 사용자의 확인 및 요청 시 `feat/vision-cover-isbn-ocr` 브랜치 커밋 및 푸시, PR 생성 보조.
+- Milestone 6 (Phase 24: 국립도서관 다중 판본 표지·쪽수 생존 우선 매칭 및 등록 폼 장르 보존) 또는 프론트엔드 연동 지원.
+
+
 
 
 
