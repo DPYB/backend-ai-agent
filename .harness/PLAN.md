@@ -7,7 +7,7 @@
 ## 미완료 작업 체크리스트
 
 ### 📌 Milestone 4 (Phase 20 E2E 통합 검증): 프론트엔드 연동 후 3대 서비스 통합 스모크 테스트
-> **백엔드(backend-ai-agent) 구현 및 126개 단위 테스트, Ruff, Mypy 자가 검증 100% 완료 상태**
+> **백엔드(backend-ai-agent) 구현 및 137개 단위 테스트, Ruff, Mypy 자가 검증 100% 완료 상태**
 
 - [ ] **E2E 스모크 테스트 1: 날씨 뱃지 (Signals 연동)**
   - 브라우저 위치 허용 시 `/api/v1/chat` 응답의 `signals` 객체(날씨/기온/시간대/무드)가 프론트엔드 상단 `WeatherMoodBadge`에 정상 렌더링되는지 확인

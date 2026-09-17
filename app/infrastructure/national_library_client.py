@@ -245,6 +245,21 @@ def clean_author_name(author_str: str) -> str:
     return text if text else "저자 미상"
 
 
+def clean_book_title(title: str) -> str:
+    """'(큰글자책)', '[양장]', '<개정판>', '(오디오북)' 등 쓰레기 텍스트 및 부제 완벽 제거."""
+    if not title:
+        return ""
+    # 1. 괄호 안의 텍스트 제거 (큰글자책, 보급판, 리커버, 진중문고납품, 오디오북, 점자도서 등)
+    clean = re.sub(r"\s*[\[\(<].*?[\]\)>]\s*", " ", str(title))
+    # 2. 꺽쇠, 특수 괄호 등 잔여 기호 제거
+    clean = re.sub(r"[《》〈〉]", "", clean)
+    # 3. 부제 처리 (- 또는 : 뒤의 설명문). 단, 너무 짧아지는(2글자 미만) 경우 방어
+    parts = re.split(r"[-:]", clean)
+    if parts and len(parts[0].strip()) >= 2:
+        clean = parts[0]
+    return clean.strip()
+
+
 def get_verified_cover_url(cover_url: str, isbn: str) -> str:
     """Return verified cover URL, falling back to Kyobo CDN with 0ms server latency."""
     clean_url = (cover_url or "").strip()
@@ -346,7 +361,7 @@ class NationalLibraryClient:
                 continue  # 정식 ISBN 없는 비도서/미등록본 컷
 
             form = str(item.get("FORM", "") or item.get("TYPE_NAME", "") or "")
-            # 점자, 마이크로필름, 학술논문, 보고서, 지도 등 제외
+            # 점자, 마이크로필름, 학술논문, 보고서, 지도, 오디오북, 전자책 등 제외
             if any(
                 bad_form in form
                 for bad_form in [
@@ -358,6 +373,12 @@ class NationalLibraryClient:
                     "지도",
                     "악보",
                     "저널",
+                    "오디오북",
+                    "전자책",
+                    "카세트",
+                    "비디오",
+                    "DVD",
+                    "비도서",
                 ]
             ):
                 continue
@@ -369,6 +390,12 @@ class NationalLibraryClient:
             # --- 2단계: 텍스트 유사도 및 파생작 컷 ---
             item_title = str(item.get("TITLE", ""))
             cleaned_item_title = re.sub(r"[《》<>\s]", "", item_title).lower()
+
+            # 특수 판본(오디오북, 점자, 큰글자책, 납품용 등) 페널티 부여
+            has_special_edition_noise = any(
+                sp in item_title
+                for sp in ["오디오북", "큰글자", "점자", "진중문고", "납품", "요약본"]
+            )
 
             # 국립도서관 표제에서 부제/책임표시/괄호 설명 분리하여 순수 본표제(Main Title) 추출 (예: '모순 : 양귀자 소설' -> '모순')
             main_title_raw = re.split(r"[:=/(\[]", item_title)[0].strip()
@@ -447,6 +474,10 @@ class NationalLibraryClient:
             if parse_page_count(str(item.get("PAGE", ""))):
                 score += 8.0
 
+            # 특수 판본(오디오북, 점자, 큰글자책 등) 페널티 (정식 단행본 우선)
+            if has_special_edition_noise:
+                score -= 35.0
+
             scored_candidates.append((score, item))
 
         # 점수 내림차순, 동일 점수 시 최신 발행년도 내림차순 정렬
@@ -460,12 +491,16 @@ class NationalLibraryClient:
         """Search bibliography information by book title and optional author with 4-stage validation."""
         if self.is_configured:
             try:
+                # 괄호 찌꺼기(큰글자책, 오디오북 등) 및 부제 정제 후 검색어 전달
+                cleaned_title = clean_book_title(title)
+                query_title = cleaned_title if cleaned_title else title
+
                 params: Dict[str, Any] = {
                     "cert_key": self.cert_key,
                     "result_style": "json",
                     "page_no": "1",
-                    "page_size": "10",
-                    "title": title,
+                    "page_size": "15",
+                    "title": query_title,
                 }
                 if author:
                     params["author"] = author
@@ -477,10 +512,18 @@ class NationalLibraryClient:
                         docs = data.get("docs", [])
                         if docs:
                             # 1~3단계: 형태 필터링, 유사도 검증, 최신성 정렬
-                            ranked_docs = self._filter_and_rank_monographs(docs, title, author)
+                            ranked_docs = self._filter_and_rank_monographs(
+                                docs, query_title, author
+                            )
                             if ranked_docs:
-                                # 4단계: 표지(국립도서관 / 교보 CDN) 생존 테스트
-                                for candidate_item in ranked_docs[:3]:
+                                # 4단계: 다중 판본 순회하며 표지(국립도서관/교보 CDN)가 실제로 살아있는 판본 최우선 선별
+                                best_item: Optional[Dict[str, Any]] = None
+                                best_cover_url = ""
+                                best_page_count: Optional[int] = None
+                                fallback_item: Optional[Dict[str, Any]] = None
+                                fallback_page_count: Optional[int] = None
+
+                                for candidate_item in ranked_docs[:5]:
                                     isbn = str(
                                         candidate_item.get("EA_ISBN")
                                         or candidate_item.get("SET_ISBN", "")
@@ -488,7 +531,7 @@ class NationalLibraryClient:
                                     clean_isbn = re.sub(r"[^0-9X]", "", isbn)
 
                                     raw_cover = str(candidate_item.get("TITLE_URL", "")).strip()
-                                    cover_url = ""
+                                    candidate_cover = ""
 
                                     # 1) 국립도서관 표지 생존 검증
                                     if (
@@ -497,45 +540,68 @@ class NationalLibraryClient:
                                         and "ecip/dbfiles" not in raw_cover
                                     ):
                                         if await check_cover_alive(raw_cover):
-                                            cover_url = raw_cover
+                                            candidate_cover = raw_cover
 
-                                    # 2) 없거나 404면 교보문고 고화질 CDN
-                                    if not cover_url and clean_isbn:
+                                    # 2) 교보문고 고화질 CDN 생존 검증
+                                    if not candidate_cover and clean_isbn:
                                         kyobo_url = f"https://contents.kyobobook.co.kr/sih/fit-in/458x0/pdt/{clean_isbn}.jpg"
                                         if await check_cover_alive(kyobo_url):
-                                            cover_url = kyobo_url
+                                            candidate_cover = kyobo_url
 
                                     page_count = parse_page_count(
                                         str(candidate_item.get("PAGE", ""))
                                     )
-                                    item_title = candidate_item.get("TITLE", title)
-                                    genre = map_kdc_to_genre(
-                                        str(candidate_item.get("KDC", "")),
-                                        str(candidate_item.get("SUBJECT", "")),
-                                        title=item_title,
-                                    )
 
-                                    return {
-                                        "title": item_title,
-                                        "author": clean_author_name(
-                                            str(
-                                                candidate_item.get("AUTHOR")
-                                                or author
-                                                or "저자 미상"
-                                            )
-                                        ),
-                                        "publisher": candidate_item.get("PUBLISHER", "출판사 미상"),
-                                        "isbn": isbn,
-                                        "cover_url": cover_url
-                                        or f"https://contents.kyobobook.co.kr/sih/fit-in/458x0/pdt/{clean_isbn}.jpg"
-                                        if clean_isbn
-                                        else "",
-                                        "page_count": page_count,
-                                        "genre": genre,
-                                        "description": candidate_item.get("SUBJECT", "")
-                                        or f"《{item_title}》 정식 서지정보",
-                                        "source": "NATIONAL_LIBRARY_API",
-                                    }
+                                    # 표지가 실제로 살아있는 판본을 발견하면 즉시 최우선 선택!
+                                    if candidate_cover:
+                                        best_item = candidate_item
+                                        best_cover_url = candidate_cover
+                                        best_page_count = page_count
+                                        break
+
+                                    # 표지가 아직 확인되지 않은 경우 쪽수가 있는 판본을 예비 후보로 보관
+                                    if fallback_item is None or (
+                                        fallback_page_count is None and page_count is not None
+                                    ):
+                                        fallback_item = candidate_item
+                                        fallback_page_count = page_count
+
+                                selected = best_item or fallback_item or ranked_docs[0]
+                                final_cover = best_cover_url
+                                final_page = best_page_count if best_item else fallback_page_count
+                                # 쪽수가 누락된 판본이면 동일 검색 결과 내 다른 판본의 쪽수로 교차 보강
+                                if final_page is None:
+                                    for other_item in ranked_docs:
+                                        p = parse_page_count(str(other_item.get("PAGE", "")))
+                                        if p and p >= 50:
+                                            final_page = p
+                                            break
+
+                                raw_item_title = str(selected.get("TITLE", title))
+                                final_title = clean_book_title(raw_item_title) or raw_item_title
+                                genre = map_kdc_to_genre(
+                                    str(selected.get("KDC", "")),
+                                    str(selected.get("SUBJECT", "")),
+                                    title=final_title,
+                                )
+                                final_isbn = str(
+                                    selected.get("EA_ISBN") or selected.get("SET_ISBN", "")
+                                ).strip()
+
+                                return {
+                                    "title": final_title,
+                                    "author": clean_author_name(
+                                        str(selected.get("AUTHOR") or author or "저자 미상")
+                                    ),
+                                    "publisher": selected.get("PUBLISHER", "출판사 미상"),
+                                    "isbn": final_isbn,
+                                    "cover_url": final_cover,
+                                    "page_count": final_page,
+                                    "genre": genre,
+                                    "description": selected.get("SUBJECT", "")
+                                    or f"《{final_title}》 정식 서지정보",
+                                    "source": "NATIONAL_LIBRARY_API",
+                                }
             except Exception as e:
                 logger.warning("National Library API call failed (%s). Using fallback biblio.", e)
 
