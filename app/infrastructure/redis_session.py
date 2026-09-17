@@ -111,7 +111,33 @@ class RedisSessionManager:
                 self._in_memory_store[key] = serialized
         except Exception as e:
             logger.error("Failed to set recommendation cache for %s: %s", cache_key, e)
-            self._in_memory_store[key] = serialized
+
+    async def get(self, key: str) -> Optional[str]:
+        """Generic get method with fallback to in-memory store."""
+        try:
+            if self._is_redis_available and self._client:
+                val = await self._client.get(key)
+                if isinstance(val, bytes):
+                    return val.decode("utf-8")
+                return val
+            return self._in_memory_store.get(key)
+        except Exception as e:
+            logger.error("Failed to get key %s: %s", key, e)
+            return self._in_memory_store.get(key)
+
+    async def set(self, key: str, value: str, ex: Optional[int] = None) -> None:
+        """Generic set method with optional TTL (ex seconds) and in-memory fallback."""
+        try:
+            if self._is_redis_available and self._client:
+                if ex is not None:
+                    await self._client.setex(key, ex, value)
+                else:
+                    await self._client.set(key, value)
+            else:
+                self._in_memory_store[key] = value
+        except Exception as e:
+            logger.error("Failed to set key %s: %s", key, e)
+            self._in_memory_store[key] = value
 
 
 _session_manager: Optional[RedisSessionManager] = None

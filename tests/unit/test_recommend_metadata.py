@@ -38,6 +38,16 @@ def test_map_kdc_to_genre():
     assert map_kdc_to_genre("", "감성 산문과 에세이 모음") == "LITERATURE"
     assert map_kdc_to_genre("", "") == "GENERAL"
 
+    # KDC 000 series splitting (004/005 -> TECHNOLOGY, 020s -> PHILOSOPHY, others -> GENERAL)
+    assert map_kdc_to_genre("004") == "TECHNOLOGY"
+    assert map_kdc_to_genre("004.7") == "TECHNOLOGY"
+    assert map_kdc_to_genre("005.133") == "TECHNOLOGY"
+    assert map_kdc_to_genre("020") == "PHILOSOPHY"
+    assert map_kdc_to_genre("029.1") == "PHILOSOPHY"
+    assert map_kdc_to_genre("030") == "GENERAL"
+    assert map_kdc_to_genre("050") == "GENERAL"
+    assert map_kdc_to_genre("001") == "GENERAL"
+
     # Bidirectional Korean / English interoperability
     assert genre_to_korean("LITERATURE") == "문학"
     assert genre_to_korean("PHILOSOPHY") == "철학"
@@ -45,6 +55,17 @@ def test_map_kdc_to_genre():
     assert normalize_genre("문학/소설") == "LITERATURE"
     assert normalize_genre("에세이") == "LITERATURE"
     assert normalize_genre("LITERATURE") == "LITERATURE"
+
+
+def test_extract_publish_year():
+    """Test 4-digit publication year extraction from irregular dates (e.g. 20230000)."""
+    from app.infrastructure.national_library_client import _extract_publish_year
+
+    assert _extract_publish_year({"PUBLISH_PREDATE": "20230000"}) == 2023
+    assert _extract_publish_year({"PUBLISH_YEAR": "1998"}) == 1998
+    assert _extract_publish_year({"INPUT_DATE": "2024-05-12"}) == 2024
+    assert _extract_publish_year({"REAL_PUBLISH_DATE": "2025.01"}) == 2025
+    assert _extract_publish_year({}) == 0
 
 
 def test_get_verified_cover_url_kyobo_fallback():

@@ -206,6 +206,34 @@
   - **프론트엔드 도서 카드 헤딩 지침 추가**: `curated_books` 소개 시스템 프롬프트 지침에 각 추천 도서를 `### 📖 도서명` 마크다운 3단계 헤딩 포맷으로 별도 줄에 명시하도록 규정하여, 프론트엔드 `MarkdownRenderer` 및 `LibrarianChat` 도서 카드와 `[서재에 등록 ➔]` 버튼이 즉시 렌더링되도록 보장.
   - **자가 검증 완료**: 신규 단위 테스트 2종 추가(`test_recommendation_intent_delegation_keywords`, `test_curated_books_markdown_heading_instruction`), 전체 131개 단위 테스트 100% 그린 패스 통과, Ruff 린트/포맷 통과, Mypy 정적 타입 체크 80개 파일 무결성 통과.
 
+- [x] **Phase 23 (Milestone 5): 도서 표지/뒷표지 Vision OCR 기반 지능형 ISBN 및 계층형 서지 인식 파이프라인 구축**
+  - **이중 바코드/노이즈 pyzbar 한계 극복**: 1차 바코드(pyzbar) 실패 시, 문장 스크랩 전용 OCR 대신 **표지/뒷표지 전용 Vision OCR 프롬프트(`GEMINI_COVER_SYSTEM_PROMPT`)**와 `extract_cover_info` 메서드를 신설하여 바코드 하단 인쇄 숫자(13자리 ISBN), 제목, 저자, 출판사를 JSON으로 구조화 추출.
+  - **ISBN-13 모듈로-10 공식 가중치 체크섬 유틸 탑재**: `app/vision/isbn_utils.py`에 `validate_isbn13_checksum`, `extract_isbn_candidates`, `find_first_valid_isbn`을 구현하여 노이즈 텍스트에서 잘못된 13자리 숫자를 걸러내고 검증된 ISBN만 선별.
+  - **4단계 계층형 표지/서지 파이프라인 연동 (`_handle_cover_ocr`)**:
+    - 1차: `barcode_service.scan_isbn` (0ms 빠른 바코드 감지)
+    - 2차: `gemini_ocr_client.extract_cover_info` (바코드 아래 인쇄된 숫자 및 제목/저자 구조화 추출)
+    - 3차: 국립중앙도서관 정식 API(`search_by_isbn`)로 실존 서지 일괄 조회
+    - 4차: ISBN이 짤린 사진이어도 함께 추출된 제목/저자로 국립도서관 실서지 검색(`search_book`) 자동 완성
+- [x] **Phase 25 (Milestone 7): Pydantic 구조화 출력(`with_structured_output`) 기반 큐레이터 노드 고도화, RSS 신간 캐싱 백그라운드 워커 및 레거시 `recommend_books` 완전 제거**
+  - **Pydantic 구조화 출력 스키마 탑재**: `BookCandidate(title, author, reason, era)` 및 `CuratorResponse(recommendations: List[BookCandidate])` 스키마를 정의하고 LangChain `llm.with_structured_output(CuratorResponse)`를 적용하여 정규식(`re.search`) 파싱과 JSON 괄호 누락 버그를 원천 제거하고 `temperature=0.2`로 환각 차단.
+  - **Yes24 RSS 신간 수집 & Redis 오픈북 캐싱 백그라운드 워커 구축**: `app/infrastructure/trending_books.py` 신설. Yes24 종합 베스트셀러 RSS(50권)를 파싱하여 Redis에 `daily_trending_books` 키로 TTL 24시간(86400초) 캐싱. 서버 기동 시(`lifespan`) 백그라운드 태스크로 1회 자동 구동되며, RSS 일시 장애 시에도 기본 화제작 풀 안전망 보장.
+- [x] **Phase 26 (Milestone 7): 바코드 스캔 및 OCR 파이프라인 전면 개조 (긴급 수술 완료)**
+  - **OpenCV 기반 바코드 스캔 심폐소생술 (`app/vision/barcode_service.py`)**:
+    - `robust_scan_isbn` 구축: 고해상도(4K) 스마트폰 카메라 이미지에 대응하여 가로 최대 1000px 비율 리사이징, 그레이스케일 변환 및 Otsu 이진화 대비 강화, 4방향(0°, 90°, 180°, 270°) 회전 뺑뺑이 스캔 루프 적용.
+    - pyzbar 부재 또는 OpenCV 미설치 환경에서도 안전하게 동작하는 PIL 4방향 회전 내결함성 폴백 유지.
+  - **뒷표지 추천사/홍보문구 제목 오인 사태 원천 방어 (`app/api/v1/vision.py`, `app/vision/gemini_ocr_client.py`)**:
+    - "바코드(ISBN)가 잡혔으면 OCR 텍스트는 일체 무시하고 정식 서지 DB로 직행한다"는 대전제 구현: 바코드 감지 시 Gemini OCR 호출 자체를 생략하여 "올해 최고의 감동!", "100만 독자 극찬" 등 뒷표지 카피 문구가 제목으로 탈바꿈하는 현상을 100% 원천 차단.
+    - `GEMINI_COVER_SYSTEM_PROMPT` 지침 고도화: 추천사/리뷰/가격/바코드가 보이는 뒷표지 사진의 경우 홍보 문구를 절대 제목으로 착각하지 말고 식별 불가 시 `title: null`, `author: null`을 반환하도록 규정.
+    - Vision OCR에서 인쇄된 ISBN을 건진 경우에도 뒷표지 lines 텍스트를 무시하고 국립도서관 정식 서지명으로 우선 바인딩.
+  - **국립도서관 API '페이지 수(totalPages)' 증발 사태 해결 (`app/infrastructure/national_library_client.py`)**:
+    - `fetch_and_fill_book_info_by_isbn` 신설: 민음사 《데미안》처럼 특정 단일 ISBN에 `PAGE` 필드가 비어있을 때(None 또는 0), 동일한 도서명과 저자로 정식 단행본 검색을 다시 실행하여 50쪽을 초과하는 유효 판본의 페이지 수(`totalPages`)를 자동으로 채워주는 교차 보강(Cross-Referencing) 파이프라인 완성.
+  - **자가 검증 완료 (Self-Validation)**:
+    - `tests/unit/test_vision.py`에 회전 바코드, 뒷표지 OCR 방어(OCR 미호출 검증), 페이지 수 교차 보강 단위 테스트 2종 추가.
+    - 전체 137개 단위 테스트(Pytest) 100% 그린 패스 통과 (`137 passed in 39.12s`).
+    - Ruff 린트 및 포맷 정렬 100% 통과 (`All checks passed`, `85 files already formatted`).
+    - Mypy 정적 타입 체크 80개 소스 파일 100% 무결성 통과 (`Success: no issues found`).
+
+
 
 
 

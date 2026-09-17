@@ -1,7 +1,6 @@
 """Unit tests for Phase 17 (Milestone 3.5): Tavily web search + National Library 4-stage validation hybrid curation pipeline."""
 
 from typing import Any, Dict, List
-from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -61,7 +60,7 @@ class TestSearchRecentBooksTool:
 
     @pytest.mark.asyncio
     async def test_returns_message_when_unconfigured_or_test_env(self) -> None:
-        from app.domain.recommend.search_books_tool import search_recent_books
+        from app.domain.tools.search_books_tool import search_recent_books
 
         result = await search_recent_books.ainvoke({"query": "2025 소설 신간", "count": 3})
         assert isinstance(result, str)
@@ -70,12 +69,12 @@ class TestSearchRecentBooksTool:
 
     @pytest.mark.asyncio
     async def test_tool_name_is_correct(self) -> None:
-        from app.domain.recommend.search_books_tool import search_recent_books
+        from app.domain.tools.search_books_tool import search_recent_books
 
         assert search_recent_books.name == "search_recent_books"
 
     def test_extract_candidates_from_results(self) -> None:
-        from app.domain.recommend.search_books_tool import _extract_book_candidates_from_results
+        from app.domain.tools.search_books_tool import _extract_book_candidates_from_results
 
         fake_results = [
             {
@@ -100,7 +99,7 @@ class TestSearchRecentBooksTool:
         assert any("아무튼" in t for t in titles)
 
     def test_no_duplicate_candidates(self) -> None:
-        from app.domain.recommend.search_books_tool import _extract_book_candidates_from_results
+        from app.domain.tools.search_books_tool import _extract_book_candidates_from_results
 
         fake_results = [
             {
@@ -291,67 +290,29 @@ class TestCuratorNodeHybrid:
 
 
 # ---------------------------------------------------------------------------
-# 5. recommend_books tool — Tavily exploration + National Library verification
+# 5. search_recent_books tool — Lightweight Tavily exploration
 # ---------------------------------------------------------------------------
 
 
-class TestRecommendBooksToolRefactored:
-    """Tests for the dual-track recommend_books tool."""
+class TestTrendingBooksOpenBook:
+    """Tests for trending books open-book parsing and search_recent_books invocation."""
 
     @pytest.mark.asyncio
-    async def test_recommend_books_returns_string(self) -> None:
-        from app.domain.recommend.recommend_tool import recommend_books
+    async def test_search_recent_books_returns_string(self) -> None:
+        from app.domain.tools.search_books_tool import search_recent_books
 
-        result = await recommend_books.ainvoke({"query": "철학 에세이", "count": 2})
+        result = await search_recent_books.ainvoke({"query": "2025 신간 소설", "count": 2})
         assert isinstance(result, str)
         assert len(result) > 0
 
     @pytest.mark.asyncio
-    async def test_recommend_books_fallback_catalog_returns_books(self) -> None:
-        from app.domain.recommend.recommend_tool import recommend_books
+    async def test_trending_books_text_returns_formatted_list(self) -> None:
+        from app.infrastructure.trending_books import get_trending_books_text
 
-        result = await recommend_books.ainvoke({"query": "우울한 날 읽을 책", "count": 2})
-        assert isinstance(result, str)
-        assert "《" in result or "[1]" in result
-
-    @pytest.mark.asyncio
-    async def test_get_fallback_titles_keyword_matching(self) -> None:
-        from app.domain.recommend.recommend_tool import _get_fallback_titles_for_query
-
-        titles = _get_fallback_titles_for_query("우울 힐링", 2)
-        assert len(titles) == 2
-        assert any(
-            "백세희" in t.get("author", "") or "이병률" in t.get("author", "") for t in titles
-        )
-
-    @pytest.mark.asyncio
-    async def test_recommend_books_with_redis_cache_hit(self) -> None:
-        """When Redis returns a cache hit, no API call should be made."""
-        cached_data = [
-            {
-                "title": "캐시된 도서",
-                "author": "저자",
-                "publisher": "출판사",
-                "isbn": "9788900000000",
-                "cover_url": "",
-                "page_count": 200,
-                "genre": "문학",
-                "curation_reason": "캐시에서 반환된 추천",
-                "source": "CACHE",
-            }
-        ]
-        mock_redis = AsyncMock()
-        mock_redis.get_cached_recommendation = AsyncMock(return_value=cached_data)
-        mock_redis.set_cached_recommendation = AsyncMock()
-
-        with patch(
-            "app.domain.recommend.recommend_tool.get_redis_session_manager",
-            return_value=mock_redis,
-        ):
-            from app.domain.recommend.recommend_tool import recommend_books
-
-            result = await recommend_books.ainvoke({"query": "캐시 테스트", "count": 1})
-        assert "캐시된 도서" in result
+        text = await get_trending_books_text(limit=5)
+        assert isinstance(text, str)
+        assert "- " in text
+        assert "저자:" in text
 
 
 # ---------------------------------------------------------------------------
@@ -360,11 +321,11 @@ class TestRecommendBooksToolRefactored:
 
 
 def test_generic_tools_integrity() -> None:
-    """GENERIC_TOOLS should contain standard tools including search_recent_books."""
+    """GENERIC_TOOLS should contain standard tools excluding legacy recommend_books."""
     from app.domain.graph.tools import GENERIC_TOOLS
 
     tool_names = [t.name for t in GENERIC_TOOLS]
-    assert "recommend_books" in tool_names
+    assert "recommend_books" not in tool_names
     assert "search_recent_books" in tool_names
     assert "search_scrap_memory" in tool_names
     assert "search_debate_memory" in tool_names

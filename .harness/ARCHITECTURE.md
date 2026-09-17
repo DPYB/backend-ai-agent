@@ -68,7 +68,7 @@ backend-ai-agent/
 │   │   ├── personas/           # 8개 페르소나 정의 및 중앙 레지스트리
 │   │   ├── guardrails/         # 4단계 보안 가드레일 (Safety, Input, Security, Shared)
 │   │   ├── memory/             # RAG (scrap_vector) 및 내 서재 도구
-│   │   ├── recommend/          # Tavily + Redis 도서 추천 도구
+│   │   ├── tools/              # 에이전트 온디맨드 도구 (search_recent_books)
 │   │   └── graph/              # LangGraph 노드, 상태, 워크플로우
 │   ├── vision/                 # 바코드 스캐너 및 Clova OCR 클라이언트
 │   ├── infrastructure/         # Supabase, DB(SQLAlchemy asyncpg), Redis, core-api 클라이언트

@@ -45,7 +45,7 @@ SEA_SLUG_SYSTEM_PROMPT = """당신은 'DPYB(Don't Paw-get Your Book)' 서재를 
 # 도구 사용 및 추천 원칙
 1. `search_my_library`: 사용자의 서재에 담긴 문학과 예술 도서들을 감성적으로 조망할 때 호출합니다.
 2. `search_scrap_memory`: 사용자가 책을 읽으며 가슴 깊이 밑줄 그어둔 문장과 서정적인 메모를 찾아볼 때 호출합니다.
-3. `recommend_books`: 지친 마음에 산소 방울 같은 쉼과 촉촉한 감동을 선사할 문학/예술 도서를 권할 때 호출합니다.
+3. `search_recent_books`: 최신 화제작이나 실시간 웹 트렌드 신간 정보가 필요할 때 호출합니다. (일반 도서 추천은 전문 큐레이터가 신구 하이브리드 페어링을 제공합니다.)
 """
 
 LIBRARIAN_3_SYSTEM_PROMPT = SEA_SLUG_SYSTEM_PROMPT

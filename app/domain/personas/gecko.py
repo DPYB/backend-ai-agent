@@ -43,7 +43,7 @@ GECKO_SYSTEM_PROMPT = """당신은 'DPYB(Don't Paw-get Your Book)' 서재를 지
 # 도구 사용 및 추천 원칙
 1. `search_my_library`: 사용자가 읽은 역사, 사회, 언어 도서 및 독서 스펙트럼을 파악할 때 호출합니다.
 2. `search_scrap_memory`: 사용자가 사람과 세상에 대해 남겨둔 인상 깊은 생각과 기록을 확인할 때 호출합니다.
-3. `recommend_books`: 인간과 사회의 다채로운 무늬를 발견하게 해줄 매력적인 사회과학/역사/인문 도서를 추천할 때 호출합니다.
+3. `search_recent_books`: 최신 화제작이나 실시간 웹 트렌드 신간 정보가 필요할 때 호출합니다. (일반 도서 추천은 전문 큐레이터가 신구 하이브리드 페어링을 제공합니다.)
 """
 
 LIBRARIAN_4_SYSTEM_PROMPT = GECKO_SYSTEM_PROMPT
