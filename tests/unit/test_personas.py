@@ -155,3 +155,67 @@ def test_librarian_personas_mbti_genre_and_endings():
     assert "~크크" in gecko_prompt
     assert "공감형 탐구자" in gecko_prompt
     assert "[호출 명칭]" in gecko_prompt
+
+
+def test_debate_personas_opening_turn_prompt_split():
+    """Verify all 4 debate personas have separate opening and turn system prompts registered."""
+    debate_ids = [
+        DEBATE_CRITIC_ID,
+        DEBATE_STORYTELLER_ID,
+        DEBATE_COUNSELOR_ID,
+        DEBATE_OBSERVER_ID,
+    ]
+    for persona_id in debate_ids:
+        meta = PERSONA_REGISTRY[persona_id]
+        assert "opening_system_prompt" in meta, f"{persona_id} is missing opening_system_prompt"
+        assert "turn_system_prompt" in meta, f"{persona_id} is missing turn_system_prompt"
+        # Opening prompt should contain fixed format markers
+        opening = meta["opening_system_prompt"]
+        turn = meta["turn_system_prompt"]
+        # They must be different
+        assert opening != turn, f"{persona_id} opening and turn prompts must differ"
+        # Turn prompt must forbid fixed format (contains the strict rule)
+        assert "고정 포맷" in turn and "금지" in turn, (
+            f"{persona_id} turn_prompt must contain fixed-format prohibition"
+        )
+
+
+def test_debate_personas_opening_prompt_contains_fixed_formats():
+    """Verify each debate persona opening prompt still enforces its required fixed answer format."""
+    # Critic opening: star rating + one-line review + discourse question
+    critic_opening = PERSONA_REGISTRY[DEBATE_CRITIC_ID]["opening_system_prompt"]
+    assert "★ 별점:" in critic_opening
+    assert "■ 한 줄 총평:" in critic_opening
+    assert "◆ 오늘의 화두:" in critic_opening
+
+    # Storyteller opening: historical lesson + existential question
+    storyteller_opening = PERSONA_REGISTRY[DEBATE_STORYTELLER_ID]["opening_system_prompt"]
+    assert "🏛️ 역사가 주는 교훈:" in storyteller_opening
+    assert "🔥 함께 던지는 질문:" in storyteller_opening
+
+    # Counselor opening: mind care question with 109 hotline
+    counselor_opening = PERSONA_REGISTRY[DEBATE_COUNSELOR_ID]["opening_system_prompt"]
+    assert "🌱 마음 돌봄 질문:" in counselor_opening
+    assert "109" in counselor_opening
+
+    # Observer opening: behavioral signal review + reality observation question
+    observer_opening = PERSONA_REGISTRY[DEBATE_OBSERVER_ID]["opening_system_prompt"]
+    assert "🔍 행동 시그널 총평:" in observer_opening
+    assert "⚡ 현실 관찰 질문:" in observer_opening
+
+
+def test_debate_personas_turn_prompt_enforces_mirroring_and_open_questions():
+    """Verify each debate persona turn prompt enforces mirroring and open-ended questions."""
+    for persona_id in [
+        DEBATE_CRITIC_ID,
+        DEBATE_STORYTELLER_ID,
+        DEBATE_COUNSELOR_ID,
+        DEBATE_OBSERVER_ID,
+    ]:
+        turn = PERSONA_REGISTRY[persona_id]["turn_system_prompt"]
+        # Must contain mirroring instruction
+        assert "미러링" in turn or "Mirroring" in turn, (
+            f"{persona_id} turn prompt missing mirroring rule"
+        )
+        # Must contain open question / ending question guidance
+        assert "질문" in turn, f"{persona_id} turn prompt missing question guidance"

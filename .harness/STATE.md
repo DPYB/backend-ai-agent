@@ -253,6 +253,15 @@
   - **자가 검증 완료**: 신규 단위 테스트 추가 및 전체 138개 단위 테스트 100% 그린 패스, Ruff 린트/포맷 100% 통과, Mypy 타입 체크 80개 파일 무결성 통과.
 
 
+- [x] **Phase 21 (Milestone 3): 토론 파트너 4종 턴 분리(오프닝 vs 티키타카) 및 날씨 격리 구현**
+  - 토론 4종(`debate_critic.py`, `debate_storyteller.py`, `debate_counselor.py`, `debate_observer.py`) 시스템 프롬프트를 `OPENING_PROMPT`(고정 포맷 포함)와 `TURN_PROMPT`(고정 포맷 금지 + 미러링 + 열린 질문)으로 완전 분리
+  - `PERSONA_REGISTRY`에 토론 4종의 `opening_system_prompt`, `turn_system_prompt` 메타데이터 등록
+  - `_run_persona_node`에 `human_msg_count ≤ 1 → 오프닝 프롬프트`, `> 1 → 턴 프롬프트` 동적 분기 로직 구현
+  - 날씨 컨텍스트(`weather_context`)를 토론 모드(`is_debate`)에서 완전 차단하여 날씨/무드 노이즈 원천 배제
+  - 신규 단위 테스트 3종 추가 (`test_debate_personas_opening_turn_prompt_split`, `test_debate_personas_opening_prompt_contains_fixed_formats`, `test_debate_personas_turn_prompt_enforces_mirroring_and_open_questions`)
+  - 전체 **141개 단위 테스트 100% 그린 패스** (Ruff 린트/포맷 통과, Mypy 정적 타입 체크 80개 파일 무결성 통과)
+
+
 
 
 

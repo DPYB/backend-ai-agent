@@ -891,6 +891,27 @@
 - develop 머지 충돌 해결 완료 및 PR #24 리뷰 승인 후 사람 직접 머지 대기.
 - Milestone 4 (프론트엔드 연동 3대 서비스 E2E 스모크 테스트) 진행.
 
+---
+
+## 세션 29 (2026-09-17)
+
+### 진행한 작업
+1. **토론 모드 템플릿 앵무새 현상 및 UX 병목 원인 정밀 분석**:
+   - 사용자가 공유한 실제 토론 테스트 대화(《미라클 모닝》)에서 평론가가 매 턴마다 고정 포맷(★ 별점, ■ 한 줄 총평, ◆ 오늘의 화두)을 복붙 출력하고, 토론 흐름과 무관하게 날씨/무드/기온을 서두에 읊어 몰입도를 깨는 현상 확인.
+2. **해결 아키텍처 및 구현 방향성 확정**:
+   - 단순 프롬프트 지시보다 **LangGraph State(발화 카운트) 기반 동적 프롬프트 라우팅(2번 방식)** 채택.
+   - LLM이 턴이 길어져도 템플릿을 까먹고 재출력하는 환각을 원천 방지하기 위해, 오프닝용(`OPENING_PROMPT`)과 티키타카용(`TURN_PROMPT`)으로 프롬프트를 완전 분리.
+   - 토론 모드(`is_debate`)에서는 `weather_context` 주입을 전면 차단하여 날씨 노이즈 배제.
+   - 유저 발화 길이 미러링(Mirroring) 및 문장 끝 자연스러운 열린 질문 유도 원칙 수립.
+3. **하네스 문서 수립 완료**:
+   - `.harness/PLAN.md`에 Milestone 3 (Phase 21: 토론 4종 턴 분리 및 날씨 격리) 세부 체크리스트 작성 완료.
+
+### 다음 세션에서 할 일
+- **새 작업 브랜치 생성**: `feat/debate-turn-split-prompts` 분기 (`develop` 기반).
+- **Milestone 3 (Phase 21) 구현 착수**:
+  - `app/domain/personas/` 내 토론 4종(평론가, 이야기꾼, 상담사, 관찰가) 프롬프트 오프닝/대화턴 분리.
+  - `app/domain/graph/nodes.py`에서 `human_msg_count` 기반 동적 프롬프트 주입 및 `weather_context` 토론 모드 제외 조건 추가.
+  - 단위 테스트 추가 및 `ruff`, `mypy`, `pytest` 자가 검증 완료 후 PR 생성.
 
 
 
@@ -910,3 +931,32 @@
 
 
 
+
+
+
+---
+
+## 세션 30 (2026-09-17)
+
+### 진행한 작업
+1. **`feat/debate-turn-split-prompts` 작업 브랜치 생성**:
+   - `develop` 최신화(PR 머지 반영) 후 DPYB 컨벤션에 따라 `feat/debate-turn-split-prompts` 분기.
+2. **토론 파트너 4종 시스템 프롬프트 2-Track 완전 분리 (`app/domain/personas/`)**:
+   - 각 토론 파일(`debate_critic.py`, `debate_storyteller.py`, `debate_counselor.py`, `debate_observer.py`)에 `OPENING_PROMPT`와 `TURN_PROMPT`를 분리하여 정의.
+   - `OPENING_PROMPT`: 첫 분석 응답에 한해 고정 포맷 (별점/총평/화두, 교훈/질문, 마음 돌봄 질문, 시그널 총평/관찰 질문) 출력.
+   - `TURN_PROMPT`: 2번째 턴부터 고정 포맷 엄격 금지, 발화 길이 미러링(Mirroring), 문장 끝 자연스러운 열린 질문 의무화.
+   - `DEBATE_*_SYSTEM_PROMPT` alias를 `OPENING_PROMPT`로 연결하여 하위 호환성 100% 유지.
+3. **`PERSONA_REGISTRY` 메타데이터 확장 (`app/domain/personas/__init__.py`)**:
+   - 토론 4종에 `opening_system_prompt`, `turn_system_prompt` 필드 등록.
+4. **LangGraph 노드 동적 프롬프트 분기 및 날씨 격리 (`app/domain/graph/nodes.py`)**:
+   - `human_msg_count <= 1` → `opening_system_prompt`, `> 1` → `turn_system_prompt` 동적 분기.
+   - `if weather_context and not is_debate:` 조건으로 토론 모드 날씨 노이즈 원천 차단.
+5. **자가 검증 및 단위 테스트 전수 통과**:
+   - 신규 테스트 3종 추가(opening/turn 분리 검증, 오프닝 포맷 검증, 미러링+질문 규칙 검증).
+   - `uv run pytest`: **전체 141개 단위 테스트 100% 그린 패스 (141 passed in 53.25s)**
+   - `uv run ruff check .` & `uv run ruff format .`: **린트/포맷 100% 통과**
+   - `uv run mypy .`: **80개 파일 100% 무결성 통과**
+
+### 다음 세션에서 할 일
+- 사용자의 확인 및 요청 시 `feat/debate-turn-split-prompts` 커밋 및 푸시, PR 생성 보조.
+- Milestone 4 (Phase 20 E2E 통합 검증): 프론트엔드 연동 후 3대 서비스 통합 스모크 테스트 진행.
