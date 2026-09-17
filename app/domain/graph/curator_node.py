@@ -29,12 +29,15 @@ logger = logging.getLogger(__name__)
 class BookCandidate(BaseModel):
     """Pydantic model representing a single recommended book candidate."""
 
-    title: str = Field(..., description="정확한 도서 제목 (단행본 기준, 꺽쇠나 특수기호 제외)")
+    title: str = Field(..., description="정확한 도서 제목 (단행본 기준, 괄호나 특수기호 제외)")
     author: str = Field(..., description="저자명")
     reason: str = Field(
         ..., description="사용자 상황 및 감정에 100% 공명하는 구체적인 추천 사유 (1~2줄)"
     )
-    era: str = Field(..., description="트렌드 신간이면 'recent', 고전/스테디셀러면 'classic'")
+    era: str = Field(
+        ...,
+        description="오픈북 트렌드 도서면 'trend' 또는 'recent', 감정 맞춤 인생책이면 'life_pick' 또는 'classic'",
+    )
 
 
 class CuratorResponse(BaseModel):
@@ -42,17 +45,17 @@ class CuratorResponse(BaseModel):
 
     recommendations: List[BookCandidate] = Field(
         ...,
-        description="반드시 [오픈북]에서 고른 최신 신간 1권과, 자체 지식에서 고른 고전 1권, 총 2권이어야 합니다.",
+        description="반드시 [오픈북]에서 고른 트렌드 도서 1권과, 감정에 꼭 맞는 인생 도서 1권, 총 2권이어야 합니다.",
     )
 
 
-# 2. Curator System Prompt with Open-Book Directive
+# 2. Curator System Prompt with Emotion-focused Pairing Directive
 CURATOR_SYSTEM_PROMPT = """당신은 최고 수준의 도서 큐레이터입니다.
 사용자의 감정, 상황, 날씨를 차분히 분석하여 딱 2권의 책을 추천합니다.
 
-[🔥 핵심 지침: 신구(新舊) 하이브리드 페어링]
-1. [최신 신간 1권]: **반드시** 아래 [오늘의 화제작 오픈북] 데이터 안에서만 골라야 합니다. 절대 지어내지 마세요.
-2. [고전/명작 1권]: 당신의 방대한 내장 지식에서 시대를 초월한 스테디셀러를 자유롭게 1권 고르세요.
+[🔥 핵심 지침: 감정 맞춤형 큐레이션 페어링]
+1. [트렌드 도서 1권]: **반드시** 아래 [오늘의 화제작 오픈북] 데이터 안에서 사용자의 상황과 가장 잘 어울리는 책 1권을 선택하세요. 절대 지어내지 마세요.
+2. [인생 도서 1권]: 연도나 시대에 얽매이지 마세요. 현대 소설이든, 3년 전 에세이든, 시대를 초월한 고전이든 상관없이 사용자의 감정을 가장 완벽하게 어루만져줄 수 있는 당신의 원픽(One-pick) 1권을 당신의 풍부한 도서 지식에서 자유롭게 고르세요.
 
 사용자의 마음에 가장 깊은 울림을 줄 수 있는 책을 신중하게 짝지어주세요.
 """

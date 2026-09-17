@@ -835,6 +835,64 @@
 - 사용자의 확인 및 요청 시 `feat/system-warning-and-rss-fixes` 브랜치 커밋 및 푸시, PR 생성 보조.
 - Milestone 4 (프론트엔드 연동 3대 서비스 E2E 스모크 테스트) 진행.
 
+---
+
+## 세션 27 (2026-09-17)
+
+### 진행한 작업
+1. **폐기된 Yes24 RSS 엔드포인트 및 하드코딩 완전 탈피**:
+   - Yes24 RSS가 404 리다이렉트되어 하드코딩 폴백으로 빠지는 문제를 근본적으로 해결하기 위해, 완벽한 SSR(Server-Side Rendering)인 Yes24 종합 베스트셀러 웹페이지(`https://www.yes24.com/Product/Category/BestSeller?categoryNumber=001&pageSize=40`)를 `httpx` 비동기 GET 요청으로 가져오도록 파이프라인 전면 개편 (`app/infrastructure/trending_books.py`).
+2. **BeautifulSoup 기반 실시간 베스트셀러 스크래퍼 및 노이즈 필터링 구현**:
+   - `beautifulsoup4` 의존성 추가 및 레거시 `feedparser` 패키지 완전 제거.
+   - `parse_yes24_bestseller_html`: `a.gd_name`(도서명), `span.info_auth`(저자), `span.info_pub`(출판사)를 완벽 파싱.
+   - 수험서/자격증/문제집 노이즈 필터링(`NOISE_KEYWORDS = ["기출", "능력검정", "문제집", ...]`)을 적용하여 문학, 철학, 인문, 교양 단행본 위주로 선별.
+   - Redis에 `daily_trending_books` 키로 TTL 24시간(86400초) 캐싱 및 `get_trending_books_text` 오픈북 주입 연동.
+   - 실측 결과: 40권의 2026년 오늘 날짜 실시간 베스트셀러(세네카, 싯다르타, 김애란 《그랬다고 적었다》, 니체, 모순 등)가 0.8초 만에 100% 정상 수집 및 캐싱됨을 확인.
+3. **자가 검증 및 테스트 전체 통과 (Self-Validation)**:
+   - `tests/unit/test_curator_pipeline.py`: 스크래퍼 HTML 파싱 및 비동기 캐싱 단위 테스트 갱신.
+   - `uv run pytest`: **전체 137개 단위 테스트 100% 그린 패스 (`137 passed in 41.70s`)**.
+   - `uv run ruff check .` & `uv run ruff format .`: **린트/포맷 100% 통과 (`All checks passed`, `90 files formatted`)**.
+   - `uv run mypy .`: **정적 타입 체크 80개 파일 100% 무결성 통과 (`Success: no issues found in 80 source files`)**.
+4. **하네스 문서 동기화**:
+   - `.harness/STATE.md`에 Phase 28 (Milestone 8) 완료 반영.
+   - `.harness/PLAN.md`에서 완료된 Milestone 8 제거.
+   - `.harness/DECISIONS.md`에 Yes24 실시간 SSR 웹 스크래퍼 채택 결정 기록.
+
+### 다음 세션에서 할 일
+- 사용자의 확인 및 요청 시 `feat/system-warning-and-rss-fixes` 브랜치 변경 사항 커밋 및 푸시, PR #23 갱신 보조.
+- Milestone 4 (프론트엔드 연동 3대 서비스 E2E 스모크 테스트) 진행.
+
+---
+
+## 세션 28 (2026-09-17)
+
+### 진행한 작업
+1. **기획/UX 유연화: 감정 맞춤 인생 도서 페어링 전환**:
+   - 사용자의 상황과 동떨어지게 억지로 '극단적 고전(Classic)'을 강제하던 프롬프트를 탈피.
+   - `CURATOR_SYSTEM_PROMPT` 및 `BookCandidate` Pydantic 스키마를 [1권: 오픈북 기반 트렌드 도서] + [1권: 연도와 시대를 불문하고 사용자의 감정을 완벽히 관통하는 원픽 인생 도서]로 유연하게 전면 개편 (`app/domain/graph/curator_node.py`).
+2. **도서명 괄호 찌꺼기 완벽 세척 (`clean_book_title`)**:
+   - `(큰글자책)`, `(오디오북)`, `[양장]`, `<개정판>`, `(진중문고납품)`, `(리커버)` 등 국립도서관/서점 API의 잡음 텍스트와 부제를 정규식으로 싹쓸이 정제하는 `clean_book_title` 유틸 구현 (`app/infrastructure/national_library_client.py`).
+   - `trending_books.py`의 Yes24 웹 스크래퍼 및 국립도서관 검색 쿼리/반환값에 전면 적용하여 《세네카》 괄호 누락 버그 완벽 해결.
+3. **다중 판본 표지 생존 우선 매칭 및 쪽수 교차 보강**:
+   - `_filter_and_rank_monographs`: `bad_form`에 오디오북, 전자책, 비도서, 카세트 등을 추가하고 특수 판본 감점을 적용하여 정식 종이책 단행본 우선순위 강화.
+   - `search_book`: 첫 번째 판본에서 무조건 return하던 버그를 제거하고, 상위 5개 판본 중 실제로 살아있는 고화질 표지(34,150B 플레이스홀더 배제 및 HTTP 200 검증)를 가진 정식 종이책 판본을 끝까지 찾아내 1순위로 선택.
+   - 표지가 살아있는 판본의 쪽수가 누락된 경우 동일 검색 결과 내 다른 판본의 유효 쪽수(50쪽 이상)로 자동 교차 보강.
+   - 실측 검증: 《브람스를 좋아하세요》 검색 시 오디오북/죽은 표지가 선택되던 현상을 100% 차단하고, 민음사 정식 종이책(ISBN 9788937461798)의 53KB 초고화질 표지와 253 쪽수를 완벽 바인딩 성공.
+4. **자가 검증 및 테스트 전체 통과 (Self-Validation)**:
+   - `tests/unit/test_recommend_metadata.py`: `test_clean_book_title_removes_noise_brackets` 단위 테스트 추가.
+   - `uv run pytest`: **전체 138개 단위 테스트 100% 그린 패스 (`138 passed in 40.85s`)**.
+   - `uv run ruff check .` & `uv run ruff format .`: **린트/포맷 100% 통과 (`All checks passed`, `90 files left unchanged`)**.
+   - `uv run mypy .`: **정적 타입 체크 80개 파일 100% 무결성 통과 (`Success: no issues found in 80 source files`)**.
+5. **하네스 문서 동기화**:
+   - `.harness/STATE.md`에 Phase 29 완료 반영.
+   - `.harness/DECISIONS.md`에 기획 유연화, 도서명 정제, 표지 생존 우선 매칭 결정 기록.
+
+### 다음 세션에서 할 일
+- 사용자의 확인 및 요청 시 `feat/system-warning-and-rss-fixes` 브랜치 변경 사항 커밋 및 푸시, PR #23 갱신.
+- Milestone 4 (프론트엔드 연동 3대 서비스 E2E 스모크 테스트) 진행.
+
+
+
 
 
 

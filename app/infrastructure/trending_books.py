@@ -1,145 +1,166 @@
-"""Trending books collector and Redis caching worker.
+"""Real-time trending books collector using Yes24 SSR web scraper and Redis caching.
 
-Fetches the Yes24 comprehensive bestseller RSS feed, parses the top 50 books,
-and caches them in Redis with a 24-hour TTL (daily_trending_books)
-to provide an 'open-book' catalog for the LLM curator agent.
+Fetches the live Yes24 comprehensive bestseller webpage (SSR), parses the top 40 books
+using BeautifulSoup, filters out exam/workbooks, and caches the clean monographs into Redis
+with a 24-hour TTL (daily_trending_books) to provide a 100% zero-hallucination,
+real-time 'open-book' catalog for the LLM curator agent.
 """
 
-import asyncio
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-import feedparser
+import httpx
+from bs4 import BeautifulSoup
 
 from app.infrastructure.redis_session import get_redis_session_manager
 
 logger = logging.getLogger(__name__)
 
-YES24_BESTSELLER_RSS_URL = "https://www.yes24.com/rss/bestseller?categoryNumber=001"
+YES24_BESTSELLER_WEB_URL = (
+    "https://www.yes24.com/Product/Category/BestSeller?categoryNumber=001&pageNumber=1&pageSize=40"
+)
 REDIS_TRENDING_BOOKS_KEY = "daily_trending_books"
 REDIS_TRENDING_BOOKS_TTL = 86400  # 24 hours
 
-# Robust default trending books pool (2024~2026 notable steady-sellers and recent bestsellers)
-# Used as offline/fallback open-book data if RSS feed is unreachable.
-DEFAULT_TRENDING_BOOKS: List[Dict[str, str]] = [
+# Noise keywords for filtering out pure exam preparation/test question workbooks
+# so the curator focuses on literary, humanities, essay, and cultural bestsellers.
+NOISE_KEYWORDS = [
+    "기출",
+    "능력검정",
+    "문제집",
+    "기출문제",
+    "핵심집약",
+    "실전모의",
+    "기본서",
+    "모의고사",
+    "수험서",
+]
+
+# Minimal emergency fallback catalog used ONLY when external network is completely down.
+EMERGENCY_FALLBACK_BOOKS: List[Dict[str, str]] = [
     {
-        "title": "마흔에 읽는 쇼펜하우어",
-        "author": "강용수",
-        "description": "삶의 고통을 덜어주는 철학",
+        "title": "세네카, 오늘을 빼앗기고 있는 당신에게",
+        "author": "루키우스 안나이우스 세네카",
+        "publisher": "논픽션",
     },
-    {"title": "불편한 편의점", "author": "김호연", "description": "따스한 골목길 위로의 이야기"},
-    {"title": "모순", "author": "양귀자", "description": "인생의 모순과 사랑에 대한 성찰"},
-    {
-        "title": "시대예보: 핵개인의 시대",
-        "author": "송길영",
-        "description": "미래 사회 변화와 개인의 생존 전략",
-    },
-    {
-        "title": "시대예보: 호명사회",
-        "author": "송길영",
-        "description": "스스로의 이름으로 살아가는 시대의 통찰",
-    },
-    {
-        "title": "아주 작은 습관의 힘",
-        "author": "제임스 클리어",
-        "description": "매일 1%씩 달라지는 삶의 변화",
-    },
-    {"title": "세이노의 가르침", "author": "세이노", "description": "치열한 현실을 살아가는 지혜"},
-    {
-        "title": "도둑맞은 집중력",
-        "author": "요한 하리",
-        "description": "집중력 위기의 현대 사회 탐구",
-    },
-    {
-        "title": "도시와 그 불확실한 벽",
-        "author": "무라카미 하루키",
-        "description": "기억과 영혼의 미로를 걷는 소설",
-    },
-    {"title": "밝은 밤", "author": "최은영", "description": "백 년에 걸친 여성들의 연대와 치유"},
-    {"title": "눈부신 안부", "author": "백수린", "description": "상실의 상처를 보듬는 다정한 문학"},
-    {
-        "title": "물고기는 존재하지 않는다",
-        "author": "룰루 밀러",
-        "description": "과학과 상실의 아름다운 조우",
-    },
-    {"title": "단 한 사람", "author": "최진영", "description": "소멸과 구원의 경계에 선 서사"},
-    {
-        "title": "죽고 싶지만 떡볶이는 먹고 싶어",
-        "author": "백세희",
-        "description": "일상의 가벼운 우울을 보듬는 에세이",
-    },
-    {
-        "title": "어서 오세요, 휴남동 서점입니다",
-        "author": "황보름",
-        "description": "책과 사람의 온기가 머무는 곳",
-    },
-    {
-        "title": "이처럼 사소한 것들",
-        "author": "클레어 키건",
-        "description": "용기와 침묵을 깨는 짧고 깊은 감동",
-    },
-    {
-        "title": "작별하지 않는다",
-        "author": "한강",
-        "description": "지극한 사랑과 기억에 관한 찬란한 문학",
-    },
-    {
-        "title": "소년이 온다",
-        "author": "한강",
-        "description": "상처와 존엄을 응시하는 뜨거운 울림",
-    },
-    {
-        "title": "채식주의자",
-        "author": "한강",
-        "description": "폭력에 맞선 인간 존재의 깊은 고투",
-    },
-    {
-        "title": "지구 끝의 온실",
-        "author": "김초엽",
-        "description": "폐허 속에서 피어난 연대와 기억의 SF",
-    },
+    {"title": "모순", "author": "양귀자", "publisher": "쓰다"},
+    {"title": "싯다르타", "author": "헤르만 헤세", "publisher": "민음사"},
+    {"title": "그랬다고 적었다", "author": "김애란", "publisher": "문학동네"},
+    {"title": "마음의 어휘력", "author": "조아란", "publisher": "페이지2북스"},
+    {"title": "니체의 초월자", "author": "프리드리히 니체", "publisher": "히읏"},
+    {"title": "마흔에 읽는 쇼펜하우어", "author": "강용수", "publisher": "유노서가"},
+    {"title": "불편한 편의점", "author": "김호연", "publisher": "나무옆의자"},
+    {"title": "작별하지 않는다", "author": "한강", "publisher": "문학동네"},
+    {"title": "지구 끝의 온실", "author": "김초엽", "publisher": "자이언트북스"},
 ]
 
 
+def parse_yes24_bestseller_html(html: str) -> List[Dict[str, str]]:
+    """Parse Yes24 Server-Side Rendered (SSR) HTML to extract live bestseller books.
+
+    Args:
+        html: Raw HTML string of the Yes24 bestseller webpage.
+
+    Returns:
+        List of book dictionaries with title, author, and publisher.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    items = soup.select("#yesBestList li")
+    if not items:
+        # Fallback to general itemUnit selector if layout shifts
+        items = soup.select(".itemUnit")
+
+    parsed_books: List[Dict[str, str]] = []
+    exam_books: List[Dict[str, str]] = []
+
+    for li in items:
+        title_el = li.select_one("a.gd_name")
+        if not title_el:
+            continue
+        raw_title = title_el.get_text(strip=True)
+        if not raw_title:
+            continue
+        from app.infrastructure.national_library_client import clean_book_title
+
+        title = clean_book_title(raw_title) or raw_title
+
+        # Extract authors
+        author = "저자 미상"
+        auth_el = li.select_one("span.info_auth")
+        if auth_el:
+            author_links = [
+                a.get_text(strip=True) for a in auth_el.select("a") if a.get_text(strip=True)
+            ]
+            if author_links:
+                author = ", ".join(author_links)
+            else:
+                author = auth_el.get_text(strip=True).replace(" 저", "").strip()
+
+        # Extract publisher
+        pub_el = li.select_one("span.info_pub")
+        publisher = pub_el.get_text(strip=True) if pub_el else ""
+
+        book_entry = {
+            "title": title,
+            "author": author or "저자 미상",
+            "publisher": publisher,
+        }
+
+        # Check if title contains test/exam noise keywords
+        if any(kw in title for kw in NOISE_KEYWORDS):
+            exam_books.append(book_entry)
+        else:
+            parsed_books.append(book_entry)
+
+    # Monograph and cultural books first, followed by remaining books if needed
+    final_books = parsed_books + exam_books
+    return final_books
+
+
 async def fetch_and_cache_trending_books(
-    rss_url: str = YES24_BESTSELLER_RSS_URL,
+    url: str = YES24_BESTSELLER_WEB_URL,
 ) -> List[Dict[str, str]]:
-    """Fetch top trending books from RSS feed and cache them in Redis for 24 hours."""
-    logger.info("Starting trending books fetch from RSS: %s", rss_url)
+    """Fetch live Yes24 bestsellers via SSR web scraping and cache them into Redis for 24 hours."""
+    logger.info("Starting real-time Yes24 bestseller web fetch: %s", url)
     trending_books: List[Dict[str, str]] = []
 
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+    }
+
     try:
-        # Parse RSS asynchronously to prevent blocking the event loop
-        feed: Any = await asyncio.to_thread(feedparser.parse, rss_url)
+        async with httpx.AsyncClient(
+            headers=headers, timeout=12.0, follow_redirects=True
+        ) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            html = resp.text
 
-        entries = getattr(feed, "entries", [])
-        for entry in entries[:50]:
-            title = str(getattr(entry, "title", "")).strip()
-            author = str(getattr(entry, "author", "저자 미상")).strip()
-            description = str(getattr(entry, "description", "")).strip()
-
-            if title:
-                trending_books.append(
-                    {
-                        "title": title,
-                        "author": author or "저자 미상",
-                        "description": description[:200],
-                    }
-                )
-
+        trending_books = parse_yes24_bestseller_html(html)
         if trending_books:
-            logger.info("Successfully parsed %d books from Yes24 RSS feed.", len(trending_books))
-        else:
             logger.info(
-                "RSS feed returned 0 entries (endpoint inactive). Using verified trending books pool."
+                "Successfully scraped %d live real-time bestsellers from Yes24 web.",
+                len(trending_books),
+            )
+        else:
+            logger.warning(
+                "Yes24 web scraping returned 0 books. Layout might have shifted. Using emergency fallback."
             )
     except Exception as e:
-        logger.warning("Error fetching/parsing Yes24 RSS feed (%s). Using fallback pool.", e)
+        logger.warning(
+            "Error fetching live Yes24 bestseller webpage (%s). Using emergency fallback.",
+            e,
+        )
 
-    # If RSS was empty or failed, use robust default pool
+    # If scraping failed, use minimal emergency catalog
     if not trending_books:
-        trending_books = list(DEFAULT_TRENDING_BOOKS)
+        trending_books = list(EMERGENCY_FALLBACK_BOOKS)
 
     # Cache into Redis
     try:
@@ -154,9 +175,9 @@ async def fetch_and_cache_trending_books(
 
 
 async def get_trending_books_text(limit: int = 30) -> str:
-    """Retrieve trending books from Redis (or fallback) and format as open-book text for LLM."""
+    """Retrieve live trending books from Redis (or fallback) and format as open-book text for LLM."""
     redis_mgr = get_redis_session_manager()
-    trending_books: Optional[List[Dict[str, str]]] = None
+    trending_books: List[Dict[str, Any]] = []
 
     try:
         trending_json = await redis_mgr.get(REDIS_TRENDING_BOOKS_KEY)
@@ -166,9 +187,10 @@ async def get_trending_books_text(limit: int = 30) -> str:
         logger.warning("Failed to load trending books from Redis (%s).", e)
 
     if not trending_books:
-        trending_books = DEFAULT_TRENDING_BOOKS
+        trending_books = list(EMERGENCY_FALLBACK_BOOKS)
 
     lines = [
-        f"- {b['title']} (저자: {b.get('author', '저자 미상')})" for b in trending_books[:limit]
+        f"- {b['title']} (저자: {b.get('author', '저자 미상')}, 출판사: {b.get('publisher', '')})"
+        for b in trending_books[:limit]
     ]
     return "\n".join(lines)

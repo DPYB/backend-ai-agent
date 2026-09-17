@@ -224,15 +224,46 @@ async def test_curator_random_elegant_fallback():
 
 
 @pytest.mark.asyncio
-async def test_trending_books_rss_and_caching():
-    """Verify fetch_and_cache_trending_books successfully populates Redis session."""
+async def test_trending_books_scraper_and_caching():
+    """Verify parse_yes24_bestseller_html and fetch_and_cache_trending_books."""
     from app.infrastructure.redis_session import get_redis_session_manager
     from app.infrastructure.trending_books import (
         REDIS_TRENDING_BOOKS_KEY,
         fetch_and_cache_trending_books,
         get_trending_books_text,
+        parse_yes24_bestseller_html,
     )
 
+    # 1. Test HTML parsing with realistic Yes24 SSR snippet
+    sample_html = """
+    <ul id="yesBestList">
+      <li>
+        <div class="goods_info">
+          <a class="gd_name">세네카, 오늘을 빼앗기고 있는 당신에게</a>
+          <span class="info_auth">
+            <a>세네카</a> 저 / <a>하와이 대저택</a> 편역
+          </span>
+          <span class="info_pub">논픽션</span>
+        </div>
+      </li>
+      <li>
+        <div class="goods_info">
+          <a class="gd_name">2026 한국사능력검정시험 기출문제집</a>
+          <span class="info_auth"><a>최태성</a></span>
+          <span class="info_pub">이투스북</span>
+        </div>
+      </li>
+    </ul>
+    """
+    parsed = parse_yes24_bestseller_html(sample_html)
+    assert len(parsed) == 2
+    assert parsed[0]["title"] == "세네카, 오늘을 빼앗기고 있는 당신에게"
+    assert "세네카" in parsed[0]["author"]
+    assert parsed[0]["publisher"] == "논픽션"
+    # Exam book is moved after general books
+    assert parsed[1]["title"] == "2026 한국사능력검정시험 기출문제집"
+
+    # 2. Test live or emergency fallback fetch & cache
     books = await fetch_and_cache_trending_books()
     assert len(books) > 0
 

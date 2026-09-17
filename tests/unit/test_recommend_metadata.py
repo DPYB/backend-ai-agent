@@ -317,3 +317,22 @@ async def test_check_cover_alive_robustness(monkeypatch):
     assert await check_cover_alive("https://contents.kyobobook.co.kr/empty_cover.jpg") is False
     assert await check_cover_alive("https://contents.kyobobook.co.kr/good_cover.jpg") is True
     assert await check_cover_alive("https://contents.kyobobook.co.kr/no_cl_cover.jpg") is True
+
+
+def test_clean_book_title_removes_noise_brackets():
+    """Verify clean_book_title strips noisy brackets and extra subtitles."""
+    from app.infrastructure.national_library_client import clean_book_title
+
+    assert (
+        clean_book_title("세네카, 오늘을 빼앗기고 있는 당신에게 (큰글자책)")
+        == "세네카, 오늘을 빼앗기고 있는 당신에게"
+    )
+    assert clean_book_title("브람스를 좋아하세요(오디오북)") == "브람스를 좋아하세요"
+    assert clean_book_title("[양장] 싯다르타 <개정판>") == "싯다르타"
+    assert clean_book_title("《모순》 (리커버)") == "모순"
+    assert clean_book_title("(진중문고납품)브람스를 좋아하세요") == "브람스를 좋아하세요"
+    assert clean_book_title("모순 - 양귀자 소설") == "모순"
+    assert (
+        clean_book_title("교사를 지키는 단단한 생활지도 : 상황별 실전 사례 100")
+        == "교사를 지키는 단단한 생활지도"
+    )
