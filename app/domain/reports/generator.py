@@ -105,11 +105,20 @@ def _build_llm_report_prompt(
     unread_genres = balance.get("unreadGenres", balance.get("unread_genres", []))
     unread_genres_str = ", ".join(unread_genres) if unread_genres else "자연과학, 역사, 기술과학"
 
+    total_sessions = habits.get("totalSessionCount", habits.get("total_session_count", 0))
+    avg_session_min = habits.get(
+        "avgSessionDurationMinutes", habits.get("avg_session_duration_minutes")
+    )
+    session_summary_str = f"{total_sessions}회"
+    if avg_session_min is not None:
+        session_summary_str += f" (1회 평균 집중 독서 시간: {avg_session_min:.1f}분)"
+
     context_summary = f"""
 [회원의 이번 달 독서 통계 요약]
 - 완독 권수: {overview.get("completedBooksCount", overview.get("completed_books_count", 0))}권
 - 누적 페이지: {overview.get("totalPagesRead", overview.get("total_pages_read", 0))}쪽
 - 총 독서 시간: {overview.get("totalDurationMinutes", overview.get("total_duration_minutes", 0))}분
+- 독서 세션 횟수 및 평균: {session_summary_str}
 - 목표 달성률: {overview.get("goalAchievementRate", overview.get("goal_achievement_rate", 0))}%
 - 주 활동 요일/시간대: {habits.get("timeDistribution", habits.get("time_distribution", {}))}
 - 날씨별 독서 분포: {habits.get("weatherDistribution", habits.get("weather_distribution", {}))}
@@ -429,6 +438,12 @@ async def build_monthly_report(
         ),
         longest_streak_days=habits_raw.get(
             "longestStreakDays", habits_raw.get("longest_streak_days", 0)
+        ),
+        total_session_count=habits_raw.get(
+            "totalSessionCount", habits_raw.get("total_session_count", 0)
+        ),
+        avg_session_duration_minutes=habits_raw.get(
+            "avgSessionDurationMinutes", habits_raw.get("avg_session_duration_minutes")
         ),
     )
 

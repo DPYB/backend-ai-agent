@@ -229,6 +229,8 @@ class CoreApiClient:
                 },
                 "avgCompletionDays": 6.5,
                 "longestStreakDays": 5,
+                "totalSessionCount": 34,
+                "avgSessionDurationMinutes": 28.2,
             },
             "preferences": {
                 "topGenres": [

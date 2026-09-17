@@ -958,5 +958,34 @@
    - `uv run mypy .`: **80개 파일 100% 무결성 통과**
 
 ### 다음 세션에서 할 일
-- 사용자의 확인 및 요청 시 `feat/debate-turn-split-prompts` 커밋 및 푸시, PR 생성 보조.
+- PR #25 (`feat/debate-turn-split-prompts` -> `develop`) 머지 완료 및 로컬 develop 동기화 완료.
 - Milestone 4 (Phase 20 E2E 통합 검증): 프론트엔드 연동 후 3대 서비스 통합 스모크 테스트 진행.
+
+---
+
+## 세션 31 (2026-09-17)
+
+### 진행한 작업
+1. **독서 세션(reading_sessions) 데이터 모델 도입에 따른 AI 에이전트 독립 작업 완성**:
+   - `develop` 브랜치 기반으로 `feat/reading-session-report-enhancement` 작업 브랜치 분기.
+2. **리포트 스키마 및 직렬화 규격 확장 (`app/schemas/report.py`)**:
+   - `ReadingHabits` 모델에 `total_session_count: int = 0` (이번 달 총 독서 세션 횟수) 및 `avg_session_duration_minutes: Optional[float] = None` (1회 평균 집중 독서 시간 분 단위) 필드 추가.
+   - `CamelModel`을 통해 프론트엔드에 `totalSessionCount`, `avgSessionDurationMinutes`로 직렬화되어 카드 02번 및 요약 통계와 100% 매칭.
+3. **CoreApiClient Fallback 동기화 (`app/infrastructure/core_api_client.py`)**:
+   - `get_monthly_report_stats` Fallback 목 데이터에 `totalSessionCount: 34`, `avgSessionDurationMinutes: 28.2`를 추가하여 core-api 미배포/오프라인 환경에서도 안전하게 지원.
+4. **사서 월간 리포트 LLM 프롬프트 및 빌더 고도화 (`app/domain/reports/generator.py`)**:
+   - `_build_llm_report_prompt`의 독서 통계 컨텍스트 요약에 독서 세션 횟수와 1회 평균 집중 독서 시간 주입.
+   - 사서 페르소나가 사용자의 집중 독서 시간(예: "한 번 책을 펼치면 평균 28분 동안 깊게 몰입하는 편이시군요")을 인지하여 분석/처방을 작성하도록 개선.
+   - `build_monthly_report`에서 `habits_raw`로부터 신규 필드를 안전하게 매핑.
+5. **자가 검증 및 품질 테스트 전수 통과 (Self-Validation)**:
+   - `tests/unit/test_monthly_reports.py`에 신규 필드(`totalSessionCount`, `avgSessionDurationMinutes`) 검증 추가.
+   - `uv run pytest`: **전체 141개 단위 테스트 100% 그린 패스 (141 passed in 43.98s)**.
+   - `uv run ruff check .` & `uv run ruff format --check .`: **린트 및 포맷 100% 무결성 통과**.
+   - `uv run mypy .`: **80개 소스 파일 100% 타입 무결성 통과**.
+6. **하네스 문서 동기화**:
+   - `.harness/PLAN.md` 완료 항목 제거 및 `.harness/STATE.md`에 Phase 30 완료 반영.
+
+### 다음 세션에서 할 일
+- 사용자의 확인 및 요청 시 `feat/reading-session-report-enhancement` 커밋 및 푸시, PR 생성 보조.
+- backend-core-api의 `reading_sessions` API 배포 후 통합 연동 확인.
+
