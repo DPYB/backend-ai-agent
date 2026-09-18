@@ -1119,4 +1119,38 @@
 - 대표님의 로컬 터미널 grep 직접 검증(`grep -rn "StateGraph\|from langgraph" app/`) 확인 후, 승인 시 Phase 21 (Step 1 `check_user_reading_streak` 도구 구축) 진행.
 - 사용자 승인 시 변경된 파일 선별 커밋 및 푸시 보조.
 
+---
+
+## 세션 35 (2026-09-18)
+
+### 진행한 작업
+1. **도서 추천 반복 편중(세네카 현상) 원인 규명 및 팩트 체크**:
+   - 프롬프트 few-shot이 아닌, 실시간 Yes24 종합 베스트셀러 2위에 실제로 《세네카, 오늘을 빼앗기고 있는 당신에게》(2026, 논픽션)가 위치하여 오픈북 상단에 주입되던 구조 확인.
+   - Pydantic 구조화 출력(`with_structured_output`)의 탐욕적(Greedy) 최상단 선택과 세션 내 기추천 도서 제외 로직 부재가 결합되어 동일 도서가 반복 추천되던 현상을 정밀 진단.
+2. **KDC 장르 매퍼 기반 단일 기준 노이즈 필터링 (`app/infrastructure/national_library_client.py`)**:
+   - `is_curatable_book(title, author, publisher)` 함수 신설: 수험서/기출/모의고사/공무원 교재, 교직 실무 매뉴얼, 아동/만화/합본판을 KDC 370 및 808.3 분류 기준에 따라 단일 기준으로 필터링.
+   - `map_kdc_to_genre`에 문학/철학/인문 대표 키워드 보강.
+3. **베스트셀러 순위 보존 + KDC 장르별 구조화 오픈북 카탈로그 (`app/infrastructure/trending_books.py`)**:
+   - 무작위 셔플로 순위 팩트가 손실되는 문제를 방지하기 위해, 실제 순위(`종합 N위`)를 유지하면서 KDC 장르별(문학/소설/에세이, 인문/철학/심리, 교양/사회/과학)로 그룹화하여 LLM에 구조화 텍스트 주입.
+4. **세션 내 최근 추천 도서 추적, 슬라이딩 윈도우 캡 및 턴 간 Redis 영속화 (`app/domain/graph/state.py`, `curator_node.py`, `nodes.py`, `router.py`, `redis_session.py`)**:
+   - `AgentState`에 `recommended_history: Optional[List[str]]` 추가.
+   - `router.py`의 `_prepare_chat_context` 및 `POST /chat`, `POST /chat/stream`에서 세션 스토어(`session_mgr`)와 양방향 바인딩하여 턴이 이어져도 이전 추천 히스토리가 증발하지 않고 유지되도록 영속화 연동 (`RedisSessionManager.delete_session` 메서드 추가).
+   - 무한정 누적으로 인한 컨텍스트 오염 및 토큰 비용 증가를 방지하기 위해 최근 10권(`MAX_RECOMMENDED_HISTORY = 10`) 슬라이딩 윈도우 캡 적용.
+   - 큐레이터 프롬프트에 `[중복 추천 제외 목록]` 네거티브 컨스트레인트를 동적 주입하여 직전 추천 도서 재추천 억제.
+   - `CURATOR_SYSTEM_PROMPT`에 장르 전반의 적합 도서를 균형 있게 선택하도록 다양성 지침 보강.
+5. **품질 검증 및 테스트 전수 통과 (Self-Validation)**:
+   - `tests/unit/test_curator_pipeline.py`: 노이즈 필터링, KDC 장르 그룹핑/순위 보존, 슬라이딩 윈도우 히스토리 관리 및 **동일 세션 ID 기반 2턴 연속 호출 시 1차 추천 도서의 제외 목록 주입 및 턴 간 영속화 통합 테스트** 추가.
+   - 전체 153개 단위 테스트(Pytest) 100% 그린 패스 통과 (`153 passed, 1 warning in 49.81s`).
+   - Ruff 린트 및 포맷 정렬 100% 무결성 통과 (`All checks passed`, `91 files already formatted`).
+   - Mypy 정적 타입 체크 81개 소스 파일 100% 무결성 통과 (`Success: no issues found in 81 source files`).
+6. **하네스 문서 동기화**:
+   - `.harness/STATE.md`: Phase 33 완료 반영.
+   - `.harness/PLAN.md`: Phase 33 완료 및 정리.
+   - `.harness/DECISIONS.md`: KDC 장르 그룹핑 순위 보존 카탈로그 및 슬라이딩 윈도우 중복 방지 채택 결정 기록.
+
+### 다음 세션에서 할 일
+- 대표님의 로컬 터미널 grep 직접 검증(`grep -rn "StateGraph\|from langgraph" app/`) 확인 후, 승인 시 Phase 21 (Step 1 `check_user_reading_streak` 도구 구축) 진행.
+- 사용자 승인 시 변경된 파일 선별 커밋 및 푸시 보조.
+
+
 

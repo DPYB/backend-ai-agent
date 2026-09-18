@@ -88,3 +88,6 @@ class AgentState(TypedDict):
 
     # Structured wrap-up summary of the debate discussion
     debate_summary: Optional[str]
+
+    # Sliding window history of previously recommended book titles (to prevent repeating recommendations)
+    recommended_history: Optional[List[str]]
