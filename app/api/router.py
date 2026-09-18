@@ -150,11 +150,12 @@ def extract_member_id_from_auth(
             detail="인증 토큰이 누락되었습니다.",
         )
 
-    # 1. CI / Test mock token support matching backend-core-api
-    if token.startswith("mock-token-"):
+    # 1. CI / Test mock token support matching backend-core-api (Safe guard for non-production)
+    is_testing_env = getattr(settings, "app_env", "").lower() in ("test", "development")
+    if is_testing_env and token.startswith("mock-token-"):
         mock_id = token.replace("mock-token-", "")
         return mock_id, token
-    if token == "test-token":
+    if is_testing_env and token == "test-token":
         return "00000000-0000-0000-0000-000000000001", token
 
     # 2. Standard JWT signature and expiration verification
@@ -286,16 +287,26 @@ async def _prepare_chat_context(
     from app.domain.personas import normalize_persona
 
     requested_mode = request.mode or "LIBRARIAN"
-    raw_persona = request.librarian_id or request.persona
+    # Check if request.persona is explicitly a debate partner
+    norm_persona = (
+        normalize_persona(request.persona, default_mode="LIBRARIAN") if request.persona else None
+    )
+    if requested_mode == "DEBATE" or (norm_persona and norm_persona.startswith("DEBATE_")):
+        requested_mode = "DEBATE"
+        raw_persona = request.persona or request.librarian_id
+    else:
+        raw_persona = request.librarian_id or request.persona
+
     target_persona = normalize_persona(raw_persona, default_mode=requested_mode)
 
     # 1. Automatic Session Partitioning by Persona ({raw_session_id}:{persona})
-    # For LIBRARIAN mode (where 4 librarians share the library shelf), if the incoming session_id
-    # does not already have the persona suffix, partition it at the DB level ({session}:{persona}).
-    # This physically isolates conversation threads between librarians (e.g. CAT vs SHOEBILL),
-    # ensuring 0% tone contamination and enabling each librarian to maintain its own independent thread.
+    # Partition session_id at the DB level ({session}:{persona}) for all 8 personas
+    # (both LIBRARIAN and DEBATE modes).
+    # This physically isolates conversation threads between librarians (e.g. CAT vs SEA_SLUG)
+    # and debate partners (e.g. CRITIC vs COUNSELOR), ensuring 0% tone contamination
+    # and preventing animal librarian persona/endings from leaking into debate sessions.
     raw_session_id = request.session_id or "default"
-    if requested_mode == "LIBRARIAN" and not raw_session_id.endswith(f":{target_persona}"):
+    if not raw_session_id.endswith(f":{target_persona}"):
         partitioned_session_id = f"{raw_session_id}:{target_persona}"
     else:
         partitioned_session_id = raw_session_id
@@ -308,7 +319,6 @@ async def _prepare_chat_context(
         raw_session_id,
         session_id,
     )
-
     # Retrieve session history from Redis if exists for this partitioned session
     saved_session = await session_mgr.get_session(session_id)
     history_messages: List[BaseMessage] = []

@@ -13,7 +13,10 @@
 
 ---
 
-## 2. 인프라 및 운영 개선
+## 2. 인프라 및 운영 개선 (기술 부채 & 리스크)
+- [ ] **FastAPI BackgroundTasks 생존 보장 한계 및 전용 작업 큐 전환 검토**: Render 무료 티어 및 Cloud Run(Scale-to-Zero) 환경에서 응답 반환 직후 인스턴스가 즉시 Idle 판정을 받거나 스케일다운될 경우, 응답 후 백그라운드에서 실행 중이던 서지 API 비동기 검증 작업이 중간 강제 종료될 수 있음. 향후 Cloud Run 정식 전환 시점 등에 Celery, GCP Cloud Tasks, 또는 Redis Streams 기반 전용 작업 큐 도입 필요성 재검토 필요.
+- [ ] **보안 이슈**: `router.py` 내부의 `test-token` / `mock-token-` 바이패스는 현재 `app_env in ("test", "development")`로 안전 격리되어 있으나, Production 전환 및 보안 고도화 시 완전 제거하고 단위 테스트 전체를 표준 JWT RSA/HMAC Mocking 구조로 개편 필요.
+- [ ] **자가 교정(Pending Correction) 데모 사전 리허설 검증 가이드**: 턴1 가짜 도서 노출 후 턴2에서 자가 정정 멘트가 나가는 구조이므로, 단발성 평가 시 오답으로 오해받을 수 있음. 또한 발표 시연 시 사용자가 던지는 도서 질의가 우연히 국립도서관 실존 도서와 매칭되면 정정 플로우 자체가 발생하지 않을 수 있으므로, 리허설 단계에서 반드시 `pending_correction`이 확실하게 유도되는 질의어를 사전 실측 검증하여 데모 스크립트를 확정해야 함.
 - [ ] **Upstash Redis 레이트 리미팅**: 익명/무료 사용자 대상 API 남용 방지용 슬라이딩 윈도우 Rate Limiter 적용.
 - [ ] **LangSmith 프로덕션 모니터링 대시보드 연동**: 프롬프트 토큰 소모량 및 도구 호출 실패율 추적.
 - [ ] **Tavily Fallback 강화**: Tavily API 쿼터 초과 시 DuckDuckGo 또는 네이버 도서 검색 API로 우회하는 2차 폴백 체계 구성.

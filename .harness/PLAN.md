@@ -6,8 +6,20 @@
 
 ## 미완료 작업 체크리스트
 
+### 📌 Phase 21 (Step 1): 실시간 독서 세션 도구 구축 (`check_user_reading_streak`)
+> **진행 조건**: 대표님 로컬 터미널에서 `grep -rn "StateGraph\|from langgraph" app/` 직접 검증 후 승인 시 착수
+> **핵심 원칙**: 도구는 오직 가공되지 않은 순수 정형 데이터(팩트 JSON)만 반환하며, 페르소나 어조(~냥, ~두둥 등)는 사서 노드 LLM이 전담함.
 
+- [ ] **Core API 클라이언트 연동 메서드 구현 (`app/infrastructure/core_api_client.py`)**:
+  - `get_user_reading_streak(member_id: str, token: Optional[str] = None)`: `backend-core-api`의 세션 API 호출 (Token Relay 및 게스트 바이패스, 오프라인 Mock 지원).
+- [ ] **순수 팩트 반환 도구 구현 (`app/domain/memory/reading_streak_tool.py`)**:
+  - `@tool("check_user_reading_streak")`: 누적 시간, 연속 일수(Streak), 최근 세션 정보 JSON 문자열 반환.
+- [ ] **도구 전사 바인딩 (`app/domain/graph/tools.py`)**:
+  - `GENERIC_TOOLS`에 `check_user_reading_streak` 등록하여 8개 페르소나에 자동 바인딩.
+- [ ] **단위 테스트 작성 및 무결성 검증 (`tests/unit/test_reading_streak_tool.py`)**:
+  - 로그인 유저 정상 데이터 반환, 비로그인 게스트 바이패스, Core API 오류 시 안전 폴백, Ruff/Mypy/Pytest 100% 통과.
 
+---
 
 
 ### 📌 Milestone 4 (Phase 20 E2E 통합 검증): 프론트엔드 연동 후 3대 서비스 통합 스모크 테스트

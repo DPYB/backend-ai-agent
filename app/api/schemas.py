@@ -88,9 +88,17 @@ class ChatRequest(BaseModel):
         # 2. Normalize persona and map librarian_id securely
         from app.domain.personas import normalize_persona
 
-        effective_raw = (
-            self.librarian_id if (self.librarian_id and self.mode != "DEBATE") else self.persona
+        # Check if persona is explicitly a debate partner
+        persona_normalized = (
+            normalize_persona(self.persona, default_mode="LIBRARIAN") if self.persona else None
         )
+        is_debate_persona = bool(persona_normalized and persona_normalized.startswith("DEBATE_"))
+
+        if self.mode == "DEBATE" or is_debate_persona:
+            self.mode = "DEBATE"
+            effective_raw = self.persona or self.librarian_id
+        else:
+            effective_raw = self.librarian_id or self.persona
         self.persona = normalize_persona(effective_raw, default_mode=self.mode or "LIBRARIAN")
 
         # 3. Assemble location from flat coordinates if not already present
