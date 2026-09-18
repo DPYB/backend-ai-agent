@@ -20,6 +20,7 @@ from app.domain.personas import (
     PERSONA_REGISTRY,
     SEA_SLUG_ID,
     SHOEBILL_ID,
+    normalize_persona,
 )
 
 logger = logging.getLogger(__name__)
@@ -342,8 +343,6 @@ async def _run_persona_node(
     config: Optional[RunnableConfig] = None,
 ) -> Dict[str, Any]:
     """Universal runner for any of the 8 persona nodes with custom librarian name support."""
-    from app.domain.personas import normalize_persona
-
     canonical_persona_id = normalize_persona(persona_id)
     logger.info("Executing persona node: %s (canonical: %s)", persona_id, canonical_persona_id)
     persona_meta = PERSONA_REGISTRY.get(canonical_persona_id, PERSONA_REGISTRY[CAT_ID])
@@ -370,9 +369,9 @@ async def _run_persona_node(
     else:
         system_prompt = persona_meta["system_prompt"]
 
-    # Inject user-defined custom librarian name if provided
+    # Inject user-defined custom librarian name if provided (ONLY for librarian mode, NEVER for debate mode)
     custom_name = state.get("librarian_name")
-    if custom_name:
+    if custom_name and not is_debate:
         system_prompt += (
             f"\n\n[호출 명칭]: 사용자가 당신에게 붙여준 고유 이름은 '{custom_name}'입니다. "
             "본인을 지칭하거나 인사할 때 기본 이름 대신 이 이름을 친근하게 사용하십시오."

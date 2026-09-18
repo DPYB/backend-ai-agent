@@ -2,7 +2,7 @@
 
 from typing import Any, Dict, Optional
 
-from app.domain.guardrails.shared_rules import SHARED_GUARDRAILS
+from app.domain.guardrails.shared_rules import DEBATE_GUARDRAILS, SHARED_GUARDRAILS
 from app.domain.personas.cat import (
     BLUE_DISPLAY_NAME,
     BLUE_ID,
@@ -67,6 +67,11 @@ def _with_guardrails(prompt: str) -> str:
     return f"{prompt.strip()}\n\n{SHARED_GUARDRAILS}"
 
 
+def _with_debate_guardrails(prompt: str) -> str:
+    """Attach shared guardrails and debate-specific anti-animal/anti-librarian guardrails to debate prompts."""
+    return f"{prompt.strip()}\n\n{SHARED_GUARDRAILS}\n\n{DEBATE_GUARDRAILS}"
+
+
 # Backwards compatibility alias
 RUSSIAN_BLUE_ID = CAT_ID
 RUSSIAN_BLUE_DISPLAY_NAME = CAT_DISPLAY_NAME
@@ -114,9 +119,9 @@ PERSONA_REGISTRY: Dict[str, Dict[str, Any]] = {
         "mode": "DEBATE",
         "description": "작품의 미학적 구조와 복선, 메타포를 다각도로 분석하고 별점과 화두를 제시하는 문화 평론가 토론 파트너.",
         "tone": "정교한 평론가 어조, 섬세한 텍스트 분석, 별점 및 화두 제시",
-        "system_prompt": _with_guardrails(DEBATE_CRITIC_SYSTEM_PROMPT),
-        "opening_system_prompt": _with_guardrails(DEBATE_CRITIC_OPENING_PROMPT),
-        "turn_system_prompt": _with_guardrails(DEBATE_CRITIC_TURN_PROMPT),
+        "system_prompt": _with_debate_guardrails(DEBATE_CRITIC_SYSTEM_PROMPT),
+        "opening_system_prompt": _with_debate_guardrails(DEBATE_CRITIC_OPENING_PROMPT),
+        "turn_system_prompt": _with_debate_guardrails(DEBATE_CRITIC_TURN_PROMPT),
     },
     DEBATE_STORYTELLER_ID: {
         "persona_id": DEBATE_STORYTELLER_ID,
@@ -124,9 +129,9 @@ PERSONA_REGISTRY: Dict[str, Dict[str, Any]] = {
         "mode": "DEBATE",
         "description": "시대적 배경과 역사적 맥락을 소환하여 피 끓는 몰입을 선사하고 시대적 교훈을 던지는 스토리텔러 토론 파트너.",
         "tone": "열정적이고 드라마틱한 하이텐션 어조, 생생한 서사 전개와 교훈",
-        "system_prompt": _with_guardrails(DEBATE_STORYTELLER_SYSTEM_PROMPT),
-        "opening_system_prompt": _with_guardrails(DEBATE_STORYTELLER_OPENING_PROMPT),
-        "turn_system_prompt": _with_guardrails(DEBATE_STORYTELLER_TURN_PROMPT),
+        "system_prompt": _with_debate_guardrails(DEBATE_STORYTELLER_SYSTEM_PROMPT),
+        "opening_system_prompt": _with_debate_guardrails(DEBATE_STORYTELLER_OPENING_PROMPT),
+        "turn_system_prompt": _with_debate_guardrails(DEBATE_STORYTELLER_TURN_PROMPT),
     },
     DEBATE_COUNSELOR_ID: {
         "persona_id": DEBATE_COUNSELOR_ID,
@@ -134,9 +139,9 @@ PERSONA_REGISTRY: Dict[str, Dict[str, Any]] = {
         "mode": "DEBATE",
         "description": "인물의 심리 메커니즘과 상처, 관계의 본질을 파고들며 독자의 마음을 돌보는 심리 멘토 토론 파트너.",
         "tone": "따뜻하고 예리한 심리 상담 어조, 내면 치유와 마음 돌봄",
-        "system_prompt": _with_guardrails(DEBATE_COUNSELOR_SYSTEM_PROMPT),
-        "opening_system_prompt": _with_guardrails(DEBATE_COUNSELOR_OPENING_PROMPT),
-        "turn_system_prompt": _with_guardrails(DEBATE_COUNSELOR_TURN_PROMPT),
+        "system_prompt": _with_debate_guardrails(DEBATE_COUNSELOR_SYSTEM_PROMPT),
+        "opening_system_prompt": _with_debate_guardrails(DEBATE_COUNSELOR_OPENING_PROMPT),
+        "turn_system_prompt": _with_debate_guardrails(DEBATE_COUNSELOR_TURN_PROMPT),
     },
     DEBATE_OBSERVER_ID: {
         "persona_id": DEBATE_OBSERVER_ID,
@@ -144,9 +149,9 @@ PERSONA_REGISTRY: Dict[str, Dict[str, Any]] = {
         "mode": "DEBATE",
         "description": "인물의 본능과 환경의 상호작용, 현실 행동 시그널을 직시하는 행동 분석가 토론 파트너.",
         "tone": "냉철하고 직관적인 행동 분석 어조, 현실 시그널 직시",
-        "system_prompt": _with_guardrails(DEBATE_OBSERVER_SYSTEM_PROMPT),
-        "opening_system_prompt": _with_guardrails(DEBATE_OBSERVER_OPENING_PROMPT),
-        "turn_system_prompt": _with_guardrails(DEBATE_OBSERVER_TURN_PROMPT),
+        "system_prompt": _with_debate_guardrails(DEBATE_OBSERVER_SYSTEM_PROMPT),
+        "opening_system_prompt": _with_debate_guardrails(DEBATE_OBSERVER_OPENING_PROMPT),
+        "turn_system_prompt": _with_debate_guardrails(DEBATE_OBSERVER_TURN_PROMPT),
     },
 }
 

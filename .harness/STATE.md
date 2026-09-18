@@ -297,6 +297,20 @@
     - Ruff 린트/포맷 100% 통과 (`All checks passed`).
     - Mypy 정적 타입 체크 80개 소스 파일 100% 무결성 통과 (`Success: no issues found in 80 source files`).
 
+- [x] **Phase 22: 토론자 페르소나 동물 사서 말투 오염 원천 차단 및 세션 격리**
+  - **세션 파티셔닝 전면 적용 (`app/api/router.py`)**:
+    - LIBRARIAN 모드뿐만 아니라 DEBATE 모드를 포함한 8개 페르소나 전체에 `{session_id}:{persona}` 자동 격리를 적용하여, 동일한 세션 ID로 사서와 토론 탭을 전환하더라도 대화 히스토리 및 어조가 혼입되지 않도록 원천 차단.
+  - **사서 애칭 주입 분기 격리 (`app/domain/graph/nodes.py`)**:
+    - `if custom_name and not is_debate:`로 조건을 수정하여, 회원이 사서에게 지정한 애칭(`librarian_name`)이 토론 파트너 시스템 프롬프트에 유출되는 현상 방지.
+  - **토론자 4종 시스템 프롬프트 네거티브 가드 탑재 (`app/domain/guardrails/shared_rules.py`, `app/domain/personas/__init__.py`)**:
+    - `DEBATE_GUARDRAILS` 정의 및 4개 토론자(`DEBATE_CRITIC`, `DEBATE_STORYTELLER`, `DEBATE_COUNSELOR`, `DEBATE_OBSERVER`)의 오프닝/턴 프롬프트에 일괄 주입.
+    - 동물 사서 전용 종결어미(`~냥`, `~두둥`, `~누누`, `~크크`), 사서 역할극, 반말 등을 엄격히 금지하고 전문인 오마주 어조를 준수하도록 강제.
+  - **자가 검증 완료 (Self-Validation)**:
+    - 신규 단위 테스트 추가 (`tests/unit/test_debate_isolation.py`: 4종 토론자 네거티브 가드 주입 검증, 토론 세션 파티셔닝 및 사서 애칭 격리 검증, 갯민숭달팽이 누디-토론자 간 세션 격리 검증).
+    - 전체 147개 단위 테스트(Pytest) 100% 그린 패스 통과 (`147 passed in 44.58s`).
+    - Ruff 린트 및 포맷 정렬 100% 통과 (`All checks passed`, `91 files left unchanged`).
+    - Mypy 정적 타입 체크 81개 소스 파일 100% 무결성 통과 (`Success: no issues found in 81 source files`).
+
 
 
 

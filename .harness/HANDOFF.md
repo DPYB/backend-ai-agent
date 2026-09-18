@@ -1058,5 +1058,66 @@
 - 사용자의 승인에 따라 변경 파일 커밋 및 푸시, PR 생성 보조.
 - Milestone 4 프론트엔드 연동 E2E 통합 스모크 테스트 진행.
 
+---
+
+## 세션 33 (2026-09-18)
+
+### 진행한 작업
+1. **CTO 리뷰 피드백 분석 및 아키텍처 재설계 수립**:
+   - **0번 (프레임워크 팩트 체크)**: 실제 코드베이스를 점검하여 `app/domain/graph/workflow.py`가 정식 `StateGraph(AgentState)` 및 `workflow.compile()` 기반이며, 8개 페르소나 노드(`cat_node`, `shoebill_node` 등)가 비동기 함수로 온전히 운용 중임을 명확히 확인. 대표님이 직접 검증 가능한 단일 grep 명령어를 명시 (`grep -rn "StateGraph\|from langgraph" app/`).
+   - **1번 (허구 통계 제거)**: 출처 없는 수치(환각 재발률 70% 등)를 포트폴리오 및 기획서, 사고 과정에서 영구 배제.
+   - **2번 (Step 2 순환 루프 무기한 연기)**: 프론트엔드 세션 파티셔닝 안정화가 최우선이므로 복잡도를 올리는 순환 그래프(Cycle Edge Reflection)는 전면 보류.
+   - **3번 (Step 1 도구 책임 분리 원칙 확립)**: 신규 독서 세션 도구(`check_user_reading_streak`)는 오직 가공되지 않은 순수 정형 데이터(팩트 JSON)만 반환하고, 사서 페르소나 어조(~냥, ~두둥 등)는 사서 노드의 LLM이 전담하도록 역할을 엄격히 분리.
+   - **4번 (무과금 환경 비동기 검증 & 리스크 도출)**:
+     - Redis 화이트리스트 캐시 우선(Cache-first) ➔ 미스 시 FastAPI `BackgroundTasks` 비동기 검증 ➔ 환각 감지 시 세션 스토어에 `pending_correction` 플래그 저장 ➔ 다음 대화 턴에서 사서가 자연스럽게 자가 정정 발화하는 2턴 아키텍처 설계.
+     - **리스크 1 기록**: Render 무료 티어 및 Cloud Run(Scale-to-Zero)에서 응답 전송 직후 스케일다운 시 BackgroundTasks 중단 가능성을 인지하고, 향후 Celery/Cloud Tasks 전용 작업 큐 전환 검토 필요성을 `BACKLOG.md`에 공식 기술 부채로 기록.
+     - **리스크 2 기록**: 턴1 오답 ➔ 턴2 정정 구조의 데모 함정을 방지하기 위해, 발표 시연 전 특정 도서 질의가 우연히 실존 도서와 매칭되지 않고 반드시 `pending_correction`을 유발하는지 사전 리허설에서 실측 검증해야 함을 `BACKLOG.md`에 명시.
+2. **하네스 문서 동기화**:
+   - `BACKLOG.md`: BackgroundTasks 생존 한계 및 자가 교정 데모 사전 리허설 검증 가이드 추가.
+   - `DECISIONS.md`: Step 1 순수 팩트 도구/어조 분리 및 Step 2 보류, Cache-first + `pending_correction` 비동기 정정 결정 추가.
+   - `PLAN.md`: Phase 21 (Step 1 `check_user_reading_streak` 도구 구축) 상세 체크리스트 신설.
+
+### 다음 세션에서 할 일
+- 대표님의 로컬 터미널 grep 명령어 직접 검증(`grep -rn "StateGraph\|from langgraph" app/`) 확인.
+- 직접 검증 완료 및 대표님 최종 승인 시 `feat/reading-streak-tool` 브랜치를 생성하고 Phase 21 (Step 1 도구 구현) 본격 착수.
+
+---
+
+## 세션 34 (2026-09-18)
+
+### 진행한 작업
+1. **토론자 페르소나 동물 사서 말투 오염 원인 규명 및 조치 (Phase 22)**:
+   - **원인 분석**:
+     - 프론트엔드가 탭 전환 시 동일한 `session_id`를 재사용함에 따라, 사서 모드에만 국한되었던 세션 파티셔닝 때문에 이전 사서(예: 바다달팽이 누디)의 대화 기록 및 종결어미(`~누누`, `~냥` 등)가 토론 파트너로 유입되는 현상 규명.
+     - `nodes.py`에서 `librarian_name`(사서 애칭)이 토론 모드 여부와 상관없이 무조건 주입되어 토론자가 자신을 사서로 오인하던 문제 규명.
+     - 토론자 시스템 프롬프트에 동물 사서 말투를 금지하는 네거티브 가드레일 부재.
+     - 프론트엔드가 이전 탭에서 선택해 둔 사서(`librarian_id: "nudi"`)를 토론 모드에서도 계속 함께 보내는데, `router.py`와 `schemas.py`에서 `raw_persona = librarian_id or persona`로 처리하여 관찰가를 골라도 누디가 실행되던 치명적 결함 규명 (#25 PR 이후 발생).
+   - **토론 모드 페르소나 우선순위 원천 보장 (`app/api/schemas.py`, `app/api/router.py`)**:
+     - `mode == "DEBATE"`이거나 `persona`가 토론자(`DEBATE_OBSERVER`, `관찰가`, `평론가` 등)인 경우, 잔존해 있는 `librarian_id`를 완전히 무시하고 `persona`를 1순위로 확정하도록 로직 교정.
+   - **세션 파티셔닝 전면 적용 (`app/api/router.py`)**:
+     - LIBRARIAN 모드뿐만 아니라 DEBATE 모드를 포함한 8개 페르소나 전체에 `{session_id}:{persona}` 자동 격리 적용.
+     - Redis 세션 및 LangGraph Configurable `thread_id` 레벨에서 세션 완전 물리적 격리 달성.
+   - **사서 애칭 주입 조건 강화 (`app/domain/graph/nodes.py`)**:
+     - `if custom_name and not is_debate:`로 변경하여 토론자 프롬프트에 사서 애칭이 주입되지 않도록 원천 차단.
+   - **토론자 4종 시스템 프롬프트 네거티브 가드(`DEBATE_GUARDRAILS`) 탑재 (`app/domain/guardrails/shared_rules.py`, `app/domain/personas/__init__.py`)**:
+     - 4종 토론자(`DEBATE_CRITIC`, `DEBATE_STORYTELLER`, `DEBATE_COUNSELOR`, `DEBATE_OBSERVER`)의 오프닝 및 턴 프롬프트 전체에 `DEBATE_GUARDRAILS` 주입.
+     - 동물 사서 전용 종결어미(`~냥`, `~두둥`, `~누누`, `~크크`), 사서 역할극, 반말 등을 엄격히 금지하고 전문인 오마주 어조를 준수하도록 강제.
+    - **코드 품질 개선 (Clean Code 피드백 반영, `nodes.py`)**:
+      - `_run_persona_node` 함수 내부에 있던 `from app.domain.personas import normalize_persona` 불필요한 Local Import를 파일 최상단(Top-level)으로 승격하여 순환 참조 우려 없는 클린 코드 준수.
+2. **품질 검증 및 테스트 전수 통과 (Self-Validation)**:
+   - `tests/unit/test_debate_isolation.py`: 네거티브 가드 주입 검증, 세션 파티셔닝 및 애칭 차단 검증, 바다달팽이-토론자 간 히스토리 격리 검증, 프론트엔드 잔존 `librarian_id` 무시 및 토론자 정상 실행 검증(4개 테스트 통과).
+   - `tests/unit/test_debate_memory.py` 파티셔닝 세션 ID 동기화 보정.
+   - `tests/unit/test_api.py` 12개 테스트 100% 통과.
+   - `uv run ruff check --fix .` & `uv run ruff format .`: **린트/포맷 100% 통과**.
+   - `uv run mypy .`: **81개 소스 파일 100% 무결성 통과 (Success: no issues found in 81 source files)**.
+3. **하네스 문서 동기화**:
+   - `.harness/STATE.md`: Phase 22 완료 반영.
+   - `.harness/PLAN.md`: Phase 22 완료 및 정리.
+   - `.harness/DECISIONS.md`: 전 모드 세션 파티셔닝, 토론자 우선순위 보장 및 `DEBATE_GUARDRAILS` 채택 결정 기록.
+
+### 다음 세션에서 할 일
+- 대표님의 로컬 터미널 grep 직접 검증(`grep -rn "StateGraph\|from langgraph" app/`) 확인 후, 승인 시 Phase 21 (Step 1 `check_user_reading_streak` 도구 구축) 진행.
+- 사용자 승인 시 변경된 파일 선별 커밋 및 푸시 보조.
+
 
 
