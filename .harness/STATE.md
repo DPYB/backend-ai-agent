@@ -6,6 +6,14 @@
 
 ## 완료된 단계
 
+- [x] **Phase 34: 해커톤 체험 모드(게스트 JWT) 세션 분리, 사용량 제한, 쓰기 락 및 Role 분리 이중 서킷 브레이커(RPM/RPD) 구축**
+  - **게스트 JWT 클레임 규격 준수 & Null-Check 안전망**: `role: "guest"`, `sub: "guest-{uuid}"` 인식 및 Core-API 게스트 토큰의 `email`, `name`, `nickname` 누락 시 기본값 안전 처리 (`extract_auth_info_from_auth`).
+  - **세션 파티셔닝**: 게스트의 `sub`를 앵커로 `{guest_id}:{persona}`로 자동 파티셔닝하여 히스토리 완전 격리 (`app/api/router.py`).
+  - **게스트 대화 횟수 상한 (영구 귀속)**: `guest_usage:{guest_id}`(14일 TTL 유지) 카운터를 운용하여 토큰 갱신 시에도 대화 횟수가 영구 유지되며, 초과 시 200 OK와 함께 우아한 UX 안내 멘트 반환 (일반 및 스트리밍 SSE 규격 일치).
+  - **Role 분리 이중 서킷 브레이커 (RPM/RPD)**: 게스트(`circuit:rpm:guest:...`, `circuit:rpd:guest:...`)와 정회원(`circuit:rpm:member:...`, `circuit:rpd:member:...`) 카운터를 완전 분리하여 게스트 트래픽 폭주 시에도 정회원 서비스 보장. 분당 카운터는 90초 NX TTL 패턴(`INCR + EXPIRE NX`)을 준수하고 48시간 일일 카운터와 병행 운용하여 임계치의 70~80% 수준 선제 차단 및 200 OK 안내 멘트 반환.
+  - **게스트 쓰기 락 (403 Forbidden)**: `POST /api/v1/memory/scraps`, `POST /api/v1/memory/debate-insights`, `POST /api/v1/vectors/records`에서 게스트 요청 시 403 반환 및 토론 피날레 백그라운드 DB 적재 태스크 건너뛰기 적용.
+  - **동시성(Concurrency) 및 무결성 검증**: `asyncio.gather` 기반 50개 동시 요청 카운트 원자성 및 서킷 브레이커 경계 레이스 컨디션 방어 테스트를 포함한 11개 전용 단위 테스트 추가 (`tests/unit/test_guest_mode.py`). 전체 164개 단위 테스트 100% 그린 패스, Ruff 및 Mypy 무결성 통과.
+
 - [x] **Phase 1: 프로젝트 기반 및 의존성 구성**
   - Python 3.12, FastAPI, LangGraph, Pydantic v2 기반 패키지 셋업 (`pyproject.toml`, `uv.lock`)
   - 환경변수 관리 시스템 구축 (`app/core/config.py`, `.env.example`)

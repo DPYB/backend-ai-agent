@@ -1152,5 +1152,39 @@
 - 대표님의 로컬 터미널 grep 직접 검증(`grep -rn "StateGraph\|from langgraph" app/`) 확인 후, 승인 시 Phase 21 (Step 1 `check_user_reading_streak` 도구 구축) 진행.
 - 사용자 승인 시 변경된 파일 선별 커밋 및 푸시 보조.
 
+---
+
+## 세션 36 (2026-09-18)
+
+### 진행한 작업
+1. **게스트 JWT 클레임(`sub`, `role`) 추출 및 Null-Check 전수 안전화 (`app/api/router.py`)**:
+   - `extract_auth_info_from_auth`를 확장하여 `(sub, raw_token, role)` 3-튜플 반환 (하위 호환 유지).
+   - `role == "guest"` 및 `sub.startswith("guest-")` 식별. Core-API 게스트 토큰에 `email`, `name`, `nickname`이 누락되므로 기본값 안전 처리 전수 적용.
+2. **게스트 세션 파티셔닝 (`app/api/router.py`)**:
+   - 게스트 요청 시 `sub` (`guest-{uuid}`)를 앵커로 `{guest_id}:{persona}`로 자동 파티셔닝하여 게스트 간 및 페르소나 간 대화 히스토리 완전 격리.
+3. **게스트 영구 대화 횟수 상한 및 우아한 UX 200 OK 폴백 (`app/infrastructure/redis_session.py`, `app/api/router.py`)**:
+   - 카운터 키를 `guest_usage:{guest_id}`(14일 TTL 유지)로 영구 귀속시켜 토큰 재발급을 통한 우회 차단.
+   - `GUEST_CHAT_LIMIT`(기본 10회) 도달 시 LLM 호출을 건너뛰고 200 OK와 함께 `"이번 체험에서 대화 가능 횟수를 모두 사용하셨습니다. 정식 로그인 후 다시 만나요!"` 안내 멘트 반환 (일반 및 스트리밍 SSE `metadata -> token -> done` 동일).
+4. **Role 분리 이중 서킷 브레이커 (RPM / RPD) 구축 (`app/infrastructure/redis_session.py`, `app/core/config.py`, `app/api/router.py`)**:
+   - 게스트(`circuit:rpm:guest:...`, `circuit:rpd:guest:...`)와 정회원(`circuit:rpm:member:...`, `circuit:rpd:member:...`) 카운터를 완전 분리하여 게스트 트래픽 폭주 시에도 정회원 서비스 보장.
+   - **TTL 패턴 준수**: 분당 카운터 생성 시 첫 INCR 시점에만 짧은 TTL(90초)을 설정하는 `INCR + EXPIRE NX` 원자적 패턴 적용 (키 영구 잔존 방지).
+   - 일일 카운터는 48시간 TTL로 운용하여 임계치의 70~80% 수준 선제 차단 및 200 OK 안내 멘트(`"앗, 지금 서재에 방문객이 너무 많아 사서들이 바빠요. 잠시 후 다시 시도해 주세요!"`) 반환.
+   - 비동기 뮤텍스(`_circuit_lock`)로 동시성 레이스 컨디션 방어.
+5. **게스트 쓰기 락 (403 Forbidden) 및 백그라운드 태스크 스킵 (`app/api/v1/memory.py`, `app/api/router.py`)**:
+   - `POST /api/v1/memory/scraps`, `POST /api/v1/memory/debate-insights`, `POST /api/v1/vectors/records`에서 게스트 요청 시 403 Forbidden 반환.
+   - 토론 피날레 시 게스트 사용자의 `save_debate_insight_task` 백그라운드 DB 적재 태스크 건너뛰기 적용.
+6. **단위 및 동시성(Concurrency) 전수 검증 (`tests/unit/test_guest_mode.py`)**:
+   - `asyncio.gather` 기반 50개 동시 요청 카운트 원자성 및 서킷 브레이커 임계치 경계 레이스 컨디션 방어 테스트를 포함한 11개 전용 테스트 작성 완료.
+   - 전체 164개 단위 테스트(Pytest) 100% 그린 패스 통과 (`164 passed, 1 warning in 54.27s`).
+   - Ruff 린트/포맷 100% 통과 (`Found 1 error (1 fixed, 0 remaining)`).
+   - Mypy 정적 타입 체크 82개 소스 파일 100% 무결성 통과 (`Success: no issues found in 82 source files`).
+7. **하네스 문서 동기화**:
+   - `STATE.md`, `PLAN.md`, `DECISIONS.md`, `HANDOFF.md` 갱신 완료.
+
+### 다음 세션에서 할 일
+- 대표님의 로컬 터미널 grep 직접 검증(`grep -rn "StateGraph\|from langgraph" app/`) 확인 후, 승인 시 Phase 21 (Step 1 `check_user_reading_streak` 도구 구축) 진행.
+- 사용자 승인 시 변경된 파일 선별 커밋 및 푸시 보조.
+
+
 
 

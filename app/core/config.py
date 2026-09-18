@@ -95,6 +95,13 @@ class Settings(BaseSettings):
     naver_clova_api_url: str = Field(default="", alias="NAVER_CLOVA_API_URL")
     naver_clova_secret_key: str = Field(default="", alias="NAVER_CLOVA_SECRET_KEY")
 
+    # Guest Mode Rate Limits & Role-based Circuit Breaker (70-80% safe buffer)
+    guest_chat_limit: int = Field(default=10, alias="GUEST_CHAT_LIMIT")
+    circuit_guest_rpm_limit: int = Field(default=60, alias="CIRCUIT_GUEST_RPM_LIMIT")
+    circuit_guest_rpd_limit: int = Field(default=1400, alias="CIRCUIT_GUEST_RPD_LIMIT")
+    circuit_member_rpm_limit: int = Field(default=120, alias="CIRCUIT_MEMBER_RPM_LIMIT")
+    circuit_member_rpd_limit: int = Field(default=4000, alias="CIRCUIT_MEMBER_RPD_LIMIT")
+
     @property
     def cors_origin_list(self) -> List[str]:
         """Return parsed list of CORS origins."""
