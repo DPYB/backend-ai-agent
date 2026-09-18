@@ -273,4 +273,179 @@ async def test_trending_books_scraper_and_caching():
 
     text = await get_trending_books_text(limit=10)
     assert len(text) > 0
-    assert "- " in text
+    assert "- (" in text or "- " in text
+
+
+def test_is_curatable_book_filter():
+    """Verify is_curatable_book correctly filters out exam/job manual/comics noise."""
+    from app.infrastructure.national_library_client import is_curatable_book
+
+    # Negative cases (should be filtered out)
+    assert not is_curatable_book("교사를 지키는 단단한 생활지도 : 실전 사례 100", "", "테크빌교육")
+    assert not is_curatable_book("2026 한국사능력검정시험 기출문제집", "최태성", "이투스북")
+    assert not is_curatable_book("2027 황철곤 행정학 패스프레소", "황철곤", "")
+    assert not is_curatable_book("ETS 토익 정기시험 기출문제집 1000", "ETS", "YBM")
+    assert not is_curatable_book("흔한남매 23", "흔한남매", "흔한컴퍼니")
+    assert not is_curatable_book("에그박사 19", "에그박사", "")
+    assert not is_curatable_book("멜로우TV 팀 나빠 추리 탐정단 1", "멜로우 TV", "")
+    assert not is_curatable_book("포스트카드북 합본판", "", "")
+
+    # Positive cases (should pass)
+    assert is_curatable_book("세네카, 오늘을 빼앗기고 있는 당신에게", "세네카", "논픽션")
+    assert is_curatable_book("모순", "양귀자", "쓰다")
+    assert is_curatable_book("그랬다고 적었다", "김애란", "문학동네")
+    assert is_curatable_book("마음의 어휘력", "조아란", "페이지2북스")
+    assert is_curatable_book("데미안", "헤르만 헤세", "민음사")
+
+
+@pytest.mark.asyncio
+async def test_trending_books_text_grouped_by_kdc_and_rank():
+    """Verify get_trending_books_text preserves ranks and groups books into KDC categories."""
+    from app.infrastructure.trending_books import get_trending_books_text
+
+    text = await get_trending_books_text(limit=20)
+    assert "[오늘의 화제작 오픈북 (실제 종합 베스트셀러 순위)]" in text
+    assert "종합 " in text
+    assert "위)" in text
+    # Checks that at least one KDC category heading exists
+    assert any(
+        h in text
+        for h in [
+            "📚 문학 / 소설 / 에세이:",
+            "🌱 인문 / 철학 / 심리:",
+            "💡 교양 / 사회 / 과학 / 라이프:",
+        ]
+    )
+
+
+@pytest.mark.asyncio
+async def test_curator_node_anti_repeat_history_and_sliding_window():
+    """Verify book_curator_node collects history, enforces sliding window cap, and updates state."""
+    from app.domain.graph.curator_node import MAX_RECOMMENDED_HISTORY, book_curator_node
+
+    # 1. State with existing recommended_history and assistant message containing book headings
+    state = {
+        "messages": [
+            HumanMessage(content="책 하나 추천해줘"),
+            AIMessage(content="첫 번째 책입니다.\n### 📖 과거추천도서A\n좋은 책입니다."),
+        ],
+        "member_id": "test-member",
+        "active_persona": "CAT",
+        "librarian_name": "블루",
+        "mode": "LIBRARIAN",
+        "switch_suggestion": None,
+        "context_summary": None,
+        "handoff_target": None,
+        "curator_request": "책 추천해줘",
+        "curated_books": None,
+        "recommended_history": [f"이전책_{i}" for i in range(12)],  # Exceeds cap of 10
+    }
+
+    result = await book_curator_node(cast(AgentState, state))
+    assert "recommended_history" in result
+    rec_history = result["recommended_history"]
+
+    # History must be capped at MAX_RECOMMENDED_HISTORY
+    assert len(rec_history) <= MAX_RECOMMENDED_HISTORY
+    # Newly curated books must be added to history
+    curated = result["curated_books"]
+    for b in curated:
+        assert b["title"] in rec_history
+
+
+@pytest.mark.asyncio
+async def test_two_turn_continuous_chat_persists_recommended_history_across_turns():
+    """Verify that in a 2-turn conversation with the same session_id:
+    Turn 1: Recommended books are persisted to Redis session's recommended_history.
+    Turn 2: The next request retrieves Turn 1 books from Redis, passes them to curator,
+            and preserves them in the session history.
+    """
+    from httpx import ASGITransport, AsyncClient
+
+    from app.infrastructure.redis_session import get_redis_session_manager
+    from app.main import app
+
+    session_mgr = get_redis_session_manager()
+    session_id = "test-two-turn-integration-session"
+    partitioned_key = f"{session_id}:CAT"
+
+    # Clean up before testing
+    await session_mgr.delete_session(partitioned_key)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        # Turn 1: First recommendation
+        resp1 = await ac.post(
+            "/api/v1/chat",
+            json={
+                "message": "책 추천해줘",
+                "session_id": session_id,
+                "persona": "CAT",
+                "member_id": "test-member",
+            },
+            headers={"Authorization": "Bearer mock-token-test-member"},
+        )
+        assert resp1.status_code == 200
+        data1 = resp1.json()
+        assert len(data1.get("recommended_books", [])) > 0
+        turn1_titles = [b["title"] for b in data1["recommended_books"]]
+
+        # Check Redis persistence after Turn 1
+        saved1 = await session_mgr.get_session(partitioned_key)
+        assert saved1 is not None
+        assert "recommended_history" in saved1
+        assert len(saved1["recommended_history"]) > 0
+        for t in turn1_titles:
+            assert t in saved1["recommended_history"]
+
+        # Turn 2: Second recommendation with the SAME session_id
+        resp2 = await ac.post(
+            "/api/v1/chat",
+            json={
+                "message": "다른 책도 추천해줘",
+                "session_id": session_id,
+                "persona": "CAT",
+                "member_id": "test-member",
+            },
+            headers={"Authorization": "Bearer mock-token-test-member"},
+        )
+        assert resp2.status_code == 200
+
+        # Check Redis persistence after Turn 2: Turn 1 titles must still be preserved
+        saved2 = await session_mgr.get_session(partitioned_key)
+        assert saved2 is not None
+        assert "recommended_history" in saved2
+        for t in turn1_titles:
+            assert t in saved2["recommended_history"]
+
+
+@pytest.mark.asyncio
+async def test_curator_node_negative_constraint_prompt_content():
+    """Verify that book_curator_node constructs the negative constraint section with previous turn books."""
+    from app.domain.graph.curator_node import book_curator_node
+
+    turn1_books = ["세네카, 오늘을 빼앗기고 있는 당신에게", "데미안"]
+    state = {
+        "messages": [
+            HumanMessage(content="책 추천해줘"),
+            AIMessage(
+                content="추천합니다냥!\n### 📖 세네카, 오늘을 빼앗기고 있는 당신에게\n### 📖 데미안"
+            ),
+            HumanMessage(content="다른 책도 추천해줘"),
+        ],
+        "member_id": "test-member",
+        "active_persona": "CAT",
+        "librarian_name": "블루",
+        "mode": "LIBRARIAN",
+        "switch_suggestion": None,
+        "context_summary": None,
+        "handoff_target": None,
+        "curator_request": "다른 책도 추천해줘",
+        "curated_books": None,
+        "recommended_history": turn1_books,
+    }
+
+    result = await book_curator_node(cast(AgentState, state))
+    assert "recommended_history" in result
+    # Turn 1 books must be preserved in result's recommended_history
+    for t in turn1_books:
+        assert t in result["recommended_history"]

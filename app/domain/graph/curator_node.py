@@ -12,6 +12,7 @@ Hybrid Curation Principle:
 
 import logging
 import random
+import re
 from typing import Any, Dict, List
 
 from langchain_core.prompts import ChatPromptTemplate
@@ -49,13 +50,16 @@ class CuratorResponse(BaseModel):
     )
 
 
+MAX_RECOMMENDED_HISTORY: int = 10
+
 # 2. Curator System Prompt with Emotion-focused Pairing Directive
 CURATOR_SYSTEM_PROMPT = """당신은 최고 수준의 도서 큐레이터입니다.
 사용자의 감정, 상황, 날씨를 차분히 분석하여 딱 2권의 책을 추천합니다.
 
-[🔥 핵심 지침: 감정 맞춤형 큐레이션 페어링]
-1. [트렌드 도서 1권]: **반드시** 아래 [오늘의 화제작 오픈북] 데이터 안에서 사용자의 상황과 가장 잘 어울리는 책 1권을 선택하세요. 절대 지어내지 마세요.
-2. [인생 도서 1권]: 연도나 시대에 얽매이지 마세요. 현대 소설이든, 3년 전 에세이든, 시대를 초월한 고전이든 상관없이 사용자의 감정을 가장 완벽하게 어루만져줄 수 있는 당신의 원픽(One-pick) 1권을 당신의 풍부한 도서 지식에서 자유롭게 고르세요.
+[핵심 지침: 감정 맞춤형 큐레이션 페어링]
+1. [트렌드 도서 1권]: 아래 [오늘의 화제작 오픈북] 데이터 안에서 사용자의 상황과 가장 잘 어울리는 책 1권을 선택하세요. 최상단 도서에만 기계적으로 치우치지 말고, 장르별(문학, 인문, 교양 등) 목록 전반에서 사용자의 감정에 가장 어울리는 책을 신중히 골라주세요. 절대 지어내지 마세요.
+2. [인생 도서 1권]: 연도나 시대에 얽매이지 마세요. 현대 소설이든, 3년 전 에세이든, 시대를 초월한 고전이든 상관없이 사용자의 감정을 가장 깊이 어루만져줄 수 있는 당신의 원픽(One-pick) 1권을 당신의 풍부한 도서 지식에서 자유롭게 고르세요.
+3. [다양성 및 중복 방지]: 최근 이미 추천된 도서 목록이 주어질 경우 해당 도서는 제외하고 완전히 새로운 도서 조합으로 구성해 주세요.
 
 사용자의 마음에 가장 깊은 울림을 줄 수 있는 책을 신중하게 짝지어주세요.
 """
@@ -135,6 +139,25 @@ async def book_curator_node(state: AgentState) -> Dict[str, Any]:
                 break
     if not curator_request:
         curator_request = "마음을 달래줄 좋은 책을 추천해줘."
+
+    # 0. Historical recommendations tracking with sliding window cap
+    raw_history = list(state.get("recommended_history") or [])
+    for msg in messages:
+        content_str = str(getattr(msg, "content", ""))
+        for match in re.findall(r"###\s*📖\s*([^\n\r]+)", content_str):
+            clean_title = match.strip()
+            if clean_title and clean_title not in raw_history:
+                raw_history.append(clean_title)
+    recommended_history = raw_history[-MAX_RECOMMENDED_HISTORY:]
+
+    negative_constraint_text = ""
+    if recommended_history:
+        past_list_str = "\n".join(f"- {t}" for t in recommended_history)
+        negative_constraint_text = (
+            f"\n\n[중복 추천 제외 목록 (최근 이미 추천한 도서)]\n"
+            f"{past_list_str}\n"
+            f"위 목록에 있는 도서는 이번 턴에서 추천하지 마시고, 다른 적합한 도서를 선택해 주세요."
+        )
 
     weather_context = state.get("weather_context") or "맑음"
 
@@ -238,8 +261,8 @@ async def book_curator_node(state: AgentState) -> Dict[str, Any]:
                     "human",
                     "사용자 요청: {request}\n"
                     "날씨 컨텍스트: {weather}\n\n"
-                    "[오늘의 화제작 오픈북 (여기서 신간 1권 필수 선택)]\n"
-                    "{open_book}",
+                    "{open_book}"
+                    "{negative_constraint}",
                 ),
             ]
         )
@@ -252,6 +275,7 @@ async def book_curator_node(state: AgentState) -> Dict[str, Any]:
                         "request": curator_request,
                         "weather": weather_context,
                         "open_book": open_book_text,
+                        "negative_constraint": negative_constraint_text,
                     }
                 )
                 if isinstance(response_obj, CuratorResponse):
@@ -327,7 +351,16 @@ async def book_curator_node(state: AgentState) -> Dict[str, Any]:
 
     logger.info("Curator successfully verified %d books.", len(verified_books))
 
+    # Update recommended history with newly verified books
+    new_recommended_history = list(recommended_history)
+    for b in verified_books:
+        title = b.get("title")
+        if title and title not in new_recommended_history:
+            new_recommended_history.append(title)
+    new_recommended_history = new_recommended_history[-MAX_RECOMMENDED_HISTORY:]
+
     return {
         "curated_books": verified_books,
         "curator_request": None,
+        "recommended_history": new_recommended_history,
     }

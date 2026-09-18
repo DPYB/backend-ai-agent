@@ -545,6 +545,8 @@ async def _run_persona_node(
     }
     if curated_books:
         result["curated_books"] = curated_books
+    if state.get("recommended_history"):
+        result["recommended_history"] = state.get("recommended_history")
 
     return result
 

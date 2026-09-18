@@ -146,13 +146,20 @@ def map_kdc_to_genre(kdc: str = "", subject: str = "", title: str = "") -> str:
         ("동화", "LITERATURE"),
         ("이야기", "LITERATURE"),
         ("희곡", "LITERATURE"),
+        ("오디세이아", "LITERATURE"),
+        ("오뒷세이아", "LITERATURE"),
         ("철학", "PHILOSOPHY"),
         ("인문", "PHILOSOPHY"),
         ("심리", "PHILOSOPHY"),
+        ("사색", "PHILOSOPHY"),
+        ("사유", "PHILOSOPHY"),
+        ("어휘력", "PHILOSOPHY"),
+        ("인생수업", "PHILOSOPHY"),
         ("종교", "RELIGION"),
         ("사회", "SOCIAL_SCIENCE"),
         ("경제", "SOCIAL_SCIENCE"),
         ("경영", "SOCIAL_SCIENCE"),
+        ("투자", "SOCIAL_SCIENCE"),
         ("과학", "NATURAL_SCIENCE"),
         ("기술", "TECHNOLOGY"),
         ("공학", "TECHNOLOGY"),
@@ -162,6 +169,7 @@ def map_kdc_to_genre(kdc: str = "", subject: str = "", title: str = "") -> str:
         ("미술", "ARTS"),
         ("언어", "LANGUAGE"),
         ("어학", "LANGUAGE"),
+        ("문해", "LANGUAGE"),
         ("역사", "HISTORY"),
         ("지리", "HISTORY"),
     ]:
@@ -194,6 +202,56 @@ def map_kdc_to_genre(kdc: str = "", subject: str = "", title: str = "") -> str:
         return "GENERAL"  # 030 상식/백과사전, 050 잡지/매거진, 001 일반교양
 
     return KDC_FIRST_CHAR_MAPPING.get(first_digit, "GENERAL")
+
+
+# KDC 및 독서 큐레이션 목적에 부적합한 수험서/실무서/아동만화 제외 키워드 (단일 기준)
+NON_CURATABLE_KEYWORDS: List[str] = [
+    # 수험/자격증/문제집 (KDC 370 계열 수험 및 공무원/기출)
+    "기출",
+    "문제집",
+    "모의고사",
+    "핵심집약",
+    "실전모의",
+    "기본서",
+    "수험서",
+    "능력검정",
+    "패스프레소",
+    "기출총정리",
+    "토익",
+    "toic",
+    "행정학",
+    "행정법",
+    "형사법",
+    "한국사능력검정",
+    "공단기",
+    "해커스",
+    "에듀윌",
+    # 특수 직군 직무/실무 매뉴얼
+    "생활지도",
+    "실전 사례",
+    "교사를 지키는",
+    "테크빌교육",
+    # 아동/유튜브/캐릭터/학습만화/팬시물 (KDC 808.3 아동물 및 만화)
+    "흔한남매",
+    "에그박사",
+    "멜로우tv",
+    "팀 나빠",
+    "추리 탐정단",
+    "원소 원정대",
+    "포스트카드북",
+    "합본판",
+    "코믹스",
+]
+
+
+def is_curatable_book(title: str, author: str = "", publisher: str = "") -> bool:
+    """Determine if a book is suitable for general reading curation.
+
+    Filters out test prep/exam workbooks, niche job manuals, and children's comic strips
+    to preserve a high-quality catalog of literary, humanities, essay, and cultural monographs.
+    """
+    combined = f"{title} {author} {publisher}".lower()
+    return not any(kw in combined for kw in NON_CURATABLE_KEYWORDS)
 
 
 def clean_author_name(author_str: str) -> str:

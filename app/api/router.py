@@ -324,6 +324,7 @@ async def _prepare_chat_context(
     history_messages: List[BaseMessage] = []
     active_persona = target_persona
     context_summary = None
+    saved_rec_history: List[str] = []
 
     if saved_session:
         saved_persona = saved_session.get("active_persona")
@@ -334,6 +335,7 @@ async def _prepare_chat_context(
             request.persona or saved_persona or target_persona, default_mode=requested_mode
         )
         context_summary = saved_session.get("context_summary")
+        saved_rec_history = saved_session.get("recommended_history") or []
 
         for msg_data in saved_session.get("messages", []):
             role = msg_data.get("role")
@@ -439,6 +441,7 @@ async def _prepare_chat_context(
         "signals": signals,
         "is_concluded": False,
         "debate_summary": None,
+        "recommended_history": saved_rec_history,
     }
 
     return (
@@ -569,6 +572,8 @@ async def chat_with_persona(
                 "mode": persona_mode,
                 "context_summary": result_state.get("context_summary"),
                 "messages": serializable_history,
+                "recommended_history": result_state.get("recommended_history")
+                or initial_state.get("recommended_history", []),
             },
         )
 
@@ -745,6 +750,9 @@ async def chat_stream_with_persona(
             context_summary = initial_state.get("context_summary")
             is_concluded = bool(initial_state.get("is_concluded", False))
             debate_summary = initial_state.get("debate_summary")
+            latest_recommended_history: List[str] = list(
+                initial_state.get("recommended_history") or []
+            )
 
             run_config = {"configurable": {"thread_id": session_id}}
             async for event in _graph.astream_events(
@@ -775,6 +783,8 @@ async def chat_stream_with_persona(
                             switch_suggestion_data = output["switch_suggestion"]
                         if output.get("curated_books"):
                             curated_books_data = output["curated_books"]
+                        if output.get("recommended_history"):
+                            latest_recommended_history = output["recommended_history"]
                         if "is_concluded" in output:
                             is_concluded = bool(output["is_concluded"])
                         if "debate_summary" in output:
@@ -791,6 +801,8 @@ async def chat_stream_with_persona(
                         if output.get("curated_books"):
                             curated_books_data = output["curated_books"]
                             yield _format_sse("books", {"books": curated_books_data})
+                        if output.get("recommended_history"):
+                            latest_recommended_history = output["recommended_history"]
                     elif node_name == "summarizer_node" and isinstance(output, dict):
                         if output.get("active_persona"):
                             last_active_persona = output["active_persona"]
@@ -834,6 +846,7 @@ async def chat_stream_with_persona(
                     "mode": final_mode,
                     "context_summary": context_summary,
                     "messages": serializable_history,
+                    "recommended_history": latest_recommended_history,
                 },
             )
 

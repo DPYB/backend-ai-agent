@@ -82,6 +82,17 @@ class RedisSessionManager:
             logger.error("Failed to save session %s: %s", session_id, e)
             self._in_memory_store[key] = serialized
 
+    async def delete_session(self, session_id: str) -> None:
+        """Delete session data by session_id."""
+        key = f"session:{session_id}"
+        try:
+            if self._is_redis_available and self._client:
+                await self._client.delete(key)
+            self._in_memory_store.pop(key, None)
+        except Exception as e:
+            logger.error("Failed to delete session %s: %s", session_id, e)
+            self._in_memory_store.pop(key, None)
+
     async def get_cached_recommendation(self, cache_key: str) -> Optional[List[Dict[str, Any]]]:
         """Retrieve cached book recommendations."""
         key = f"recommend_cache:{cache_key}"

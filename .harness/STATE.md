@@ -311,6 +311,27 @@
     - Ruff 린트 및 포맷 정렬 100% 통과 (`All checks passed`, `91 files left unchanged`).
     - Mypy 정적 타입 체크 81개 소스 파일 100% 무결성 통과 (`Success: no issues found in 81 source files`).
 
+- [x] **Phase 33 (Milestone 10): 도서 큐레이션 다양성 보장 및 세션 중복 방지(Anti-Repeat) 파이프라인 구축**
+  - **KDC 장르 매퍼 기반 큐레이션 적합 도서 판별기 연계 (`app/infrastructure/national_library_client.py`)**:
+    - `is_curatable_book(title, author, publisher)`: 기존 KDC 매퍼(`map_kdc_to_genre`) 및 서지 분류 체계를 단일 기준으로 재사용하여 수험서/기출/모의고사, 특수 직군 직무 매뉴얼, 아동/만화/합본판 노이즈 필터링.
+    - `map_kdc_to_genre`의 한국어 도서명/주제어 장르 매핑 보강 (`LITERATURE`, `PHILOSOPHY`, `SOCIAL_SCIENCE`, `GENERAL` 등).
+  - **베스트셀러 순위 보존 + KDC 장르별 구조화 오픈북 카탈로그 (`app/infrastructure/trending_books.py`)**:
+    - Yes24 40권 스크래핑 시 `is_curatable_book`으로 유효 단행본 선별 및 원래 순위(`rank`) 보존.
+    - `get_trending_books_text()`에서 단순 무작위 셔플로 인한 순위 신뢰도 손실을 방지하고, **종합 순위(`종합 N위`)를 유지**하면서 KDC 장르별(문학/소설/에세이, 인문/철학/심리, 교양/사회/과학)로 그룹핑하여 LLM에 구조화 텍스트 주입.
+  - **세션 내 최근 추천 도서 히스토리 추적 및 턴 간 Redis 영속화 (`app/domain/graph/state.py`, `nodes.py`, `router.py`, `redis_session.py`)**:
+    - `AgentState`에 `recommended_history: Optional[List[str]]` 추가.
+    - `router.py`의 `_prepare_chat_context` 및 `POST /chat`, `POST /chat/stream`에서 세션 스토어와 1:1 양방향 바인딩하여 턴이 바뀌어도 추천 히스토리가 증발하지 않고 유지되도록 영속화 연동 (`RedisSessionManager.delete_session` 지원).
+    - 토큰 비용과 컨텍스트 최적화를 위해 최근 10권(`MAX_RECOMMENDED_HISTORY = 10`) 슬라이딩 윈도우 캡 적용.
+  - **큐레이터 프롬프트 네거티브 가드레일 및 다양성 지침 탑재 (`app/domain/graph/curator_node.py`)**:
+    - `recommended_history`가 존재할 경우 `[중복 추천 제외 목록]`을 프롬프트에 네거티브 컨스트레인트로 주입하여 직전 추천 도서 재추천 억제.
+    - 최상단 도서 기계적 편중을 완화하고 장르 전반의 적합 도서를 균형 있게 선택하도록 시스템 프롬프트 지침 고도화.
+  - **자가 검증 완료 (Self-Validation)**:
+    - `tests/unit/test_curator_pipeline.py`에 노이즈 필터링, KDC 장르 그룹핑/순위 보존, 슬라이딩 윈도우 중복 방지 및 **동일 세션 ID 기반 2턴 연속 호출 시 1차 추천 도서의 제외 목록 주입 및 턴 간 영속화 통합 테스트** 추가.
+    - 전체 153개 단위 테스트 정상 통과 (`153 passed, 1 warning in 49.81s`).
+    - Ruff 린트 및 포맷 정렬 통과 (`All checks passed`, `91 files already formatted`).
+    - Mypy 정적 타입 체크 81개 소스 파일 무결성 통과 (`Success: no issues found in 81 source files`).
+
+
 
 
 
