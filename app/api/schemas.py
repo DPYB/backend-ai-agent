@@ -99,7 +99,6 @@ class ChatRequest(BaseModel):
             effective_raw = self.persona or self.librarian_id
         else:
             effective_raw = self.librarian_id or self.persona
-
         self.persona = normalize_persona(effective_raw, default_mode=self.mode or "LIBRARIAN")
 
         # 3. Assemble location from flat coordinates if not already present

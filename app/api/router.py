@@ -287,7 +287,6 @@ async def _prepare_chat_context(
     from app.domain.personas import normalize_persona
 
     requested_mode = request.mode or "LIBRARIAN"
-
     # Check if request.persona is explicitly a debate partner
     norm_persona = (
         normalize_persona(request.persona, default_mode="LIBRARIAN") if request.persona else None
@@ -320,7 +319,6 @@ async def _prepare_chat_context(
         raw_session_id,
         session_id,
     )
-
     # Retrieve session history from Redis if exists for this partitioned session
     saved_session = await session_mgr.get_session(session_id)
     history_messages: List[BaseMessage] = []
