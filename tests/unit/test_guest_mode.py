@@ -40,6 +40,7 @@ def create_mock_jwt(sub: str, role: str) -> str:
 def parse_sse_events(raw_text: str) -> List[Dict[str, Any]]:
     """Parse SSE text into events."""
     import json
+
     events = []
     blocks = [b.strip() for b in raw_text.strip().split("\n\n") if b.strip()]
     for block in blocks:

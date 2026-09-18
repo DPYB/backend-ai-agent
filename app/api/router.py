@@ -497,8 +497,12 @@ async def _prepare_chat_context(
 
 
 # Standard fallback messages
-CIRCUIT_BREAKER_FALLBACK_MSG = "앗, 지금 서재에 방문객이 너무 많아 사서들이 바빠요. 잠시 후 다시 시도해 주세요!"
-GUEST_LIMIT_EXCEEDED_MSG = "이번 체험에서 대화 가능 횟수를 모두 사용하셨습니다. 정식 로그인 후 다시 만나요!"
+CIRCUIT_BREAKER_FALLBACK_MSG = (
+    "앗, 지금 서재에 방문객이 너무 많아 사서들이 바빠요. 잠시 후 다시 시도해 주세요!"
+)
+GUEST_LIMIT_EXCEEDED_MSG = (
+    "이번 체험에서 대화 가능 횟수를 모두 사용하셨습니다. 정식 로그인 후 다시 만나요!"
+)
 
 
 @api_router.post("/chat", response_model=ChatResponse, tags=["Chat"])
@@ -534,7 +538,12 @@ async def chat_with_persona(
     if user_role == "guest" and guest_id:
         current_usage = await session_mgr.get_guest_usage(guest_id)
         if current_usage >= settings.guest_chat_limit:
-            logger.info("Guest %s exceeded chat limit (%d >= %d)", guest_id, current_usage, settings.guest_chat_limit)
+            logger.info(
+                "Guest %s exceeded chat limit (%d >= %d)",
+                guest_id,
+                current_usage,
+                settings.guest_chat_limit,
+            )
             return ChatResponse(
                 session_id=session_id,
                 reply=GUEST_LIMIT_EXCEEDED_MSG,
@@ -551,7 +560,9 @@ async def chat_with_persona(
     # 2. Global Circuit Breaker Check (Role-based RPM / RPD)
     is_tripped, trip_type = await session_mgr.check_and_incr_circuit_breaker(user_role)
     if is_tripped:
-        logger.warning("Circuit breaker tripped (%s) for role %s. Returning fallback.", trip_type, user_role)
+        logger.warning(
+            "Circuit breaker tripped (%s) for role %s. Returning fallback.", trip_type, user_role
+        )
         return ChatResponse(
             session_id=session_id,
             reply=CIRCUIT_BREAKER_FALLBACK_MSG,
@@ -690,7 +701,13 @@ async def chat_with_persona(
         # Auto-persist debate insight to agent.debate_insights in background if concluded
         # NOTE: Skip background DB write if user is guest (guest write lock)
         effective_mid = initial_state.get("member_id")
-        if is_concluded and debate_summary and effective_mid and user_role != "guest" and not str(effective_mid).startswith("guest-"):
+        if (
+            is_concluded
+            and debate_summary
+            and effective_mid
+            and user_role != "guest"
+            and not str(effective_mid).startswith("guest-")
+        ):
             book_title = extract_debate_book_title(final_messages)
             background_tasks.add_task(
                 save_debate_insight_task,

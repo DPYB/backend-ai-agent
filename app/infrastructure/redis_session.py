@@ -257,6 +257,7 @@ class RedisSessionManager:
 
         if not hasattr(self, "_circuit_lock"):
             import asyncio
+
             self._circuit_lock = asyncio.Lock()
 
         async with self._circuit_lock:
