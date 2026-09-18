@@ -1,9 +1,11 @@
 """Memory API endpoints for scrap vectorization and Supabase pgvector storage."""
 
 import logging
+from typing import Optional
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, status
 
+from app.api.router import extract_auth_info_from_auth
 from app.api.schemas import (
     DebateInsightVectorizeRequest,
     DebateInsightVectorizeResponse,
@@ -21,14 +23,37 @@ router = APIRouter(prefix="/api/v1/memory", tags=["Memory"])
 vectors_router = APIRouter(prefix="/api/v1/vectors", tags=["Vectors"])
 
 
+def _assert_not_guest(
+    member_id: Optional[str],
+    authorization: Optional[str] = None,
+) -> None:
+    """Check if the request is from a guest user and reject with 403 Forbidden."""
+    if authorization:
+        sub, _, role = extract_auth_info_from_auth(authorization)
+        if role == "guest" or (sub and sub.startswith("guest-")):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="게스트 체험 모드에서는 개인 독서 기억/스크랩 영구 저장 기능을 지원하지 않습니다. 정식 로그인 후 이용해 주세요.",
+            )
+    if member_id and member_id.startswith("guest-"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="게스트 체험 모드에서는 개인 독서 기억/스크랩 영구 저장 기능을 지원하지 않습니다. 정식 로그인 후 이용해 주세요.",
+        )
+
+
 @router.post("/scraps", response_model=ScrapVectorizeResponse, status_code=status.HTTP_201_CREATED)
-async def vectorize_scrap(request: ScrapVectorizeRequest) -> ScrapVectorizeResponse:
+async def vectorize_scrap(
+    request: ScrapVectorizeRequest,
+    authorization: Optional[str] = Header(default=None),
+) -> ScrapVectorizeResponse:
     """Vectorize a book scrap/quote with user memo and insert into Supabase pgvector.
 
     - Combines content (quote) and memo for rich semantic representation
     - Generates 768-dim embedding (via Google Gemini or fallback)
     - Saves into Supabase scrap_vector partitioned by member_id
     """
+    _assert_not_guest(request.member_id, authorization)
     try:
         # Build embedding text combining quote and user reflection
         embedding_text = f"도서: {request.book_title}\n문장: {request.content}"
@@ -54,6 +79,8 @@ async def vectorize_scrap(request: ScrapVectorizeRequest) -> ScrapVectorizeRespo
             scrap_id=scrap_id,
             message="스크랩 문장 및 메모가 성공적으로 벡터화되어 개인 독서 기억에 적재되었습니다.",
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("Failed to vectorize and save scrap: %s", e)
         raise HTTPException(
@@ -65,13 +92,17 @@ async def vectorize_scrap(request: ScrapVectorizeRequest) -> ScrapVectorizeRespo
 @vectors_router.post(
     "/records", response_model=RecordVectorizeResponse, status_code=status.HTTP_201_CREATED
 )
-async def vectorize_reading_record(request: RecordVectorizeRequest) -> RecordVectorizeResponse:
+async def vectorize_reading_record(
+    request: RecordVectorizeRequest,
+    authorization: Optional[str] = Header(default=None),
+) -> RecordVectorizeResponse:
     """Vectorize a reading record/review from backend-core-api and store in Supabase pgvector.
 
     - Combines title and content (user review/thoughts)
     - Generates 768-dim embedding (via Google Gemini or fallback)
     - Stores into Supabase agent.scrap_vector partitioned by member_id
     """
+    _assert_not_guest(request.member_id, authorization)
     try:
         embedding_text = f"도서: {request.title}\n독서 기록: {request.content}"
         embedding = generate_query_embedding(embedding_text)
@@ -94,6 +125,8 @@ async def vectorize_reading_record(request: RecordVectorizeRequest) -> RecordVec
             scrap_id=scrap_id,
             message="독서 기록이 성공적으로 벡터화되어 개인 독서 기억에 적재되었습니다.",
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("Failed to vectorize reading record: %s", e)
         raise HTTPException(
@@ -109,6 +142,7 @@ async def vectorize_reading_record(request: RecordVectorizeRequest) -> RecordVec
 )
 async def vectorize_debate_insight(
     request: DebateInsightVectorizeRequest,
+    authorization: Optional[str] = Header(default=None),
 ) -> DebateInsightVectorizeResponse:
     """Vectorize a debate insight and insert into agent.debate_insights.
 
@@ -116,6 +150,7 @@ async def vectorize_debate_insight(
     - Generates 768-dim embedding (via Google Gemini or fallback)
     - Saves into agent.debate_insights partitioned by member_id
     """
+    _assert_not_guest(request.member_id, authorization)
     try:
         embedding_text = f"도서: {request.book_title}\n논제: {request.topic or ''}\n토론 요약: {request.summary}".strip()
         embedding = generate_query_embedding(embedding_text)
@@ -140,6 +175,8 @@ async def vectorize_debate_insight(
             insight_id=insight_id,
             message="토론 통찰 요약이 성공적으로 벡터화되어 토론 기억에 적재되었습니다.",
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("Failed to vectorize debate insight: %s", e)
         raise HTTPException(

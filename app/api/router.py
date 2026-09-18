@@ -121,21 +121,23 @@ async def list_personas(
     return results
 
 
-def extract_member_id_from_auth(
+def extract_auth_info_from_auth(
     auth_header: Optional[str],
-) -> Tuple[Optional[str], Optional[str]]:
-    """Extract authenticated member UUID and raw token from JWT Authorization header.
+) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    """Extract authenticated member UUID / sub, raw token, and role from JWT Authorization header.
 
     Validates signature and expiration using shared JWT_SECRET_KEY.
 
     Returns:
-        Tuple of (member_id, raw_token) if authenticated, or (None, None) if guest (no header).
+        Tuple of (sub, raw_token, role) if authenticated, or (None, None, None) if no header.
+        - role: "guest" or "member" (default "member" if not specified)
+        - sub: e.g. "guest-123e4567-..." or member UUID
 
     Raises:
         HTTPException(401): If token is expired, invalid, forged, or malformed.
     """
     if not auth_header or not auth_header.strip():
-        return None, None
+        return None, None, None
 
     if not auth_header.startswith("Bearer "):
         raise HTTPException(
@@ -154,9 +156,10 @@ def extract_member_id_from_auth(
     is_testing_env = getattr(settings, "app_env", "").lower() in ("test", "development")
     if is_testing_env and token.startswith("mock-token-"):
         mock_id = token.replace("mock-token-", "")
-        return mock_id, token
+        role = "guest" if mock_id.startswith("guest-") else "member"
+        return mock_id, token, role
     if is_testing_env and token == "test-token":
-        return "00000000-0000-0000-0000-000000000001", token
+        return "00000000-0000-0000-0000-000000000001", token, "member"
 
     # 2. Standard JWT signature and expiration verification
     try:
@@ -174,7 +177,14 @@ def extract_member_id_from_auth(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="토큰에 사용자 식별자(sub)가 존재하지 않습니다.",
             )
-        return str(sub).strip(), token
+        raw_role = payload.get("role")
+        sub_str = str(sub).strip()
+        if raw_role == "guest" or sub_str.startswith("guest-"):
+            role = "guest"
+        else:
+            role = "member"
+
+        return sub_str, token, role
     except jwt.ExpiredSignatureError as e:
         logger.warning("Expired JWT token received: %s", e)
         raise HTTPException(
@@ -193,6 +203,14 @@ def extract_member_id_from_auth(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="인증 토큰 처리 중 오류가 발생했습니다.",
         ) from e
+
+
+def extract_member_id_from_auth(
+    auth_header: Optional[str],
+) -> Tuple[Optional[str], Optional[str]]:
+    """Backward compatibility wrapper returning (member_id, raw_token)."""
+    sub, token, _ = extract_auth_info_from_auth(auth_header)
+    return sub, token
 
 
 def _build_signals(
@@ -269,16 +287,36 @@ def _build_signals(
 async def _prepare_chat_context(
     request: ChatRequest,
     authorization: Optional[str] = None,
-) -> Tuple[str, str, str, Dict[str, Any], Optional[str], RedisSessionManager]:
-    """Prepare initial conversation context, weather info, and session state."""
+) -> Tuple[str, str, str, Dict[str, Any], Optional[str], RedisSessionManager, str, Optional[str]]:
+    """Prepare initial conversation context, weather info, and session state.
+
+    Returns:
+        Tuple of:
+          - session_id
+          - active_persona
+          - requested_mode
+          - initial_state
+          - weather_context
+          - session_mgr
+          - user_role ("guest" or "member")
+          - guest_id (sub string if guest, else None)
+    """
     session_mgr = get_redis_session_manager()
 
-    # Resolve member_id:
-    # 1) Verified JWT Bearer token sub
+    # Resolve member_id and role:
+    # 1) Verified JWT Bearer token sub and role
     # 2) Explicit request.member_id (internal or testing)
     # 3) None (Guest mode: unauthenticated user without random UUID generation)
-    authenticated_member_id, raw_token = extract_member_id_from_auth(authorization)
+    authenticated_member_id, raw_token, token_role = extract_auth_info_from_auth(authorization)
     effective_member_id = authenticated_member_id or request.member_id or None
+
+    user_role = token_role or (
+        "guest" if (effective_member_id and effective_member_id.startswith("guest-")) else "member"
+    )
+    if not effective_member_id and not authorization:
+        user_role = "guest"
+
+    guest_id = effective_member_id if user_role == "guest" else None
 
     # Set request-scoped token for downstream tool Token Relay
     current_auth_token.set(raw_token)
@@ -301,11 +339,12 @@ async def _prepare_chat_context(
 
     # 1. Automatic Session Partitioning by Persona ({raw_session_id}:{persona})
     # Partition session_id at the DB level ({session}:{persona}) for all 8 personas
-    # (both LIBRARIAN and DEBATE modes).
-    # This physically isolates conversation threads between librarians (e.g. CAT vs SEA_SLUG)
-    # and debate partners (e.g. CRITIC vs COUNSELOR), ensuring 0% tone contamination
-    # and preventing animal librarian persona/endings from leaking into debate sessions.
-    raw_session_id = request.session_id or "default"
+    # For guest users, strictly anchor the session to {guest_id}:{persona} so conversations are isolated per guest
+    if user_role == "guest" and guest_id:
+        raw_session_id = guest_id
+    else:
+        raw_session_id = request.session_id or "default"
+
     if not raw_session_id.endswith(f":{target_persona}"):
         partitioned_session_id = f"{raw_session_id}:{target_persona}"
     else:
@@ -313,7 +352,8 @@ async def _prepare_chat_context(
 
     session_id = partitioned_session_id
     logger.info(
-        "Chat context resolved: raw_persona=%s -> target_persona=%s, raw_session=%s -> session_id=%s (thread_id)",
+        "Chat context resolved: role=%s, raw_persona=%s -> target_persona=%s, raw_session=%s -> session_id=%s (thread_id)",
+        user_role,
         raw_persona,
         target_persona,
         raw_session_id,
@@ -451,7 +491,18 @@ async def _prepare_chat_context(
         initial_state,
         weather_context,
         session_mgr,
+        user_role,
+        guest_id,
     )
+
+
+# Standard fallback messages
+CIRCUIT_BREAKER_FALLBACK_MSG = (
+    "앗, 지금 서재에 방문객이 너무 많아 사서들이 바빠요. 잠시 후 다시 시도해 주세요!"
+)
+GUEST_LIMIT_EXCEEDED_MSG = (
+    "이번 체험에서 대화 가능 횟수를 모두 사용하셨습니다. 정식 로그인 후 다시 만나요!"
+)
 
 
 @api_router.post("/chat", response_model=ChatResponse, tags=["Chat"])
@@ -472,7 +523,58 @@ async def chat_with_persona(
         initial_state,
         weather_context,
         session_mgr,
+        user_role,
+        guest_id,
     ) = await _prepare_chat_context(request, authorization=authorization)
+
+    persona_meta = PERSONA_REGISTRY.get(active_persona, PERSONA_REGISTRY[CAT_ID])
+    if request.librarian_name and persona_meta.get("mode") == "LIBRARIAN":
+        display_name = request.librarian_name
+    else:
+        display_name = persona_meta.get("display_name", active_persona)
+    persona_mode = persona_meta.get("mode", requested_mode)
+
+    # 1. Individual Guest Usage Limit Check
+    if user_role == "guest" and guest_id:
+        current_usage = await session_mgr.get_guest_usage(guest_id)
+        if current_usage >= settings.guest_chat_limit:
+            logger.info(
+                "Guest %s exceeded chat limit (%d >= %d)",
+                guest_id,
+                current_usage,
+                settings.guest_chat_limit,
+            )
+            return ChatResponse(
+                session_id=session_id,
+                reply=GUEST_LIMIT_EXCEEDED_MSG,
+                active_persona=active_persona,
+                display_name=display_name,
+                mode=persona_mode,
+                switch_suggestion=None,
+                recommended_books=[],
+                signals=initial_state.get("signals"),
+                is_concluded=False,
+                debate_summary=None,
+            )
+
+    # 2. Global Circuit Breaker Check (Role-based RPM / RPD)
+    is_tripped, trip_type = await session_mgr.check_and_incr_circuit_breaker(user_role)
+    if is_tripped:
+        logger.warning(
+            "Circuit breaker tripped (%s) for role %s. Returning fallback.", trip_type, user_role
+        )
+        return ChatResponse(
+            session_id=session_id,
+            reply=CIRCUIT_BREAKER_FALLBACK_MSG,
+            active_persona=active_persona,
+            display_name=display_name,
+            mode=persona_mode,
+            switch_suggestion=None,
+            recommended_books=[],
+            signals=initial_state.get("signals"),
+            is_concluded=False,
+            debate_summary=None,
+        )
 
     # 1st-3rd: Pre-LLM Guardrails evaluation (Safety -> Input -> Security)
     guardrail_reply = evaluate_guardrails(
@@ -486,12 +588,6 @@ async def chat_with_persona(
             session_id,
             active_persona,
         )
-        persona_meta = PERSONA_REGISTRY.get(active_persona, PERSONA_REGISTRY[CAT_ID])
-        if request.librarian_name and persona_meta.get("mode") == "LIBRARIAN":
-            display_name = request.librarian_name
-        else:
-            display_name = persona_meta.get("display_name", active_persona)
-        persona_mode = persona_meta.get("mode", requested_mode)
 
         # Save guardrail interaction to Redis session
         serializable_history = []
@@ -529,6 +625,10 @@ async def chat_with_persona(
     try:
         run_config = {"configurable": {"thread_id": session_id}}
         result_state = await _graph.ainvoke(initial_state, config=run_config)
+
+        # Increment guest usage only on successful normal LLM turn
+        if user_role == "guest" and guest_id:
+            await session_mgr.incr_guest_usage(guest_id)
 
         final_messages = result_state.get("messages", [])
         last_ai_msg = ""
@@ -599,8 +699,15 @@ async def chat_with_persona(
         debate_summary = result_state.get("debate_summary")
 
         # Auto-persist debate insight to agent.debate_insights in background if concluded
+        # NOTE: Skip background DB write if user is guest (guest write lock)
         effective_mid = initial_state.get("member_id")
-        if is_concluded and debate_summary and effective_mid:
+        if (
+            is_concluded
+            and debate_summary
+            and effective_mid
+            and user_role != "guest"
+            and not str(effective_mid).startswith("guest-")
+        ):
             book_title = extract_debate_book_title(final_messages)
             background_tasks.add_task(
                 save_debate_insight_task,
@@ -661,6 +768,8 @@ async def chat_stream_with_persona(
         initial_state,
         weather_context,
         session_mgr,
+        user_role,
+        guest_id,
     ) = await _prepare_chat_context(request, authorization=authorization)
 
     # 1st-3rd: Pre-LLM Guardrails evaluation (Safety -> Input -> Security)
@@ -670,18 +779,32 @@ async def chat_stream_with_persona(
         librarian_name=request.librarian_name,
     )
 
+    persona_meta = PERSONA_REGISTRY.get(active_persona, PERSONA_REGISTRY[CAT_ID])
+    display_name = (
+        request.librarian_name
+        if (request.librarian_name and persona_meta.get("mode") == "LIBRARIAN")
+        else persona_meta.get("display_name", active_persona)
+    )
+    signals_obj = initial_state.get("signals")
+    signals_payload = signals_obj.model_dump() if signals_obj else None
+
+    # Check 1: Individual guest limit check before streaming
+    guest_limit_tripped = False
+    if user_role == "guest" and guest_id:
+        current_usage = await session_mgr.get_guest_usage(guest_id)
+        if current_usage >= settings.guest_chat_limit:
+            guest_limit_tripped = True
+
+    # Check 2: Global circuit breaker check before streaming
+    circuit_tripped = False
+    if not guest_limit_tripped:
+        is_tripped, _ = await session_mgr.check_and_incr_circuit_breaker(user_role)
+        if is_tripped:
+            circuit_tripped = True
+
     async def event_generator() -> AsyncGenerator[str, None]:
         try:
             # 1. Emit metadata event
-            persona_meta = PERSONA_REGISTRY.get(active_persona, PERSONA_REGISTRY[CAT_ID])
-            display_name = (
-                request.librarian_name
-                if (request.librarian_name and persona_meta.get("mode") == "LIBRARIAN")
-                else persona_meta.get("display_name", active_persona)
-            )
-            signals_obj = initial_state.get("signals")
-            signals_payload = signals_obj.model_dump() if signals_obj else None
-
             yield _format_sse(
                 "metadata",
                 {
@@ -693,6 +816,46 @@ async def chat_stream_with_persona(
                     "signals": signals_payload,
                 },
             )
+
+            # 1.2 If guest limit tripped, stream graceful fallback and complete
+            if guest_limit_tripped:
+                yield _format_sse("token", {"delta": GUEST_LIMIT_EXCEEDED_MSG})
+                yield _format_sse(
+                    "done",
+                    {
+                        "session_id": session_id,
+                        "reply": GUEST_LIMIT_EXCEEDED_MSG,
+                        "active_persona": active_persona,
+                        "display_name": display_name,
+                        "mode": persona_meta.get("mode", requested_mode),
+                        "switch_suggestion": None,
+                        "recommended_books": [],
+                        "signals": signals_payload,
+                        "is_concluded": False,
+                        "debate_summary": None,
+                    },
+                )
+                return
+
+            # 1.3 If circuit breaker tripped, stream busy fallback and complete
+            if circuit_tripped:
+                yield _format_sse("token", {"delta": CIRCUIT_BREAKER_FALLBACK_MSG})
+                yield _format_sse(
+                    "done",
+                    {
+                        "session_id": session_id,
+                        "reply": CIRCUIT_BREAKER_FALLBACK_MSG,
+                        "active_persona": active_persona,
+                        "display_name": display_name,
+                        "mode": persona_meta.get("mode", requested_mode),
+                        "switch_suggestion": None,
+                        "recommended_books": [],
+                        "signals": signals_payload,
+                        "is_concluded": False,
+                        "debate_summary": None,
+                    },
+                )
+                return
 
             # 1.5 If guardrail triggered, stream guidance token and complete without LLM
             if guardrail_reply:
@@ -867,9 +1030,20 @@ async def chat_stream_with_persona(
                         }
                     )
 
+            # Increment guest usage only on successful normal LLM stream turn
+            if user_role == "guest" and guest_id:
+                await session_mgr.incr_guest_usage(guest_id)
+
             # Auto-persist debate insight to agent.debate_insights in background if concluded
+            # NOTE: Skip background DB write if user is guest (guest write lock)
             effective_mid = initial_state.get("member_id")
-            if is_concluded and debate_summary and effective_mid:
+            if (
+                is_concluded
+                and debate_summary
+                and effective_mid
+                and user_role != "guest"
+                and not str(effective_mid).startswith("guest-")
+            ):
                 book_title = extract_debate_book_title(final_messages)
                 background_tasks.add_task(
                     save_debate_insight_task,
