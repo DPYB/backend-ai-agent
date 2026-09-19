@@ -146,6 +146,16 @@ class RecommendedBook(BaseModel):
     )
 
 
+class LibraryBook(BaseModel):
+    """User's personal bookshelf book details."""
+
+    title: str = Field(..., description="Book title (도서명)")
+    author: Optional[str] = Field(default="미상", description="Author name (저자명)")
+    status: Optional[str] = Field(
+        default="보유 중", description="Reading status ('READING', 'COMPLETED', 'WISH')"
+    )
+
+
 class WeatherSignal(BaseModel):
     """Weather signal details for frontend WeatherMoodBadge."""
 
@@ -210,6 +220,10 @@ class ChatResponse(BaseModel):
     recommended_books: List[RecommendedBook] = Field(
         default_factory=list,
         description="Structured verified book recommendations for one-click bookshelf registration",
+    )
+    library_books: List[LibraryBook] = Field(
+        default_factory=list,
+        description="Structured personal bookshelf books (내 서재 보유 도서 목록)",
     )
     signals: Optional[SignalsResponse] = Field(
         default=None,

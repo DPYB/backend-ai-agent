@@ -1,7 +1,10 @@
 """Unit tests for book recommendation metadata, KDC parsing, and Kyobo CDN zero-latency fallback."""
 
+import json
+
 import pytest
 from httpx import ASGITransport, AsyncClient
+from langchain_core.messages import AIMessage
 
 from app.infrastructure.national_library_client import (
     NationalLibraryClient,
@@ -355,3 +358,107 @@ def test_extract_kdc_code_and_map_kdc_to_genre_robustness():
     assert map_kdc_to_genre(kdc="813.6") == "LITERATURE"
     assert map_kdc_to_genre(kdc="513") == "TECHNOLOGY"
     assert map_kdc_to_genre(kdc="005.133") == "TECHNOLOGY"
+
+
+@pytest.mark.asyncio
+async def test_chat_response_library_books_extraction(monkeypatch):
+    """Verify library books are correctly extracted from AI text into library_books structure."""
+    from app.api import router
+
+    library_ai_reply = (
+        "사용자님의 서재에서 책들을 찾아보았습니다.\n\n"
+        "### 📚 데미안\n"
+        "- **저자**: 헤르만 헤세\n"
+        "- **독서 상태**: 완독함\n\n"
+        "### 📚 어린 왕자\n"
+        "- **저자**: 앙투안 드 생텍쥐페리\n"
+        "- **독서 상태**: 읽는 중\n\n"
+        "이 책들에 대해 더 이야기해볼까요?"
+    )
+
+    async def mock_ainvoke(state, *args, **kwargs):
+        return {
+            "messages": [AIMessage(content=library_ai_reply)],
+            "active_persona": "CAT",
+            "curated_books": [],
+        }
+
+    monkeypatch.setattr(router._graph, "ainvoke", mock_ainvoke)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        payload = {
+            "message": "내 서재에 무슨 책 있어?",
+            "member_id": "test-member-uuid",
+            "persona_id": "CAT",
+        }
+        response = await ac.post("/api/v1/chat", json=payload)
+        assert response.status_code == 200
+        data = response.json()
+
+        # library_books should be populated
+        assert len(data["library_books"]) == 2
+        assert data["library_books"][0]["title"] == "데미안"
+        assert data["library_books"][0]["author"] == "헤르만 헤세"
+        assert data["library_books"][0]["status"] == "완독함"
+        assert data["library_books"][1]["title"] == "어린 왕자"
+
+        # recommended_books should be empty
+        assert data["recommended_books"] == []
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_done_event_includes_library_books(monkeypatch):
+    """Verify SSE streaming done event includes library_books array."""
+    from app.api import router
+
+    library_ai_reply = (
+        "서재 도서입니다.\n\n"
+        "### 📚 참을 수 없는 존재의 가벼움\n"
+        "- **저자**: 밀란 쿤데라\n"
+        "- **독서 상태**: 읽는 중\n"
+    )
+
+    async def mock_astream_events(state, version="v2", *args, **kwargs):
+        yield {
+            "event": "on_chat_model_stream",
+            "metadata": {"langgraph_node": "cat_node"},
+            "data": {"chunk": AIMessage(content=library_ai_reply)},
+        }
+        yield {
+            "event": "on_chain_end",
+            "name": "cat_node",
+            "data": {
+                "output": {
+                    "messages": [AIMessage(content=library_ai_reply)],
+                    "active_persona": "CAT",
+                }
+            },
+        }
+
+    monkeypatch.setattr(router._graph, "astream_events", mock_astream_events)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        payload = {
+            "message": "내 서재 도서 보여줘",
+            "member_id": "test-member-uuid",
+            "persona_id": "CAT",
+        }
+        response = await ac.post("/api/v1/chat/stream", json=payload)
+        assert response.status_code == 200
+
+        text = response.text
+        assert "event: done" in text
+
+        done_payload = None
+        for line in text.splitlines():
+            if line.startswith("data: ") and "library_books" in line:
+                done_payload = json.loads(line.replace("data: ", "", 1))
+                break
+
+        assert done_payload is not None
+        assert "library_books" in done_payload
+        assert len(done_payload["library_books"]) == 1
+        assert done_payload["library_books"][0]["title"] == "참을 수 없는 존재의 가벼움"
+        assert done_payload["library_books"][0]["author"] == "밀란 쿤데라"

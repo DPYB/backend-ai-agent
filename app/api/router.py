@@ -16,6 +16,7 @@ from app.api.schemas import (
     ClassifyGenreRequest,
     ClassifyGenreResponse,
     HealthResponse,
+    LibraryBook,
     PersonaInfo,
     RecommendedBook,
     SignalsResponse,
@@ -41,6 +42,35 @@ from app.infrastructure.redis_session import (
 from app.infrastructure.supabase_client import get_supabase_client
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_library_books_from_text(text: str) -> List[Dict[str, str]]:
+    """Extract library books formatted as '### 📚 {title}' from AI response text.
+
+    Filters out single emojis or non-title headers.
+    """
+    if not text or "### 📚" not in text:
+        return []
+
+    books: List[Dict[str, str]] = []
+    seen: set = set()
+    # Match blocks starting with ### 📚 {title}
+    pattern = re.compile(
+        r"^###\s*📚\s*([^\n]+?)\s*\n([\s\S]*?)(?=^###\s|$(?![\r\n]))", re.MULTILINE
+    )
+    for m in pattern.finditer(text):
+        raw_title = m.group(1).strip()
+        body = m.group(2) or ""
+        clean_title = re.sub(r"^[『《\"'‘`<>\s]+|[』》\"'’`<>\s]+$", "", raw_title).strip()
+        if clean_title and 1 <= len(clean_title) <= 50 and clean_title not in seen:
+            seen.add(clean_title)
+            author_match = re.search(r"\*\*저자\*\*\s*[:：]\s*([^\n]+)", body)
+            status_match = re.search(r"\*\*독서\s*상태\*\*\s*[:：]\s*([^\n]+)", body)
+            author = author_match.group(1).strip() if author_match else "미상"
+            status = status_match.group(1).strip() if status_match else "보유 중"
+            books.append({"title": clean_title, "author": author, "status": status})
+    return books
+
 
 api_router = APIRouter(prefix="/api/v1")
 _graph = create_agent_graph()
@@ -719,6 +749,17 @@ async def chat_with_persona(
                 topic=None,
             )
 
+        # Extract library books from text if present (e.g. from search_my_library)
+        extracted_lib_books = _extract_library_books_from_text(last_ai_msg)
+        library_books_objs = [
+            LibraryBook(
+                title=b["title"],
+                author=b.get("author", "미상"),
+                status=b.get("status", "보유 중"),
+            )
+            for b in extracted_lib_books
+        ]
+
         return ChatResponse(
             session_id=session_id,
             reply=last_ai_msg or "답변을 정리하고 있습니다.",
@@ -727,6 +768,7 @@ async def chat_with_persona(
             mode=persona_mode,
             switch_suggestion=switch_suggestion,
             recommended_books=recommended_books,
+            library_books=library_books_objs,
             signals=initial_state.get("signals"),
             is_concluded=is_concluded,
             debate_summary=debate_summary,
@@ -830,6 +872,7 @@ async def chat_stream_with_persona(
                         "mode": persona_meta.get("mode", requested_mode),
                         "switch_suggestion": None,
                         "recommended_books": [],
+                        "library_books": [],
                         "signals": signals_payload,
                         "is_concluded": False,
                         "debate_summary": None,
@@ -850,6 +893,7 @@ async def chat_stream_with_persona(
                         "mode": persona_meta.get("mode", requested_mode),
                         "switch_suggestion": None,
                         "recommended_books": [],
+                        "library_books": [],
                         "signals": signals_payload,
                         "is_concluded": False,
                         "debate_summary": None,
@@ -896,6 +940,7 @@ async def chat_stream_with_persona(
                         "mode": persona_meta.get("mode", requested_mode),
                         "switch_suggestion": None,
                         "recommended_books": [],
+                        "library_books": [],
                         "signals": signals_payload,
                         "is_concluded": False,
                         "debate_summary": None,
@@ -1055,6 +1100,9 @@ async def chat_stream_with_persona(
                     topic=None,
                 )
 
+            # Extract library books from accumulated response text if present
+            extracted_stream_lib_books = _extract_library_books_from_text(accumulated_text)
+
             # 4. Emit done event
             yield _format_sse(
                 "done",
@@ -1066,6 +1114,7 @@ async def chat_stream_with_persona(
                     "mode": final_mode,
                     "switch_suggestion": switch_suggestion_data,
                     "recommended_books": formatted_books,
+                    "library_books": extracted_stream_lib_books,
                     "signals": signals_payload,
                     "is_concluded": is_concluded,
                     "debate_summary": debate_summary,

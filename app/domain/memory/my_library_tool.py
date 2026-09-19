@@ -53,21 +53,21 @@ async def search_my_library(member_id: str, status_filter: Optional[str] = None)
             return f"사용자({member_id})의 서재에 {filter_desc}등록된 도서가 없습니다."
 
         status_map = {
-            "READING": "📖 읽는 중",
-            "COMPLETED": "✅ 완독함",
-            "WISH": "⭐ 읽고 싶은 책",
+            "READING": "읽는 중",
+            "COMPLETED": "완독함",
+            "WISH": "읽고 싶은 책",
         }
 
         results = []
-        for i, book in enumerate(books, 1):
+        for book in books:
             title = book.get("title", "제목 미상")
             author = book.get("author", "저자 미상")
-            st = status_map.get(book.get("status", ""), book.get("status", "상태 미정"))
+            st = status_map.get(book.get("status", ""), book.get("status", "보유 중"))
             rating = f" (평점: {book['rating']}점)" if book.get("rating") else ""
-            results.append(f"[{i}] <{title}> - {author} [{st}]{rating}")
+            results.append(f"### 📚 {title}\n- **저자**: {author}\n- **독서 상태**: {st}{rating}")
 
-        header = f"📚 사용자({member_id})의 서재 도서 목록 (총 {len(results)}권):"
-        return header + "\n" + "\n".join(results)
+        header = f"사용자({member_id})의 서재에 등록된 도서 목록입니다 (총 {len(results)}권):\n"
+        return header + "\n\n".join(results)
 
     except Exception as e:
         logger.error("Error in search_my_library: %s", e)
