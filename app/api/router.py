@@ -1005,7 +1005,9 @@ async def chat_stream_with_persona(
                                 accumulated_text = extract_message_text(
                                     getattr(ai_m, "content", "")
                                 )
-                    elif node_name == "book_curator_node" and isinstance(output, dict):
+                    elif node_name in ("curator_node", "book_curator_node") and isinstance(
+                        output, dict
+                    ):
                         if output.get("curated_books"):
                             curated_books_data = output["curated_books"]
                             yield _format_sse("books", {"books": curated_books_data})

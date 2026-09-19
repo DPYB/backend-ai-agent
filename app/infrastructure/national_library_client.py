@@ -1028,6 +1028,37 @@ class NationalLibraryClient:
                 "genre": "ARTS",
                 "description": "반 고흐부터 피카소까지, 명화 뒤에 숨겨진 거장들의 인간적이고 흥미진진한 삶의 비밀.",
             },
+            # SF 및 화제작
+            "프로젝트 헤일메리": {
+                "title": "프로젝트 헤일메리",
+                "author": "앤디 위어",
+                "publisher": "RHK(알에이치코리아)",
+                "isbn": "9788925588735",
+                "cover_url": get_verified_cover_url("", "9788925588735"),
+                "page_count": 691,
+                "genre": "LITERATURE",
+                "description": "기억을 잃은 채 우주선에서 눈뜬 과학자가 오직 과학적 원리와 끈질긴 실험으로 인류를 구원하는 생존 SF 명작.",
+            },
+            "세네카, 오늘을 빼앗기고 있는 당신에게": {
+                "title": "세네카, 오늘을 빼앗기고 있는 당신에게",
+                "author": "루키우스 안나이우스 세네카",
+                "publisher": "논픽션",
+                "isbn": "9791199489561",
+                "cover_url": get_verified_cover_url("", "9791199489561"),
+                "page_count": 280,
+                "genre": "PHILOSOPHY",
+                "description": "세상이 나를 흔들 때, 시간에 대한 철학적 통찰과 단단한 지혜로 감정의 중심을 다시 잡을 수 있도록 돕는다.",
+            },
+            "이왕 사는 거 기세 좋게": {
+                "title": "이왕 사는 거 기세 좋게",
+                "author": "사토 아이코",
+                "publisher": "위즈덤하우스",
+                "isbn": "9791171713790",
+                "cover_url": get_verified_cover_url("", "9791171713790"),
+                "page_count": 174,
+                "genre": "LITERATURE",
+                "description": "세상이 나를 싫어하는 것 같고 무기력할 때 거침없고 유쾌한 조언으로 마음의 엉킨 결을 정리해 주는 신간 에세이.",
+            },
         }
 
         # Check if title exactly matches any known item

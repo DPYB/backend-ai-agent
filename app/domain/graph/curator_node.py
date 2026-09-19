@@ -13,7 +13,7 @@ Hybrid Curation Principle:
 import logging
 import random
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
@@ -161,7 +161,64 @@ async def book_curator_node(state: AgentState) -> Dict[str, Any]:
 
     weather_context = state.get("weather_context") or "맑음"
 
-    # 1. Fetch [Today's Trending Open-Book] from Redis (0.01s latency)
+    # 1. Direct Targeted Book Check:
+    # If user explicitly requested a specific title (e.g. "프로젝트 헤일메리 추천해줘", "이 책 등록할래", "《데미안》 보여줘")
+    # or the conversation history prominently discusses a book that needs registration/card view,
+    # verify it directly against National Library before general open-book discovery.
+    nl_client = get_national_library_client()
+    targeted_candidate: Optional[Dict[str, Any]] = None
+
+    # Step A: Check curator_request for bracketed title or cleaned keywords
+    title_candidates_to_check: List[str] = []
+    bracket_match = re.search(r"[《〈「『\'\"](.*?)[》〉」』\'\"]", curator_request)
+    if bracket_match:
+        title_candidates_to_check.append(bracket_match.group(1).strip())
+    else:
+        cleaned_req = re.sub(
+            r"(도서|책|추천해줘|추천|등록해줘|등록|보여줘|골라줘|찾아줘|권해줘|알려줘|결과|결과로|\?|\!|\.|\s+)",
+            " ",
+            curator_request,
+        ).strip()
+        if len(cleaned_req) >= 2 and not any(
+            g in cleaned_req for g in ["소설", "에세이", "인문", "철학", "과학", "시", "역사"]
+        ):
+            title_candidates_to_check.append(cleaned_req)
+
+    # Step B: If request is vague ("결과로 보여줘", "등록해줘"), check recent messages for mentioned book
+    if not title_candidates_to_check:
+        for msg in reversed(messages):
+            msg_text = str(getattr(msg, "content", ""))
+            hist_brackets = re.findall(r"[《〈「『](.*?)[》〉」』]", msg_text)
+            if hist_brackets:
+                for hb in hist_brackets:
+                    if hb.strip() and hb.strip() not in title_candidates_to_check:
+                        title_candidates_to_check.append(hb.strip())
+                break
+
+    for target_t in title_candidates_to_check:
+        if len(target_t) >= 2:
+            biblio_match = await nl_client.search_book(title=target_t)
+            if biblio_match and biblio_match.get("isbn"):
+                targeted_candidate = {
+                    "title": biblio_match.get("title", target_t),
+                    "author": biblio_match.get("author", "저자 미상"),
+                    "publisher": biblio_match.get("publisher", ""),
+                    "isbn": biblio_match.get("isbn", ""),
+                    "cover_url": biblio_match.get("cover_url", ""),
+                    "page_count": biblio_match.get("page_count"),
+                    "genre": biblio_match.get("genre"),
+                    "description": (
+                        f"요청하신 도서 《{biblio_match.get('title', target_t)}》의 정식 국립중앙도서관 서지 정보입니다."
+                    ),
+                    "reason": f"사용자께서 직접 서재 등록 및 추천을 요청하신 도서 《{biblio_match.get('title', target_t)}》입니다.",
+                    "era": "targeted",
+                    "verified": True,
+                    "source": biblio_match.get("source", "NATIONAL_LIBRARY"),
+                }
+                logger.info("Direct targeted book found and verified: %s", target_t)
+                break
+
+    # 2. Fetch [Today's Trending Open-Book] from Redis (0.01s latency)
     open_book_text = await get_trending_books_text(limit=30)
 
     candidates: List[Dict[str, str]] = []
@@ -348,6 +405,20 @@ async def book_curator_node(state: AgentState) -> Dict[str, Any]:
                     "source": "MASTERPIECE_RANDOM_FALLBACK",
                 }
             )
+
+    # If user targeted a specific book and verified it via National Library,
+    # prepend it as the #1 priority recommendation
+    if targeted_candidate:
+        targeted_title = targeted_candidate.get("title")
+        # Remove any duplicate from general discovery
+        verified_books = [
+            b
+            for b in verified_books
+            if b.get("title") != targeted_title and b.get("isbn") != targeted_candidate.get("isbn")
+        ]
+        verified_books.insert(0, targeted_candidate)
+        # Keep at most 2 books for clean pairing UX
+        verified_books = verified_books[:2]
 
     logger.info("Curator successfully verified %d books.", len(verified_books))
 

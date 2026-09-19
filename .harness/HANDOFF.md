@@ -1397,6 +1397,54 @@
    - `STATE.md`, `PLAN.md`, `DECISIONS.md`, `HANDOFF.md` 갱신 완료.
 
 ### 다음 세션에서 할 일
-- 사용자의 확인 및 요청 시 `feat/recommend-response-format-standardization` 브랜치 변경 사항 선별 커밋 및 푸시, PR 생성 보조.
 - 프론트엔드 챗봇 화면에서 사서 4종(블루, 슈빌, 누디, 게코) 도서 추천 발화 시 카드 렌더링 및 서재 조회 동작 최종 확인.
+
+---
+
+## 세션 42 (2026-09-20)
+
+### 진행한 작업
+1. **머지 완료 브랜치 정리 (로컬 & 원격)**:
+   - PR #36 및 과거 PR에서 머지 완료된 로컬 브랜치 삭제:
+     - `feat/recommend-response-format-standardization`
+     - `feat/image-crop-and-profile-customization`
+   - GitHub 원격 저장소(`origin`)에서 이미 머지된 과거 작업 브랜치 안전 삭제:
+     - `feat/image-crop-and-profile-customization`
+     - `feat/system-warning-and-rss-fixes`
+   - `git fetch --prune` 실행하여 원격 트래킹 브랜치 정리 완료.
+   - 현재 브랜치 상태: 오직 기준 브랜치인 `develop` (현재 체크아웃됨, 최신 커밋 `313dd20`) 및 `main`만 깔끔하게 유지.
+
+### 다음 세션에서 할 일
+- 프론트엔드 실화면에서 사서 4종(블루, 슈빌, 누디, 게코) 도서 추천 및 서재 조회 동작 확인.
+
+---
+
+## 세션 43 (2026-09-20)
+
+### 진행한 작업
+1. **작업 브랜치 분기 및 격리 개발**:
+   - DPYB 표준 브랜치 규칙에 따라 `develop` 기반 `feat/national-library-curation-pipeline` 분기 (`main` <- `develop` <- `feat/*`).
+2. **SSE 실시간 스트리밍 큐레이터 노드 이벤트명 오타 교정 (`app/api/router.py`)**:
+   - LangGraph 등록 노드 이름(`curator_node`)과 router의 이벤트 검사 조건(`book_curator_node`) 불일치로 인해 스트리밍 도중 `event: books`가 발행되지 않던 결함을 발견하고, `node_name in ("curator_node", "book_curator_node")`로 교정하여 실시간 스트리밍 시에도 추천 도서 카드가 실시간 즉시 렌더링되도록 보장.
+3. **특정 도서 추천/등록 의도 감지 및 선위임 파이프라인 구축 (`app/domain/graph/nodes.py`)**:
+   - "프로젝트 헤일메리 추천해줘", "이 책 등록할래", "결과로 보여줘" 등 특정 도서나 카드 결과 요청 시 사서 LLM이 텍스트로 가짜 카드를 날조하기 전에 `curator_node`로 선위임(`curator_request = last_user_msg`)하도록 사전 인터셉트 라우팅 구현.
+4. **`curator_node`의 특정 도서 직접 서지 검증 및 1순위 바인딩 (`app/domain/graph/curator_node.py`)**:
+   - 사용자가 직접 지목한 도서명을 요청문 및 대화 히스토리에서 추출하여 국립중앙도서관 Open API(`search_book`)를 호출.
+   - 13자리 정식 ISBN, 저자, 출판사, 순수 쪽수, KDC 표준 장르, 교보문고 고화질 CDN 표지를 확보하여 추천 목록의 최우선 1순위(`targeted_candidate`)로 강제 배치.
+5. **Tavily 신간 도서 검색 도구(`search_recent_books`) 국립중앙도서관 실서지 검증 연동 (`app/domain/tools/search_books_tool.py`)**:
+   - Tavily 실시간 웹 검색으로 발굴한 신간 후보를 국립중앙도서관 4단계 체인으로 교차 조회하여 실존 여부 및 정식 서지 메타데이터(ISBN, 쪽수, 표준 장르)를 바인딩하여 사서에게 전달하도록 개편.
+6. **사서 시스템 프롬프트 가짜 카드 UI 마크다운 날조 원천 차단 (`app/domain/guardrails/shared_rules.py`, `app/domain/graph/tools.py`)**:
+   - `SHARED_GUARDRAILS`에 `[가짜 카드 UI 흉내 금지]` 규칙을 주입하여 사서가 본문에 `📖 ... 등록 ➔` 같은 프론트엔드 카드 컴포넌트를 흉내 내지 못하도록 차단.
+7. **품질 검증 및 AI 자가 검증 100% 통과 (Self-Validation)**:
+   - `tests/unit/test_curator_pipeline.py`에 `test_targeted_book_curation_metadata_completion` 신규 단위 테스트 추가.
+   - 전체 182개 단위 테스트(Pytest) 100% 그린 패스 통과 (`182 passed, 1 warning in 60.21s`).
+   - `uv run ruff check --fix .` & `uv run ruff format .` 100% 무결성 통과 (0 errors).
+   - `uv run mypy .` 정적 타입 체크 88개 소스 파일 100% 무결성 통과 (`Success: no issues found in 88 source files`).
+8. **하네스 문서 동기화**:
+   - `STATE.md`, `PLAN.md`, `DECISIONS.md`, `HANDOFF.md` 최신화 완료.
+
+### 다음 세션에서 할 일
+- 사용자의 확인 및 요청 시 `feat/national-library-curation-pipeline` 브랜치 변경 사항 선별 커밋 및 푸시, PR 생성 보조.
+- 브라우저 실화면에서 "프로젝트 헤일메리 추천해줘", "최신 도서 없어?" 발화 시 완전한 메타데이터(표지, 쪽수, 장르)가 바인딩된 추천 카드 노출 및 원클릭 서재 등록 연동 최종 확인.
+
 

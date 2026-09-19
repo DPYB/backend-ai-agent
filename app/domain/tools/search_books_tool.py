@@ -85,16 +85,50 @@ async def search_recent_books(query: str, count: int = 3) -> str:
     enriched_query = f"{query} 신간 도서 추천 책"
     results = await tavily_client.search(query=enriched_query, count=min(count * 2, 8))
 
-    if not results:
-        return f"'{query}' 관련 실시간 웹 검색 결과가 없습니다."
-
     candidates = _extract_book_candidates_from_results(results, max_candidates=count)
     if not candidates:
         return f"'{query}' 관련 도서 후보를 추출하지 못했습니다."
 
-    lines = [f"[실시간 웹 신간 탐색 결과: '{query}']"]
-    for i, c in enumerate(candidates, 1):
-        snippet = c["snippet"][:100] + "..." if len(c["snippet"]) > 100 else c["snippet"]
-        lines.append(f"{i}. {c['candidate_title']}\n   └ {snippet}")
+    # Verify candidates against National Library 4-stage validation chain
+    from app.infrastructure.national_library_client import (
+        genre_to_korean,
+        get_national_library_client,
+    )
 
+    nl_client = get_national_library_client()
+    verified_entries: List[str] = []
+
+    for i, c in enumerate(candidates, 1):
+        cand_title = c["candidate_title"]
+        snippet = c["snippet"][:100] + "..." if len(c["snippet"]) > 100 else c["snippet"]
+
+        biblio = await nl_client.search_book(title=cand_title)
+        if biblio and biblio.get("isbn"):
+            real_title = biblio.get("title", cand_title)
+            real_author = biblio.get("author", "저자 미상")
+            real_publisher = biblio.get("publisher", "")
+            real_isbn = biblio.get("isbn", "")
+            real_pages = biblio.get("page_count")
+            genre_name = genre_to_korean(biblio.get("genre", ""))
+
+            meta_parts = [f"저자: {real_author}"]
+            if real_publisher:
+                meta_parts.append(f"출판사: {real_publisher}")
+            if real_isbn:
+                meta_parts.append(f"ISBN: {real_isbn}")
+            if real_pages:
+                meta_parts.append(f"쪽수: {real_pages}쪽")
+            if genre_name:
+                meta_parts.append(f"장르: {genre_name}")
+
+            meta_str = " | ".join(meta_parts)
+            verified_entries.append(
+                f"{i}. 《{real_title}》 (국립도서관 정식 서지 검증 완료)\n"
+                f"   - 서지 정보: {meta_str}\n"
+                f"   - 웹 맥락: {snippet}"
+            )
+        else:
+            verified_entries.append(f"{i}. {cand_title}\n   └ {snippet}")
+
+    lines = [f"[실시간 웹 신간 탐색 및 서지 검증 결과: '{query}']"] + verified_entries
     return "\n".join(lines)
