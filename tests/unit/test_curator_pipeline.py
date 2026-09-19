@@ -449,3 +449,45 @@ async def test_curator_node_negative_constraint_prompt_content():
     # Turn 1 books must be preserved in result's recommended_history
     for t in turn1_books:
         assert t in result["recommended_history"]
+
+
+@pytest.mark.asyncio
+async def test_targeted_book_curation_metadata_completion():
+    """Verify that when a user requests a specific book (e.g. '프로젝트 헤일메리 추천해줘'),
+
+    the curator_node directly verifies it with the National Library and returns
+    full metadata (ISBN, page_count, genre, cover_url) as the #1 priority recommendation.
+    """
+    from app.domain.graph.curator_node import book_curator_node
+
+    state = {
+        "messages": [
+            HumanMessage(content="프로젝트 헤일메리 추천해줘"),
+        ],
+        "member_id": "test-member-hailmary",
+        "active_persona": "SHOEBILL",
+        "librarian_name": "슈빌",
+        "mode": "LIBRARIAN",
+        "switch_suggestion": None,
+        "context_summary": None,
+        "handoff_target": None,
+        "curator_request": "프로젝트 헤일메리 추천해줘",
+        "curated_books": None,
+        "recommended_history": [],
+    }
+
+    result = await book_curator_node(cast(AgentState, state))
+    assert "curated_books" in result
+    curated = result["curated_books"]
+    assert len(curated) >= 1
+
+    # #1 priority book must be the targeted book
+    target = curated[0]
+    assert "프로젝트 헤일메리" in target["title"]
+    assert "앤디 위어" in target["author"] or "Andy Weir" in target["author"]
+    assert len(target.get("isbn", "")) == 13
+    assert target.get("isbn", "").startswith("97889")
+    assert target.get("page_count") is not None and target.get("page_count") > 500
+    assert target.get("genre") == "LITERATURE"
+    assert target.get("isbn") in target.get("cover_url", "")
+    assert target.get("verified") is True

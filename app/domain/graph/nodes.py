@@ -140,6 +140,10 @@ class ResilientLLM:
                     "책 찾아",
                     "뭘 읽",
                     "무슨 책",
+                    "등록",
+                    "결과",
+                    "보여줘",
+                    "신간",
                 ]
             )
         ):
@@ -439,6 +443,38 @@ async def _run_persona_node(
             "curator_request": f"토론 마무리 연계 추천: {debate_topic}",
             "is_concluded": True,
         }
+
+    # 1-1. Book Curation Pre-Delegation (Librarian mode: explicit recommendation/registration request)
+    # If user asks for book recommendation, registration, or result display and curated_books are not yet loaded,
+    # immediately delegate to curator_node to guarantee 100% verified National Library metadata.
+    if not is_debate and not state.get("curated_books"):
+        recommend_keywords = [
+            "추천",
+            "골라줘",
+            "권해줘",
+            "어떤 책",
+            "읽을만한",
+            "책 찾아",
+            "뭘 읽",
+            "무슨 책",
+            "등록",
+            "결과로 보여",
+            "결과 보여",
+            "신간",
+            "최신 도서",
+        ]
+        has_recommend_intent = any(k in last_user_msg for k in recommend_keywords)
+        # Also check if user mentions specific book in brackets (e.g. 《프로젝트 헤일메리》 추천해줘)
+        has_bracket_book = bool(re.search(r"[《〈「『](.*?)[》〉」』]", last_user_msg))
+        if has_recommend_intent or has_bracket_book:
+            logger.info(
+                "Recommendation intent detected in user message for persona %s. Delegating to curator_node.",
+                persona_id,
+            )
+            return {
+                "active_persona": persona_id,
+                "curator_request": last_user_msg,
+            }
 
     # Inject verified curated books if returned from curator_node
     curated_books = state.get("curated_books")

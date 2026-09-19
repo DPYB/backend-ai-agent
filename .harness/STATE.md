@@ -6,6 +6,20 @@
 
 ## 완료된 단계
 
+- [x] **Phase 39: 도서 추천/신간 검색 국립중앙도서관 실서지 검증 및 도서 카드 메타데이터 자동 완성 강화**
+  - **SSE 스트리밍 큐레이터 노드 이벤트명 오타 교정 (`app/api/router.py`)**:
+    - `node_name in ("curator_node", "book_curator_node")`로 교정하여 실시간 스트리밍 중에도 `event: books`가 누락 없이 프론트엔드로 즉시 발행되도록 보장.
+  - **특정 도서 추천/등록 의도 감지 및 선위임 파이프라인 (`app/domain/graph/nodes.py`)**:
+    - 사용자가 "프로젝트 헤일메리 추천해줘", "이 책 등록할래", "결과로 보여줘" 등 특정 도서나 추천을 요청할 때 사서 LLM이 임의로 텍스트를 출력하기 전 `curator_node`로 즉시 선위임하여 100% 국립중앙도서관 실서지 검증을 거치도록 보장.
+  - **`curator_node`의 특정 도서 직접 서지 검증 및 1순위 바인딩 (`app/domain/graph/curator_node.py`)**:
+    - 지목된 도서명을 추출하여 국립중앙도서관 Open API(`search_book`)로 즉각 교차 검증하고, 정식 서명, 저자, 출판사, 13자리 ISBN, 표준 장르, 총 페이지 수, 교보문고 고화질 CDN 표지를 1순위 추천(`targeted_candidate`)으로 자동 탑재.
+  - **Tavily 신간 검색 도구(`search_recent_books`) 국립도서관 실서지 검증 연동 (`app/domain/tools/search_books_tool.py`)**:
+    - 웹 검색으로 찾은 신간 후보들을 국립중앙도서관 4단계 서지 검증 체인으로 교차 조회하여 실존 여부와 정식 서지 메타데이터(ISBN, 쪽수, 표준 장르)를 바인딩해 반환.
+  - **사서 8종 프롬프트 가짜 카드 날조 금지 네거티브 가드레일 주입 (`app/domain/guardrails/shared_rules.py`, `app/domain/graph/tools.py`)**:
+    - 사서가 본문에 `📖`, `등록 ➔`, `👤 저자` 같은 프론트엔드 카드 컴포넌트를 마크다운 텍스트로 직접 흉내 내지 못하도록 원천 차단.
+  - **자가 검증 통과**: `tests/unit/test_curator_pipeline.py`에 `test_targeted_book_curation_metadata_completion` 신규 단위 테스트 추가 및 전체 182개 단위 테스트 100% 통과 (`182 passed in 60.21s`), Ruff 린트/포맷 통과, Mypy 타입 체크 88개 소스 파일 무결성 통과.
+
+
 - [x] **Phase 27: 전 사서/페르소나 도서 추천 응답 포맷 규격화 및 서재 조회 분기 체계화**
   - **도서 추천 마크다운 헤딩 및 이모지 규칙 통일 (8종 전 페르소나 공통, `nodes.py`, `shared_rules.py`)**:
     - 추천 도서 소개 시 `### 📖 {도서명}` 마크다운 3단계 헤딩만 사용하도록 프롬프트 지침 강제.
