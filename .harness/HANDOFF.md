@@ -1372,3 +1372,31 @@
 - 사용자의 확인 및 요청 시 `feat/remote-migration-guard-and-jwt-security` 브랜치 변경 사항 선별 커밋 및 푸시, PR 생성 보조.
 - Render 배포 환경변수 정상 반영 및 서비스 헬스체크 확인.
 
+---
+
+## 세션 41 (2026-09-20)
+
+### 진행한 작업
+1. **작업 브랜치 생성 및 격리 개발**:
+   - DPYB 브랜치 규칙에 따라 `develop` 브랜치 기반 `feat/recommend-response-format-standardization` 분기 (`main` <- `develop` <- `feat/*`).
+2. **도서 추천 마크다운 헤딩 및 이모지 규칙 통일 (8종 전 페르소나 공통, `nodes.py`, `shared_rules.py`)**:
+   - 큐레이션 도서 소개 프롬프트에 `### 📖 {도서명}` 마크다운 3단계 헤딩만 사용하도록 명시.
+   - 서두 섹션 타이틀(예: `### 📚 누디가 건네는 책` 등) 및 추천 도서 헤딩에 `📚` 이모지 사용을 엄격히 금지하고, `📚`는 오직 '내 서재 보유 도서' 전용임을 시스템 프롬프트 및 `SHARED_GUARDRAILS`에 명시하여 프론트엔드의 추천 도서 ➔ 서재 도서 오인 결함을 원천 해결.
+   - 누디뿐만 아니라 블루(`CAT`), 슈빌(`SHOEBILL`), 누디(`SEA_SLUG`), 게코(`GECKO`) 등 사서 4종 및 토론 파트너 4종 전체(8종 페르소나)에 걸쳐 일관된 포맷 보장.
+3. **내 서재 조회 vs 신규 도서 추천 구조화 데이터 완전 분리 (`schemas.py`, `router.py`, `my_library_tool.py`)**:
+   - `ChatResponse`에 `LibraryBook` 모델 및 `library_books: List[LibraryBook]` 필드 복원.
+   - `/api/v1/chat` 및 실시간 SSE `/api/v1/chat/stream`(`event: done`)에서 내 서재 조회 결과(`library_books`)와 신규 추천 결과(`recommended_books`)를 상호 배타적으로 분리.
+   - `_extract_library_books_from_text` 유틸을 구현하여 서재 도서 조회 시 `library_books` 구조화 배열을 온전히 바인딩.
+   - `search_my_library` 도구 결과 반환 텍스트를 프론트엔드 파서에 부합하는 `### 📚 {도서명}` 및 `**저자**: ...`, `**독서 상태**: ...` 포맷으로 규격화.
+4. **품질 검증 및 AI 자가 검증 (Self-Validation)**:
+   - `tests/unit/test_my_library_tool.py`: `### 📚 {도서명}` 서재 헤딩 규격 검증.
+   - `tests/unit/test_personas.py`: 8종 전 페르소나 시스템 프롬프트에 `### 📖` 및 `### 📚` 가드레일 주입 검증.
+   - `tests/unit/test_recommend_metadata.py`: `test_chat_response_library_books_extraction` 및 `test_chat_stream_done_event_includes_library_books` 신규 단위 테스트 추가.
+   - 전체 181개 단위 테스트 100% 그린 패스 통과 (`181 passed in 62.60s`), Ruff 린트/포맷 0 에러, Mypy 88개 소스 파일 100% 타입 무결성 통과.
+5. **하네스 문서 동기화**:
+   - `STATE.md`, `PLAN.md`, `DECISIONS.md`, `HANDOFF.md` 갱신 완료.
+
+### 다음 세션에서 할 일
+- 사용자의 확인 및 요청 시 `feat/recommend-response-format-standardization` 브랜치 변경 사항 선별 커밋 및 푸시, PR 생성 보조.
+- 프론트엔드 챗봇 화면에서 사서 4종(블루, 슈빌, 누디, 게코) 도서 추천 발화 시 카드 렌더링 및 서재 조회 동작 최종 확인.
+

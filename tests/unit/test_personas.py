@@ -270,3 +270,14 @@ def test_normalize_persona_comprehensive():
     # Defaults
     assert normalize_persona(None, default_mode="LIBRARIAN") == CAT_ID
     assert normalize_persona("", default_mode="DEBATE") == DEBATE_CRITIC_ID
+
+
+def test_all_personas_share_book_heading_and_emoji_guardrails():
+    """Verify all 8 personas contain the strict book heading and emoji separation rules in their system prompts."""
+    for pid, meta in PERSONA_REGISTRY.items():
+        prompt = meta["system_prompt"]
+        assert "### 📖" in prompt, f"{pid} system prompt missing ### 📖 recommendation format"
+        assert "### 📚" in prompt, f"{pid} system prompt missing ### 📚 library format rule"
+        assert "도서 마크다운 헤딩 및 이모지 구분 규칙 엄수" in prompt, (
+            f"{pid} system prompt missing book heading guardrail rule"
+        )

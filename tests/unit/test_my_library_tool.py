@@ -65,10 +65,10 @@ async def test_search_my_library_tool_with_books(monkeypatch):
 
     # Test all books
     res_all = await search_my_library.ainvoke({"member_id": "test-member-123"})
-    assert "서재 도서 목록" in res_all
-    assert "클린 아키텍처" in res_all
+    assert "서재에 등록된 도서 목록입니다" in res_all
+    assert "### 📚 클린 아키텍처" in res_all
     assert "완독함" in res_all
-    assert "리팩터링 2판" in res_all
+    assert "### 📚 리팩터링 2판" in res_all
     assert "읽는 중" in res_all
 
     # Test status filter

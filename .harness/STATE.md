@@ -6,6 +6,20 @@
 
 ## 완료된 단계
 
+- [x] **Phase 27: 전 사서/페르소나 도서 추천 응답 포맷 규격화 및 서재 조회 분기 체계화**
+  - **도서 추천 마크다운 헤딩 및 이모지 규칙 통일 (8종 전 페르소나 공통, `nodes.py`, `shared_rules.py`)**:
+    - 추천 도서 소개 시 `### 📖 {도서명}` 마크다운 3단계 헤딩만 사용하도록 프롬프트 지침 강제.
+    - 서두 섹션 타이틀(예: `### 📚 누디가 건네는 책` 등) 및 추천 헤딩에 `📚` 이모지 사용을 엄격히 금지하고, `📚`는 오직 '내 서재 보유 도서' 전용임을 `SHARED_GUARDRAILS`에 명시하여 프론트엔드 오인 원천 방어.
+  - **내 서재 조회 vs 신규 추천 구조화 데이터 완전 분리 (`schemas.py`, `router.py`, `my_library_tool.py`)**:
+    - `ChatResponse`에 `library_books: List[LibraryBook]` 필드 복원 및 내 서재 조회 결과와 신규 추천을 상호 배타적으로 분리:
+      - 내 서재 보유 도서: `### 📚 {도서명}` + `library_books: [...]`
+      - 외부 신규 도서 추천: `### 📖 {도서명}` + `recommended_books: [...]`
+    - SSE 실시간 스트리밍(`/api/v1/chat/stream`) 시 `event: books` 및 `event: done` 페이로드에 `recommended_books`와 `library_books`를 구조화하여 전송 보장.
+    - `search_my_library` 결과 포맷을 프론트엔드 파서에 맞춘 `### 📚 {도서명}` 및 `**저자**: ...`, `**독서 상태**: ...`로 규격화.
+  - **무결성 및 테스트 검증**:
+    - `tests/unit/test_my_library_tool.py`, `tests/unit/test_personas.py`, `tests/unit/test_recommend_metadata.py`에 서재/추천 분기 및 헤딩 가드레일 검증 테스트 추가.
+    - 전체 181개 단위 테스트 100% 그린 패스 통과 (`181 passed in 62.60s`), Ruff 린트/포맷 통과, Mypy 타입 체크 88개 소스 파일 100% 무결성 통과.
+
 - [x] **Phase 36: Alembic 원격 DB 안전 인터락 및 운영 환경 취약 시크릿 기동 차단(Fail-Fast) 구축**
   - **Alembic 원격 Supabase 안전 인터락 (`app/infrastructure/db/migration_guard.py`, `alembic/env.py`)**:
     - 대상 DB 호스트가 원격(`pooler.supabase.com` 등 `localhost`/`127.0.0.1` 외)일 때, 환경변수 `ALLOW_REMOTE_MIGRATION=true`가 명시되지 않은 상태에서 `alembic upgrade head`나 마이그레이션 실행 시 즉시 중단(`RuntimeError`)하고 안전 안내 문구를 출력하도록 인터락 구현.
