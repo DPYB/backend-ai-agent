@@ -6,6 +6,20 @@
 
 ## 완료된 단계
 
+- [x] **Phase 26: 도서 추천 시인성 개선(중복 메타/구분선 잡음 제거) & 추천 도서 등록 시 기술과학(L-IT-erature) 오분류 원천 해결**
+  - **프론트엔드 장르 매퍼의 영문 축약어(IT, AI) 부분문자열 오탐 해결 (`frontend-reader-web/app/data/genres.js`, `RegisterBook.jsx`)**:
+    - `detectGenreCode`: `TECHNOLOGY`의 `'it'` 별칭이 `'literature'`(`l-it-erature`)의 부분문자열로 오탐 매칭되던 결함을 발견하고, 3글자 이하 영문 단축어에 대해 단어 경계(`\b`) 독립 단어 검사 적용.
+    - `genreCode`: 영문 Enum(`LITERATURE`) 입력 시 `BY_CODE`를 1순위로 조회하여 표준 코드 즉시 반환.
+    - `RegisterBook.jsx`: `GENRE_CODES.includes(code)`를 최우선으로 검사하여 추천 도서의 표준 장르가 불필요한 별칭 탐색 없이 100% 보존되도록 개선.
+  - **사서 추천 소개 프롬프트 구조화 (`backend-ai-agent/app/domain/graph/nodes.py`)**:
+    - 시스템 프롬프트 지침에 추천 도서 헤딩(`### 📖 도서명`) 아래 화면 카드와 중복되는 `저자: ...`, `사유: ...` 텍스트나 `---` 구분선을 쓰지 않도록 표준 템플릿 명시하고, 사서 고유 어조의 1~2줄 감상 코멘트만 담도록 정돈.
+  - **마크다운 렌더러 시인성 방어 (`frontend-reader-web/app/features/room/MarkdownRenderer.jsx`)**:
+    - `---` 라인을 감지하여 `<p>---</p>` 텍스트 대신 부드러운 수평선(`<hr>`)으로 렌더링.
+    - 도서 카드 외부에서 발생하는 잉여 `저자:`, `사유:` 노이즈 텍스트 필터링.
+  - **KDC 권차·판차 안전 파서 연동 (`backend-ai-agent/app/infrastructure/national_library_client.py`)**:
+    - `extract_kdc_code` 정밀 파서를 도입하여 `[5] 813.6` 등 복합 문자열의 판차 `5`가 기술과학으로 오인되지 않도록 방어.
+  - **무결성 검증**: `tests/unit/test_recommend_metadata.py`에 KDC 추출 및 장르 판별 단위 테스트 추가, 전체 169개 단위 테스트 100% 그린 패스, Ruff/Mypy 통과, 프론트엔드 Vite build 및 ESLint 0 에러 통과.
+
 - [x] **Phase 23: 문장 수집 스마트폰식 네모칸 영역 조절(Crop) 및 정밀 OCR 파이프라인 구축**
   - **프론트엔드 인터랙티브 크롭 모달 (`frontend-reader-web/app/components/ImageCropModal.jsx`)**: React 19 호환 순수 Canvas & Touch/Mouse 드래그 기반 사각형 포커스 박스 조절기 구현. 네 귀퉁이 및 테두리 드래그, 전체 선택, 영역 초기화 및 Canvas API 기반 잘라낸 Blob(image/jpeg) 추출 지원.
   - **문장 수집 모달 흐름 연결 (`SentenceCollectModal.jsx`)**: 사진 선택/촬영/웹캠 시 즉시 OCR 전송하지 않고 크롭 모달로 먼저 진입하여 원하는 문장 영역만 지정 후 자른 조각 이미지만 `POST /api/v1/ocr/sentences`로 전송. 불필요한 노이즈 제거, Gemini Vision 토큰 절약 및 정확도 극대화, 잘린 조각 이미지를 스크랩 썸네일(`scrapImageUrl`)로 보관.

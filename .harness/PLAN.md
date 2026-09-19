@@ -9,8 +9,6 @@
 
 
 - [ ] **Core API 클라이언트 연동 메서드 구현 (`app/infrastructure/core_api_client.py`)**:
-
-  - `get_user_reading_streak(member_id: str, token: Optional[str] = None)`: `backend-core-api`의 세션 API 호출 (Token Relay 및 게스트 바이패스, 오프라인 Mock 지원).
 - [ ] **순수 팩트 반환 도구 구현 (`app/domain/memory/reading_streak_tool.py`)**:
   - `@tool("check_user_reading_streak")`: 누적 시간, 연속 일수(Streak), 최근 세션 정보 JSON 문자열 반환.
 - [ ] **도구 전사 바인딩 (`app/domain/graph/tools.py`)**:
