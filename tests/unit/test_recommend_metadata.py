@@ -355,4 +355,3 @@ def test_extract_kdc_code_and_map_kdc_to_genre_robustness():
     assert map_kdc_to_genre(kdc="813.6") == "LITERATURE"
     assert map_kdc_to_genre(kdc="513") == "TECHNOLOGY"
     assert map_kdc_to_genre(kdc="005.133") == "TECHNOLOGY"
-
