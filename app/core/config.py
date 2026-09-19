@@ -4,8 +4,10 @@ from functools import lru_cache
 from typing import List
 from urllib.parse import quote_plus
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DEFAULT_JWT_SECRET: str = "dont-paw-get-jwt-secret-change-in-prod-2026"
 
 
 class Settings(BaseSettings):
@@ -106,6 +108,22 @@ class Settings(BaseSettings):
     circuit_member_rpm_limit: int = Field(default=120, alias="CIRCUIT_MEMBER_RPM_LIMIT")
     circuit_member_rpd_limit: int = Field(default=4000, alias="CIRCUIT_MEMBER_RPD_LIMIT")
 
+    # Migration Safety Guard (Alembic Interlock for Remote Supabase DB)
+    allow_remote_migration: bool = Field(default=False, alias="ALLOW_REMOTE_MIGRATION")
+
+    @model_validator(mode="after")
+    def validate_production_secrets(self) -> "Settings":
+        """운영 환경(production) 배포 시 기본 취약 시크릿 사용을 엄격히 차단 (Fail-Fast)."""
+        env = (self.app_env or "").lower().strip()
+        if env in ("production", "prod"):
+            secret = (self.jwt_secret_key or "").strip()
+            if not secret or secret == DEFAULT_JWT_SECRET:
+                raise ValueError(
+                    "[SECURITY ALERT] APP_ENV=production 환경에서는 기본 JWT_SECRET_KEY를 사용할 수 없습니다. "
+                    "반드시 안전한 고유 시크릿 키를 환경변수에 설정하십시오."
+                )
+        return self
+
     @property
     def cors_origin_list(self) -> List[str]:
         """Return parsed list of CORS origins."""
@@ -115,6 +133,22 @@ class Settings(BaseSettings):
     def is_testing(self) -> bool:
         """Check if environment is testing."""
         return self.app_env.lower() in ("test", "testing")
+
+    @property
+    def is_remote_db(self) -> bool:
+        """Check if target database host is a remote cloud instance (e.g. Supabase, RDS) rather than local."""
+        host = (self.db_host or "").lower().strip()
+        if not host:
+            # If database_url is provided, check its host component
+            if self.database_url:
+                try:
+                    from urllib.parse import urlparse
+
+                    parsed = urlparse(self.database_url)
+                    host = (parsed.hostname or "").lower().strip()
+                except Exception:
+                    host = ""
+        return bool(host and host not in ("localhost", "127.0.0.1", "::1", "testserver"))
 
     @property
     def async_database_url(self) -> str:

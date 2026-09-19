@@ -47,3 +47,51 @@ def test_alembic_env_schema_target() -> None:
     assert "CREATE SCHEMA IF NOT EXISTS agent;" in content
     assert "CREATE EXTENSION IF NOT EXISTS vector;" in content
     assert "statement_cache_size" in content
+    assert "check_remote_migration_safety" in content
+
+
+def test_remote_migration_guard_blocks_remote_host(monkeypatch) -> None:
+    """Verify that remote DB migration raises RuntimeError when ALLOW_REMOTE_MIGRATION is False."""
+    import pytest
+
+    from app.core.config import settings
+    from app.infrastructure.db.migration_guard import check_remote_migration_safety
+
+    monkeypatch.setattr(settings, "db_host", "aws-0-ap-northeast-2.pooler.supabase.com")
+    monkeypatch.setattr(settings, "database_url", "")
+    monkeypatch.setattr(settings, "allow_remote_migration", False)
+    monkeypatch.delenv("ALLOW_REMOTE_MIGRATION", raising=False)
+
+    assert settings.is_remote_db is True
+
+    with pytest.raises(RuntimeError, match="Remote database migration blocked"):
+        check_remote_migration_safety()
+
+
+def test_remote_migration_guard_allows_when_flag_set(monkeypatch) -> None:
+    """Verify that remote DB migration passes when ALLOW_REMOTE_MIGRATION is True."""
+    from app.core.config import settings
+    from app.infrastructure.db.migration_guard import check_remote_migration_safety
+
+    monkeypatch.setattr(settings, "db_host", "aws-0-ap-northeast-2.pooler.supabase.com")
+    monkeypatch.setattr(settings, "database_url", "")
+    monkeypatch.setattr(settings, "allow_remote_migration", True)
+
+    assert settings.is_remote_db is True
+    # Should not raise
+    check_remote_migration_safety()
+
+
+def test_remote_migration_guard_allows_local_db(monkeypatch) -> None:
+    """Verify that local database migration passes without any special flag."""
+    from app.core.config import settings
+    from app.infrastructure.db.migration_guard import check_remote_migration_safety
+
+    monkeypatch.setattr(settings, "db_host", "localhost")
+    monkeypatch.setattr(settings, "database_url", "")
+    monkeypatch.setattr(settings, "allow_remote_migration", False)
+    monkeypatch.delenv("ALLOW_REMOTE_MIGRATION", raising=False)
+
+    assert settings.is_remote_db is False
+    # Should not raise
+    check_remote_migration_safety()
