@@ -1,10 +1,13 @@
 """Vision API endpoints for Barcode Scanning and Google Gemini Flash Vision OCR."""
 
 import base64
+import io
+import json
 import logging
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
+from PIL import Image
 from pydantic import BaseModel, Field
 
 from app.vision.barcode_service import barcode_service
@@ -86,19 +89,74 @@ async def perform_ocr(image: UploadFile = File(...)) -> OcrResponse:
     )
 
 
+def _crop_image_if_requested(image_bytes: bytes, crop_box: Optional[str]) -> bytes:
+    """JSON 형식의 crop_box [x, y, width, height] 또는 [left, top, right, bottom]이 주어지면 Pillow로 자르기."""
+    if not crop_box or not crop_box.strip():
+        return image_bytes
+    try:
+        data = json.loads(crop_box)
+        if isinstance(data, dict):
+            left = float(data.get("x", 0))
+            top = float(data.get("y", 0))
+            width = float(data.get("width", 0))
+            height = float(data.get("height", 0))
+            right = left + width
+            bottom = top + height
+        elif isinstance(data, (list, tuple)) and len(data) == 4:
+            left, top, right, bottom = [float(v) for v in data]
+        else:
+            logger.warning("유효하지 않은 crop_box 형식: %s", crop_box)
+            return image_bytes
+
+        with Image.open(io.BytesIO(image_bytes)) as pil_img:
+            img_w, img_h = pil_img.size
+            # 0.0 ~ 1.0 정규화 비율 좌표인 경우 실제 픽셀로 변환
+            if 0.0 <= left <= 1.0 and 0.0 <= top <= 1.0 and right <= 1.0 and bottom <= 1.0:
+                left = left * img_w
+                top = top * img_h
+                right = right * img_w
+                bottom = bottom * img_h
+
+            # 바운더리 클램핑
+            left = max(0, min(int(left), img_w - 1))
+            top = max(0, min(int(top), img_h - 1))
+            right = max(left + 1, min(int(right), img_w))
+            bottom = max(top + 1, min(int(bottom), img_h))
+
+            cropped = pil_img.crop((left, top, right, bottom))
+            out_buf = io.BytesIO()
+            # 원본 포맷 유지 (기본 JPEG)
+            img_format = pil_img.format or "JPEG"
+            cropped.save(out_buf, format=img_format)
+            logger.info(
+                "서버 사이드 이미지 크롭 완료: (%d, %d, %d, %d) on %s",
+                left,
+                top,
+                right,
+                bottom,
+                pil_img.size,
+            )
+            return out_buf.getvalue()
+    except Exception as exc:
+        logger.warning("crop_box 처리 실패, 원본 이미지 유지: %s", exc)
+        return image_bytes
+
+
 async def _handle_sentence_ocr(
     image: UploadFile,
     book_id: Optional[str] = None,
     page_number: Optional[str] = None,
     memo: Optional[str] = None,
     save_scrap: bool = False,
+    crop_box: Optional[str] = None,
 ) -> OcrSentenceResponse:
     if not image.content_type or not image.content_type.startswith("image/"):
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail="이미지 파일만 업로드할 수 있습니다.",
         )
-    image_bytes = await image.read()
+    raw_bytes = await image.read()
+    image_bytes = _crop_image_if_requested(raw_bytes, crop_box)
     result = await gemini_ocr_client.extract_text(image_bytes, image.content_type)
     b64_str = base64.b64encode(image_bytes).decode("utf-8")
     data_url = f"data:{image.content_type};base64,{b64_str}"
@@ -251,9 +309,10 @@ async def perform_ocr_sentence(
     page_number: Optional[str] = Form(None),
     memo: Optional[str] = Form(None),
     save_scrap: bool = Query(False),
+    crop_box: Optional[str] = Form(None),
 ) -> OcrSentenceResponse:
-    """문장 스크랩 이미지 OCR 추출 (하위 호환)."""
-    return await _handle_sentence_ocr(image, book_id, page_number, memo, save_scrap)
+    """문장 스크랩 이미지 OCR 추출 (하위 호환 및 선택적 크롭 지원)."""
+    return await _handle_sentence_ocr(image, book_id, page_number, memo, save_scrap, crop_box)
 
 
 @ocr_router.post("/covers", response_model=OcrCoverResponse)
@@ -271,8 +330,9 @@ async def perform_vision_ocr_sentence(
     page_number: Optional[str] = Form(None),
     memo: Optional[str] = Form(None),
     save_scrap: bool = Query(False),
+    crop_box: Optional[str] = Form(None),
 ) -> OcrSentenceResponse:
-    return await _handle_sentence_ocr(image, book_id, page_number, memo, save_scrap)
+    return await _handle_sentence_ocr(image, book_id, page_number, memo, save_scrap, crop_box)
 
 
 @router.post("/ocr/covers", response_model=OcrCoverResponse)

@@ -377,3 +377,40 @@ async def test_page_count_cross_referencing_when_isbn_lacks_pages():
         assert result is not None
         assert result["isbn"] == "9788937460449"  # Original ISBN preserved
         assert result["page_count"] == 343  # Page count cross-referenced successfully
+
+
+@pytest.mark.asyncio
+async def test_sentence_ocr_with_crop_box():
+    """Verify sentence OCR endpoint handles crop_box parameter correctly."""
+    # 200x200 이미지 생성
+    buf = BytesIO()
+    img = Image.new("RGB", (200, 200), color="blue")
+    img.save(buf, format="JPEG")
+    img_bytes = buf.getvalue()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        files = {"image": ("book_page.jpg", img_bytes, "image/jpeg")}
+        # crop_box로 [10, 10, 50, 50] 전달
+        data = {"crop_box": '{"x": 10, "y": 10, "width": 50, "height": 50}'}
+
+        mock_ocr = AsyncMock(
+            return_value=GeminiOcrResult(
+                text="크롭된 문장입니다.",
+                lines=["크롭된 문장입니다."],
+                confidence=0.99,
+                request_id="crop-test-id",
+            )
+        )
+
+        with patch("app.api.v1.vision.gemini_ocr_client.extract_text", mock_ocr):
+            response = await client.post("/api/v1/ocr/sentences", files=files, data=data)
+            assert response.status_code == 200
+            res_data = response.json()
+            assert res_data["text"] == "크롭된 문장입니다."
+            assert res_data["scrap_image_url"].startswith("data:image/jpeg;base64,")
+
+            # extract_text에 전달된 이미지 바이트가 실제로 크롭되었는지 확인
+            called_bytes = mock_ocr.call_args[0][0]
+            with Image.open(BytesIO(called_bytes)) as cropped_img:
+                assert cropped_img.size == (50, 50)

@@ -4,12 +4,12 @@
 
 ---
 
-## 미완료 작업 체크리스트
 
 
-> **핵심 원칙**: 도구는 오직 가공되지 않은 순수 정형 데이터(팩트 JSON)만 반환하며, 페르소나 어조(~냥, ~두둥 등)는 사서 노드 LLM이 전담함.
+
 
 - [ ] **Core API 클라이언트 연동 메서드 구현 (`app/infrastructure/core_api_client.py`)**:
+
   - `get_user_reading_streak(member_id: str, token: Optional[str] = None)`: `backend-core-api`의 세션 API 호출 (Token Relay 및 게스트 바이패스, 오프라인 Mock 지원).
 - [ ] **순수 팩트 반환 도구 구현 (`app/domain/memory/reading_streak_tool.py`)**:
   - `@tool("check_user_reading_streak")`: 누적 시간, 연속 일수(Streak), 최근 세션 정보 JSON 문자열 반환.
