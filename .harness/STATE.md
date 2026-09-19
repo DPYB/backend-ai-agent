@@ -6,6 +6,12 @@
 
 ## 완료된 단계
 
+- [x] **Phase 22: Render 배포 대비 CORS 정규식 및 Supabase Pooler 안정화**
+  - **CORS 와일드카드 보안 및 정규식 지원**: `app/core/config.py`에 `CORS_ORIGIN_REGEX` 필드 추가 및 `app/main.py` CORSMiddleware에 `allow_origin_regex` 매핑. 로컬 포트 전체(`http://localhost:\d+`) 허용 및 Cloudflare Pages 배포 대비 확장성 확보.
+  - **Asyncpg Prepared Statement 충돌 방지**: `app/infrastructure/db/session.py`의 `connect_args`에 `prepared_statement_name_func=lambda: f"__asyncpg_{uuid4()}__"` 추가하여 Supabase Transaction Pooler(포트 6543) 환경에서 세션 충돌 원천 차단.
+  - **단위 테스트 및 품질 검증**: `test_cors_preflight_and_regex` 단위 테스트 추가, Pytest 13개 API 테스트 및 Ruff/Mypy 100% 그린 검증 완료.
+
+
 - [x] **Phase 34: 해커톤 체험 모드(게스트 JWT) 세션 분리, 사용량 제한, 쓰기 락 및 Role 분리 이중 서킷 브레이커(RPM/RPD) 구축**
   - **게스트 JWT 클레임 규격 준수 & Null-Check 안전망**: `role: "guest"`, `sub: "guest-{uuid}"` 인식 및 Core-API 게스트 토큰의 `email`, `name`, `nickname` 누락 시 기본값 안전 처리 (`extract_auth_info_from_auth`).
   - **세션 파티셔닝**: 게스트의 `sub`를 앵커로 `{guest_id}:{persona}`로 자동 파티셔닝하여 히스토리 완전 격리 (`app/api/router.py`).

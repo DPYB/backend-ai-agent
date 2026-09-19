@@ -7,6 +7,7 @@ connect_args={"statement_cache_size": 0, "prepared_statement_cache_size": 0}
 
 import logging
 from typing import AsyncGenerator, Optional
+from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -36,6 +37,7 @@ def get_async_engine() -> Optional[AsyncEngine]:
                 connect_args={
                     "statement_cache_size": 0,
                     "prepared_statement_cache_size": 0,
+                    "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4()}__",
                 },
             )
             logger.info("SQLAlchemy asyncpg engine initialized successfully with NullPool.")
