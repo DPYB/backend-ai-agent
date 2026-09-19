@@ -6,7 +6,15 @@
 
 ## 완료된 단계
 
+- [x] **Phase 35: Alembic 기반 `agent` 스키마 DB 마이그레이션 관리 체계 구축**
+  - **Alembic 환경 구축 (`alembic.ini`, `alembic/env.py`)**: `core-api` 구조를 벤치마킹하여 `alembic>=1.13.1` 도입. Supabase 공유 환경에서 `core.alembic_version`과 충돌하지 않도록 `version_table_schema="agent"`로 격리하고, `vector` 익스텐션 및 `agent` 스키마 선행 생성을 보장함.
+  - **Transaction Pooler 호환성 확보**: `connect_args={"statement_cache_size": 0, "prepared_statement_cache_size": 0}` 적용으로 Supabase 6543 포트 연결 시 세션 prepared statement 충돌 원천 차단.
+  - **초기 리비전 작성 (`001_initial_agent_schema.py`)**: `agent.scrap_vector`, `agent.debate_insights`, `agent.chat_sessions` 테이블 및 HNSW 코사인 유사도 인덱스, `agent.match_scraps`, `agent.match_debate_insights` RPC 함수, 다운그레이드(`downgrade`) 구현.
+  - **마이그레이션 도구 및 문서화**: `scripts/run_migrations.py` 헬퍼 스크립트 작성 및 `README.md` 가이드 갱신.
+  - **자가 검증 완료**: 신규 단위 테스트 3종 추가(`tests/unit/test_alembic_migration.py`), 전체 168개 단위 테스트 100% 그린 패스 통과, Ruff 및 Mypy 무결성 86개 소스 파일 통과.
+
 - [x] **Phase 22: Render 배포 대비 CORS 정규식 및 Supabase Pooler 안정화**
+
   - **CORS 와일드카드 보안 및 정규식 지원**: `app/core/config.py`에 `CORS_ORIGIN_REGEX` 필드 추가 및 `app/main.py` CORSMiddleware에 `allow_origin_regex` 매핑. 로컬 포트 전체(`http://localhost:\d+`) 허용 및 Cloudflare Pages 배포 대비 확장성 확보.
   - **Asyncpg Prepared Statement 충돌 방지**: `app/infrastructure/db/session.py`의 `connect_args`에 `prepared_statement_name_func=lambda: f"__asyncpg_{uuid4()}__"` 추가하여 Supabase Transaction Pooler(포트 6543) 환경에서 세션 충돌 원천 차단.
   - **단위 테스트 및 품질 검증**: `test_cors_preflight_and_regex` 단위 테스트 추가, Pytest 13개 API 테스트 및 Ruff/Mypy 100% 그린 검증 완료.

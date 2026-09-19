@@ -7,10 +7,6 @@
 ## 미완료 작업 체크리스트
 
 
-
-
-
-> **진행 조건**: 대표님 로컬 터미널에서 `grep -rn "StateGraph\|from langgraph" app/` 직접 검증 후 승인 시 착수
 > **핵심 원칙**: 도구는 오직 가공되지 않은 순수 정형 데이터(팩트 JSON)만 반환하며, 페르소나 어조(~냥, ~두둥 등)는 사서 노드 LLM이 전담함.
 
 - [ ] **Core API 클라이언트 연동 메서드 구현 (`app/infrastructure/core_api_client.py`)**:

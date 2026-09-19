@@ -22,9 +22,11 @@ COPY pyproject.toml /app/
 # Install dependencies using uv into system environment
 RUN uv pip install --system --no-cache -r pyproject.toml
 
-# Copy application source code
+# Copy application source code & Alembic migration files
 COPY app /app/app
 COPY scripts /app/scripts
+COPY alembic /app/alembic
+COPY alembic.ini /app/
 COPY README.md /app/
 
 # Set ownership
@@ -38,5 +40,9 @@ ENV PYTHONUNBUFFERED=1 \
 
 EXPOSE $PORT
 
-# Dynamic port binding compatible with Render ($PORT) and Cloud Run ($PORT)
-CMD ["sh", "-c", "python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Container healthcheck probe
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
+
+# Automatic DB migration apply on startup, then launch uvicorn
+CMD ["sh", "-c", "alembic upgrade head && python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

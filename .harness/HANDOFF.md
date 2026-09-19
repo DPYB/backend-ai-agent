@@ -1207,3 +1207,43 @@
 - 사용자 승인 시 `feat/cors-pooler-deployment-readiness` 커밋 및 푸시, PR 생성 보조.
 - Render에 Core API 및 AI Agent 배포 진행 및 `/health` 웜업 확인.
 - DB 정리 및 데모 계정 시나리오 데이터 세팅 진행 후 팀원에게 프론트 로컬 연동 가이드 공유.
+
+---
+
+## 세션 35 (2026-09-19)
+
+### 진행한 작업
+1. **작업 브랜치 생성 및 격리 개발**:
+   - DPYB 브랜치 규칙에 따라 `develop` 브랜치 기반 `feat/alembic-agent-migration` 분기 (`main` <- `develop` <- `feat/*`).
+2. **`backend-core-api` Alembic 구조 분석 및 벤치마킹**:
+   - `core-api`의 `alembic.ini`, `alembic/env.py`, `versions/` 구조를 직접 파악하여, Supabase 단일 인스턴스 공유 환경에서 충돌 없는 스키마 격리 원칙 도출.
+3. **Alembic 비동기 마이그레이션 환경 구축**:
+   - `pyproject.toml`에 `alembic>=1.13.1` 의존성 추가 (`uv add "alembic>=1.13.1"`).
+   - `alembic.ini`: `script_location = alembic`, `prepend_sys_path = .`, ruff 린트/포맷 훅(`uv run ruff check --fix`, `uv run ruff format`) 구성.
+   - `alembic/env.py`:
+     - `version_table_schema="agent"` 명시: `core.alembic_version`과 완전 격리된 `agent.alembic_version` 관리 테이블 운용.
+     - `CREATE EXTENSION IF NOT EXISTS vector;`, `CREATE SCHEMA IF NOT EXISTS agent;` 선행 보장.
+     - Supabase Transaction Pooler(포트 6543) 환경 대응 `connect_args={"statement_cache_size": 0, "prepared_statement_cache_size": 0}` 적용.
+4. **초기 마이그레이션 리비전 작성 (`001_initial_agent_schema.py`)**:
+   - `agent.scrap_vector` (테이블, `member_id` B-Tree 인덱스, HNSW 코사인 유사도 인덱스).
+   - `agent.debate_insights` (테이블, `member_id` B-Tree 인덱스, HNSW 코사인 유사도 인덱스).
+   - `agent.chat_sessions` (테이블).
+   - RPC 함수 `agent.match_scraps`, `agent.match_debate_insights` 생성.
+   - 롤백 지원용 `downgrade()` 함수 구현.
+5. **실행 스크립트 및 문서화**:
+   - `scripts/run_migrations.py` 헬퍼 스크립트 작성 (`upgrade`, `downgrade`, `current`, `history` 지원).
+   - `scripts/init_agent_schema.py` 상단에 Alembic 사용 권장 안내 추가.
+   - `README.md` 빠른 시작 가이드에 `uv run alembic upgrade head` 안내 추가.
+6. **품질 검증 및 AI 자가 검증 100% 통과 (Self-Validation)**:
+   - `tests/unit/test_alembic_migration.py` 신규 작성 (alembic.ini 파싱, 단일 head 리비전 유효성, `agent` 스키마 타겟팅 등 3종 단위 테스트).
+   - `uv run pytest tests/unit/ -v`: **전체 168개 단위 테스트 100% 그린 패스 통과 (`168 passed in 57.82s`)**.
+   - `uv run ruff check .` & `uv run ruff format .`: **린트/포맷 100% 통과 (0 errors)**.
+   - `uv run mypy .`: **정적 타입 체크 86개 소스 파일 100% 무결성 통과 (`Success: no issues found in 86 source files`)**.
+7. **하네스 문서 동기화**:
+   - `STATE.md`, `PLAN.md`, `DECISIONS.md`, `HANDOFF.md` 최신화 완료.
+
+### 다음 세션에서 할 일
+- 사용자의 확인 및 요청 시 `feat/alembic-agent-migration` 브랜치 변경 사항 선별 커밋 및 푸시, PR 생성 보조.
+- CI 통과 확인 후 사람 직접 머지 원칙에 따라 GitHub 웹에서 머지 진행.
+- Render 배포 환경에서 `uv run alembic upgrade head` 실행 연동 여부 점검.
+
