@@ -6,6 +6,25 @@
 
 ## 완료된 단계
 
+- [x] **Phase 23: 문장 수집 스마트폰식 네모칸 영역 조절(Crop) 및 정밀 OCR 파이프라인 구축**
+  - **프론트엔드 인터랙티브 크롭 모달 (`frontend-reader-web/app/components/ImageCropModal.jsx`)**: React 19 호환 순수 Canvas & Touch/Mouse 드래그 기반 사각형 포커스 박스 조절기 구현. 네 귀퉁이 및 테두리 드래그, 전체 선택, 영역 초기화 및 Canvas API 기반 잘라낸 Blob(image/jpeg) 추출 지원.
+  - **문장 수집 모달 흐름 연결 (`SentenceCollectModal.jsx`)**: 사진 선택/촬영/웹캠 시 즉시 OCR 전송하지 않고 크롭 모달로 먼저 진입하여 원하는 문장 영역만 지정 후 자른 조각 이미지만 `POST /api/v1/ocr/sentences`로 전송. 불필요한 노이즈 제거, Gemini Vision 토큰 절약 및 정확도 극대화, 잘린 조각 이미지를 스크랩 썸네일(`scrapImageUrl`)로 보관.
+  - **백엔드 하이브리드 크롭 지원 (`app/api/v1/vision.py`)**: `POST /api/v1/ocr/sentences` 엔드포인트에 선택적 `crop_box: Optional[str] = Form(None)` 지원 및 `Pillow` 서버 사이드 크롭 안전 폴백 구현.
+  - **무결성 검증**: `tests/unit/test_vision.py`에 `test_sentence_ocr_with_crop_box` 단위 테스트 추가, 백엔드 전체 169개 단위 테스트 100% 그린 패스, Ruff/Mypy 무결성 통과, 프론트엔드 Vite build 및 ESLint 0 에러 통과.
+
+- [x] **Phase 24: 팀 프로필 일러스트 2종(chris/clia) 배치 및 마이페이지 프로필 사진 수정(1:1 크롭) 구축**
+  - **프로필 일러스트 및 기본 실루엣 아바타 배치**: `frontend-reader-web/public/profile/`에 팀원 일러스트 `chris.png`(데모 회원용), `clia.png`(게스트 모드용) 및 웹 표준 벡터 실루엣 `default_avatar.svg` 생성 및 배치 완료.
+  - **게스트 모드 기본 프로필 일러스트 할당 (`AuthProvider.jsx`, `authBypass.js`)**: 게스트 로그인 및 개발 우회 모드 시 기본 `profile_image_url`로 `/profile/clia.png` 자동 할당.
+  - **마이페이지 프로필 사진 수정 UI 및 1:1 크롭 연계 (`MyPage.jsx`, `MyPage.css`)**: 아바타에 '사진 변경' 카메라 버튼 추가, 사진 선택 시 `ImageCropModal`(1:1 정사각 모드)을 호출하여 원하는 영역을 맞춤 크롭하고 `updateMe({ profile_image_url })` (`PATCH /api/v1/users/me`)로 DB 저장 및 즉각 반영.
+  - **정식 데모 계정 기본 프로필 연동 (`backend-core-api/app/services/member_service.py`)**: `ensure_demo_member`에서 데모 계정의 `profile_image_url`을 `/profile/chris.png`로 자동 보장.
+  - **품질 검증**: `backend-core-api` pytest 101개 100% 통과, 프론트엔드 Vite 번들 빌드 성공.
+
+- [x] **Phase 25: AI 챗봇 실시간 SSE 스트리밍 연동 및 발바닥 로딩(`LoadingSequence`) 조화 파이프라인**
+
+  - **프론트엔드 실시간 SSE 클라이언트 구축 (`frontend-reader-web/app/api/chatApi.js`)**: `streamChatMessage`에 `ReadableStream`(`getReader()`) 기반 청크 디코딩 및 백엔드 `/api/v1/chat/stream` SSE 프로토콜(`metadata`, `token`, `books`, `switch_suggestion`, `done`, `error`) 파서 구현.
+  - **하이브리드 UX 파이프라인 (`frontend-reader-web/app/features/room/LibrarianChat.jsx`)**: 질문 전송 즉시 발바닥 순차 애니메이션(`LoadingSequence`)으로 사서의 생각/탐색 시간을 표현하고, 첫 번째 `token` 수신 즉시 말풍선 타이핑 스트리밍 모드로 매끄럽게 전환. 체감 대기 시간을 50초에서 3~4초로 단축.
+  - **무결성 검증**: 백엔드 스트리밍 단위 테스트(`tests/unit/test_streaming_api.py`) 3종 100% 통과, 프론트엔드 ESLint 0 에러 및 Vite Production 번들 빌드 통과.
+
 - [x] **Phase 35: Alembic 기반 `agent` 스키마 DB 마이그레이션 관리 체계 구축**
   - **Alembic 환경 구축 (`alembic.ini`, `alembic/env.py`)**: `core-api` 구조를 벤치마킹하여 `alembic>=1.13.1` 도입. Supabase 공유 환경에서 `core.alembic_version`과 충돌하지 않도록 `version_table_schema="agent"`로 격리하고, `vector` 익스텐션 및 `agent` 스키마 선행 생성을 보장함.
   - **Transaction Pooler 호환성 확보**: `connect_args={"statement_cache_size": 0, "prepared_statement_cache_size": 0}` 적용으로 Supabase 6543 포트 연결 시 세션 prepared statement 충돌 원천 차단.

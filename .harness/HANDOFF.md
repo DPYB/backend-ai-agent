@@ -1247,3 +1247,56 @@
 - CI 통과 확인 후 사람 직접 머지 원칙에 따라 GitHub 웹에서 머지 진행.
 - Render 배포 환경에서 `uv run alembic upgrade head` 실행 연동 여부 점검.
 
+---
+
+## 세션 36 (2026-09-20)
+
+### 진행한 작업
+1. **챗봇 50초 대기 시간 문제 진단 및 하이브리드 파이프라인 수립**:
+   - 백엔드에 `/api/v1/chat/stream` SSE 스트리밍이 이미 구현되어 있음에도 프론트엔드가 동기식 `POST /chat`을 호출하여 모든 체인이 끝날 때까지 40~50초간 발바닥 로딩만 멈춰있던 병목 확인.
+   - 사서 탐색 시간(Thinking)에는 기존 발바닥 로딩(`LoadingSequence`)을 보여주고, 첫 번째 토큰 도착 즉시 말풍선 타이핑 스트리밍으로 전환하는 2단계 하이브리드 UX 설계.
+2. **프론트엔드 실시간 SSE 클라이언트 구축 (`frontend-reader-web/app/api/chatApi.js`)**:
+   - `streamChatMessage` 함수를 신규 작성하여 `POST /api/v1/chat/stream` 연동.
+   - `ReadableStream`(`getReader()`) 기반 UTF-8 청크 디코딩 및 SSE 이벤트 라인(`metadata`, `token`, `books`, `switch_suggestion`, `done`, `error`) 파서 완비.
+3. **사서 챗봇 컴포넌트 하이브리드 UX 연동 (`frontend-reader-web/app/features/room/LibrarianChat.jsx`)**:
+   - 질문 전송 즉시: `loading = true`로 발바닥 순차 애니메이션 유지.
+   - 첫 번째 `token` 수신 시: `setLoading(false)` 즉시 호출하고 `assistant` 말풍선을 열어 실시간 글자 누적 타이핑 스트리밍.
+   - `books` 이벤트 수신 시: 추천 도서 카드 목록 동적 갱신.
+   - 연결 실패 시: 로컬 키워드 검색 엔진 fallback 안전망 유지.
+4. **품질 검증**:
+   - 프론트엔드: `npm run lint` 0 에러, `npm run build` Vite production 번들 정상 완료.
+   - 백엔드: `uv run pytest tests/unit/test_streaming_api.py` 3종 100% 그린 통과.
+5. **하네스 문서 동기화**:
+   - `STATE.md`, `PLAN.md`, `HANDOFF.md`에 Phase 25 완료 반영.
+
+### 다음 세션에서 할 일
+- Render 배포 환경에서 실제 SSE 스트리밍 동작 및 발바닥 전환 모션 체감 속도 최종 확인.
+- 필요 시 토론 모드 피날레(`conclude`) 시의 스트리밍 응답 연계 추가 확인.
+
+---
+
+## 세션 37 (2026-09-20)
+
+### 진행한 작업
+1. **문장 수집 스마트폰식 네모칸 영역 조절(Crop) 기능 구축 (Phase 23)**:
+   - **인터랙티브 크롭 모달 (`frontend-reader-web/app/components/ImageCropModal.jsx`)**: React 19 호환 순수 Canvas & Touch/Mouse 제스처 기반 사각형 포커스 박스 조절기 신설. 네 모서리 핸들 및 상하좌우 변 드래그, 삼분할 가이드라인, [전체 선택], [영역 초기화], [이 영역으로 선택 완료] 액션 제공 및 Canvas API 기반 잘라낸 Blob(image/jpeg) 추출 완비.
+   - **문장 수집 모달 흐름 연결 (`SentenceCollectModal.jsx`)**: 사진 촬영/선택/웹캠 프레임 캡처 시 즉시 전체 OCR을 부르지 않고 크롭 모달로 먼저 안내. 사용자가 네모칸을 맞춘 조각 이미지만 백엔드 `POST /api/v1/ocr/sentences`로 전송하여 잡음 배제, 토큰 절약 및 인식 정확도 극대화. 잘린 조각 이미지를 스크랩 썸네일(`scrapImageUrl`)로 보관.
+   - **백엔드 하이브리드 지원 (`app/api/v1/vision.py`)**: `POST /api/v1/ocr/sentences` 엔드포인트에 선택적 `crop_box: Optional[str] = Form(None)` 파라미터 지원 및 `Pillow` 서버 사이드 크롭 안전 폴백 추가.
+2. **팀 프로필 일러스트 2종 배치 및 마이페이지 프로필 사진 수정 구축 (Phase 24)**:
+   - **프로필 에셋 배치**: `frontend-reader-web/public/profile/`에 팀원 일러스트 `chris.png`(정식 데모 계정용), `clia.png`(게스트 모드용) 및 웹 표준 벡터 실루엣 `default_avatar.svg` 생성 및 배치.
+   - **게스트 모드 기본 프로필 일러스트 자동 할당 (`AuthProvider.jsx`, `authBypass.js`)**: 게스트 로그인 및 개발 우회 모드 시 기본 `profile_image_url`로 `/profile/clia.png` 지정.
+   - **마이페이지 프로필 사진 수정 UI (`MyPage.jsx`, `MyPage.css`)**: 아바타에 '사진 변경' 카메라 버튼 추가, 사진 선택 시 `ImageCropModal`(1:1 정사각 모드)을 호출하여 원하는 영역을 맞춤 크롭하고 `updateMe({ profile_image_url })` (`PATCH /api/v1/users/me`)로 DB 저장 및 화면 즉각 반영.
+   - **정식 데모 계정 기본 프로필 연동 (`backend-core-api/app/services/member_service.py`)**: `ensure_demo_member`에서 데모 계정의 `profile_image_url`을 `/profile/chris.png`로 자동 보장.
+3. **품질 검증 및 AI 자가 검증 (Self-Validation)**:
+   - 백엔드: `tests/unit/test_vision.py`에 `test_sentence_ocr_with_crop_box` 단위 테스트 추가, 백엔드 전체 169개 단위 테스트 100% 그린 패스 통과 (`169 passed in 59.50s`), Ruff/Mypy 86개 소스 파일 무결성 통과.
+   - 코어 API: `backend-core-api` pytest 101개 단위 테스트 100% 그린 패스 통과.
+   - 프론트엔드: `npm run lint` 0 에러, `npm run build` Vite production 번들 377ms 정상 빌드 완료.
+4. **하네스 문서 동기화**:
+   - `STATE.md`, `PLAN.md`, `HANDOFF.md` 갱신 완료.
+
+### 다음 세션에서 할 일
+- 사용자의 확인 및 요청 시 `feat/image-crop-and-profile-customization` 브랜치 변경 사항 선별 커밋 및 푸시, PR 생성 보조.
+- 브라우저 실화면에서 문장 수집 크롭 및 마이페이지 프로필 사진 1:1 크롭 연동 최종 동작 확인.
+
+
+
