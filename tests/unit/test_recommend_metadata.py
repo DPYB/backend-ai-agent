@@ -336,3 +336,22 @@ def test_clean_book_title_removes_noise_brackets():
         clean_book_title("교사를 지키는 단단한 생활지도 : 상황별 실전 사례 100")
         == "교사를 지키는 단단한 생활지도"
     )
+
+
+def test_extract_kdc_code_and_map_kdc_to_genre_robustness():
+    """Verify extract_kdc_code extracts 3-digit KDC and ignores edition/volume numbers like 5판 or [5]."""
+    from app.infrastructure.national_library_client import extract_kdc_code, map_kdc_to_genre
+
+    # 1. Complex edition / volume prefix combinations
+    assert extract_kdc_code("[5] 813.6") == "813.6"
+    assert extract_kdc_code("5판 813.6") == "813.6"
+    assert extract_kdc_code("813.6/005") == "813.6"
+    assert extract_kdc_code("K813.6") == "813.6"
+    assert extract_kdc_code("005.133") == "005.133"
+
+    # 2. Genre mapping prevents false 'TECHNOLOGY' (5xx) classification
+    assert map_kdc_to_genre(kdc="[5] 813.6") == "LITERATURE"
+    assert map_kdc_to_genre(kdc="5판 813.6") == "LITERATURE"
+    assert map_kdc_to_genre(kdc="813.6") == "LITERATURE"
+    assert map_kdc_to_genre(kdc="513") == "TECHNOLOGY"
+    assert map_kdc_to_genre(kdc="005.133") == "TECHNOLOGY"

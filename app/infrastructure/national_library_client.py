@@ -129,6 +129,33 @@ def genre_to_korean(genre_str: str) -> str:
     return GENRE_EN_TO_KO.get(norm, "일반도서")
 
 
+def extract_kdc_code(kdc_str: Optional[str]) -> Optional[str]:
+    """국립중앙도서관 및 서지 데이터의 복합 KDC 문자열에서 실제 분류기호(숫자)를 정밀 추출.
+
+    - 권차/판차/별치기호/복수분류 등이 혼합된 경우(예: '[5] 813.6', '5판 813.6', 'K813.6', '813.6/005')에도
+      엉뚱한 숫자(판차 5 등)가 아닌 3자리 표준 KDC(813.6)를 우선 추출.
+    - 1) 3자리 숫자 + 소수점 패턴 우선 추출 (예: '813.6', '005.133', '843')
+    - 2) 1~2자리 약식 분류기호 추출 (단, '5판', '제2권', 'v.5' 등 수식어 결합 숫자는 배제)
+    """
+    if not kdc_str or not kdc_str.strip():
+        return None
+
+    clean = kdc_str.strip()
+
+    # 1. 3자리 정수 + 선택적 소수점 (예: 813.6, 005.133, 843, K813.6, [5] 813.6, 813.6/005)
+    match3 = re.search(r"(?:^|[^\d])(\d{3}(?:\.\d+)?)(?:[^\d]|$)", clean)
+    if match3:
+        return match3.group(1)
+
+    # 2. 접두사/약식 1~2자리 (예: '81', '00', '8', '0')
+    # 판차('5판'), 권차('제2권', 'v.5') 등 한글/영문 수식어가 직전/직후에 붙은 경우 배제
+    match_short = re.search(r"(?:^|[\s/\[\(])(\d{1,2}(?:\.\d+)?)(?:[\s/\]\)]|$)", clean)
+    if match_short:
+        return match_short.group(1)
+
+    return None
+
+
 def map_kdc_to_genre(kdc: str = "", subject: str = "", title: str = "") -> str:
     """Map Korean Decimal Classification (KDC) code, subject keyword, or title to standard genre Enum.
 
@@ -176,22 +203,15 @@ def map_kdc_to_genre(kdc: str = "", subject: str = "", title: str = "") -> str:
         if keyword in combined_hint:
             return mapped
 
-    raw_code = kdc.strip() if kdc else ""
+    raw_code = extract_kdc_code(kdc) or ""
     if not raw_code and subject:
         # National library CIP often stores KDC major category digit in SUBJECT field (e.g. '8', '813')
-        subj_match = re.search(r"(\d{1,3})", subject.strip())
-        if subj_match:
-            raw_code = subj_match.group(1)
+        raw_code = extract_kdc_code(subject) or ""
 
     if not raw_code:
         return "GENERAL"
 
-    code_match = re.search(r"(\d{1,3})", raw_code)
-    if not code_match:
-        return "GENERAL"
-
-    digits = code_match.group(1)
-    first_digit = digits[0]
+    first_digit = raw_code[0]
 
     # [핵심] 000번대 총류 세부분류 실무 분할
     if first_digit == "0":

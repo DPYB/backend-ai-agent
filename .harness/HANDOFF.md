@@ -1297,6 +1297,55 @@
 ### 다음 세션에서 할 일
 - 사용자의 확인 및 요청 시 `feat/image-crop-and-profile-customization` 브랜치 변경 사항 선별 커밋 및 푸시, PR 생성 보조.
 - 브라우저 실화면에서 문장 수집 크롭 및 마이페이지 프로필 사진 1:1 크롭 연동 최종 동작 확인.
+---
 
+## 세션 38 (2026-09-20)
 
+### 진행한 작업
+1. **backend-core-api 자가 검증 완료**:
+   - `ensure_demo_member`의 게스트 계정 프로필을 `chris.png` → `clia.png`로 수정 (이전 세션 실수 수정).
+   - `uv run pytest tests/` → 101 passed ✅, `ruff check/format` → 0 errors ✅, `mypy .` → 90 files no issues ✅.
+2. **3개 레포 커밋/푸시/PR 생성 완료**:
+   - `frontend-reader-web feat/image-crop-and-profile-customization` → PR #35
+   - `backend-ai-agent feat/image-crop-and-profile-customization` → PR #33
+   - `backend-core-api feat/image-crop-and-profile-customization` → PR #22
+3. **프로필 배정 최종 확정**:
+   - `chris.png` → `dpyb26@gmail.com` 정식 계정 (`get_or_create_dev_member`)
+   - `clia.png` → 체험하기 게스트 (`ensure_demo_member` + `AuthProvider.jsx` 프론트 메모리)
+
+### 다음 세션에서 할 일
+- PR CI 통과 여부 확인 후 사용자가 직접 Squash and merge.
+- `frontend-reader-web`의 `feat/chat-stream-loading-animation` 브랜치 stash 변경사항 확인 및 PR 논의.
+- `.harness/PLAN.md` 남은 Phase 21(reading_streak_tool) 및 Milestone 4 작업 재개 여부 사용자와 확인.
+
+---
+
+## 세션 39 (2026-09-20)
+
+### 진행한 작업
+1. **도서 추천 등록 시 장르 '기술과학' 오분류(L-IT-erature) 원인 규명 및 해결**:
+   - **원인 분석**: 챗봇 카드에서는 `문학`(`LITERATURE`)으로 정상 노출되던 도서가 등록 폼(`RegisterBook.jsx`)으로 진입 시 `기술과학 (컴퓨터/IT)`으로 강제 변경되던 문제 진단. `genres.js`의 `detectGenreCode`가 `t.includes(alias)`를 수행할 때 `TECHNOLOGY`의 별칭 `'it'`이 `"literature"`의 부분 문자열(`l-IT-erature`)로 매칭되어 9번째인 문학보다 앞선 6번째 기술과학으로 오탐되던 치명적 결함 발견.
+   - **프론트엔드 장르 유틸 보강 (`frontend-reader-web/app/data/genres.js`)**:
+     - `genreCode(str)`: 영문 Enum(`LITERATURE` 등)이 전달되어도 `BY_CODE`를 1순위로 조회하여 표준 코드 즉시 반환.
+     - `detectGenreCode(str)`: 3글자 이하 영문 단축어('it', 'ai', 'sf')에 대해 단어 경계(`\b`) 독립 단어 정규식 검사를 적용하여 일반 영단어 내 부분 문자열 오탐 원천 차단.
+   - **등록 폼 장르 보존 (`frontend-reader-web/app/pages/RegisterBook.jsx`)**:
+     - `GENRE_CODES.includes(code)`를 최우선 적용하여 이미 검증된 추천 장르가 불필요한 별칭 탐색 없이 100% 온전히 보존되도록 개선.
+2. **도서 추천 시인성 개선 및 중복 텍스트/구분선 잡음 제거**:
+   - **사서 추천 소개 프롬프트 구조화 (`backend-ai-agent/app/domain/graph/nodes.py`)**:
+     - 화면에는 `### 📖 도서명` 헤딩 아래 추천 도서 카드가 자동 렌더링되므로, 본문 텍스트에 카드와 중복되는 `저자: ...`, `사유: ...` 정형 텍스트나 `---` 수평 구분선을 쓰지 않도록 표준 템플릿 지침 명시.
+     - 각 도서 헤딩 아래 사서의 다정하고 감성적인 1~2문장 감상평만 자연스럽게 작성하도록 프롬프트 구조화.
+   - **마크다운 렌더러 시인성 방어 (`frontend-reader-web/app/features/room/MarkdownRenderer.jsx`)**:
+     - `---` 라인을 감지하여 지저분한 `<p>---</p>` 대신 부드러운 수평선(`<hr>`)으로 렌더링.
+     - 도서 카드 외부에서 발생하는 잉여 `저자:`, `사유:` 노이즈 텍스트 필터링.
+3. **KDC 권차·판차 안전 파서 연동 (`backend-ai-agent/app/infrastructure/national_library_client.py`)**:
+   - `extract_kdc_code` 정밀 파서를 도입하여 국립도서관 KDC 문자열(`[5] 813.6`, `5판 813.6`)의 판차 `5`가 기술과학으로 오인되지 않도록 이중 방어 체계 완성.
+4. **품질 검증 및 AI 자가 검증 (Self-Validation)**:
+   - 프론트엔드: Node 유틸 검증(`detectGenreCode("LITERATURE")` -> `LITERATURE` 확인), `npm run build` Vite 번들 362ms 빌드 성공, ESLint 0 에러 통과.
+   - 백엔드: `tests/unit/test_recommend_metadata.py`에 복합 KDC 추출 단위 테스트 추가, 전체 169개 단위 테스트 100% 그린 패스 통과 (`169 passed in 55.87s`), Ruff lint/format 통과, Mypy 86개 소스 파일 100% 타입 무결성 통과.
+5. **하네스 문서 동기화**:
+   - `STATE.md`, `PLAN.md`, `DECISIONS.md`, `HANDOFF.md` 갱신 완료.
+
+### 다음 세션에서 할 일
+- 브라우저 실화면에서 사서 도서 추천 요청 시 중복 메타데이터 없는 깔끔한 마크다운과 [등록 ➔] 클릭 시 '문학' 장르 자동 완성 정상 동작 최종 확인.
+- 사용자의 확인 및 요청 시 변경 파일 선별 커밋 및 푸시 보조.
 
