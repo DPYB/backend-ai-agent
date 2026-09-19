@@ -6,6 +6,17 @@
 
 ## 완료된 단계
 
+- [x] **Phase 36: Alembic 원격 DB 안전 인터락 및 운영 환경 취약 시크릿 기동 차단(Fail-Fast) 구축**
+  - **Alembic 원격 Supabase 안전 인터락 (`app/infrastructure/db/migration_guard.py`, `alembic/env.py`)**:
+    - 대상 DB 호스트가 원격(`pooler.supabase.com` 등 `localhost`/`127.0.0.1` 외)일 때, 환경변수 `ALLOW_REMOTE_MIGRATION=true`가 명시되지 않은 상태에서 `alembic upgrade head`나 마이그레이션 실행 시 즉시 중단(`RuntimeError`)하고 안전 안내 문구를 출력하도록 인터락 구현.
+    - 온라인/오프라인 모드 양쪽에 안전 검사를 선행 적용하여 로컬 개발 중 실수로 인한 팀 공용 Supabase 스키마 변조 원천 방지.
+  - **운영 환경(APP_ENV=production) 취약 시크릿 Fail-Fast 방어 (`app/core/config.py`)**:
+    - `Settings`의 `model_validator(mode="after")`를 통해 `APP_ENV=production` 또는 `prod`일 때 `JWT_SECRET_KEY`가 기본값(`dont-paw-get-jwt-secret-change-in-prod-2026`)이거나 공백일 경우 `ValueError`를 발생시켜 서버 기동 단계에서 선제 차단.
+  - **무결성 및 테스트 검증**:
+    - `tests/unit/test_config.py`에 개발/프로덕션 환경 시크릿 검증 및 원격 DB 호스트 감지 단위 테스트 5종 추가.
+    - `tests/unit/test_alembic_migration.py`에 원격 호스트 마이그레이션 차단, 허용 플래그 적용, 로컬 DB 허용 단위 테스트 3종 추가.
+    - 전체 178개 단위 테스트 100% 그린 패스 통과, Ruff 및 Mypy(88개 소스 파일) 무결성 검증 완료.
+
 - [x] **Phase 26: 도서 추천 시인성 개선(중복 메타/구분선 잡음 제거) & 추천 도서 등록 시 기술과학(L-IT-erature) 오분류 원천 해결**
   - **프론트엔드 장르 매퍼의 영문 축약어(IT, AI) 부분문자열 오탐 해결 (`frontend-reader-web/app/data/genres.js`, `RegisterBook.jsx`)**:
     - `detectGenreCode`: `TECHNOLOGY`의 `'it'` 별칭이 `'literature'`(`l-it-erature`)의 부분문자열로 오탐 매칭되던 결함을 발견하고, 3글자 이하 영문 단축어에 대해 단어 경계(`\b`) 독립 단어 검사 적용.

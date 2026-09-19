@@ -8,6 +8,8 @@
 
 
 
+### 📌 Phase 26: 도서 추천 시인성 개선(중복 메타/구분선 잡음 제거) & 추천 도서 등록 시 기술과학(L-IT-erature) 오분류 원천 해결
+
 - [ ] **Core API 클라이언트 연동 메서드 구현 (`app/infrastructure/core_api_client.py`)**:
 - [ ] **순수 팩트 반환 도구 구현 (`app/domain/memory/reading_streak_tool.py`)**:
   - `@tool("check_user_reading_streak")`: 누적 시간, 연속 일수(Streak), 최근 세션 정보 JSON 문자열 반환.

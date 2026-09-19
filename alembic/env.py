@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
 from app.core.config import settings
+from app.infrastructure.db.migration_guard import check_remote_migration_safety
 from app.infrastructure.db.models import Base  # noqa: F401 (모든 모델 등록)
 
 # Alembic Config 객체
@@ -29,6 +30,7 @@ config.set_main_option("sqlalchemy.url", db_url.replace("%", "%%"))
 
 def run_migrations_offline() -> None:
     """오프라인 마이그레이션 실행"""
+    check_remote_migration_safety()
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
@@ -99,6 +101,7 @@ async def run_async_migrations() -> None:
 
 
 def run_migrations_online() -> None:
+    check_remote_migration_safety()
     asyncio.run(run_async_migrations())
 
 

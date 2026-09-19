@@ -1349,3 +1349,26 @@
 - 브라우저 실화면에서 사서 도서 추천 요청 시 중복 메타데이터 없는 깔끔한 마크다운과 [등록 ➔] 클릭 시 '문학' 장르 자동 완성 정상 동작 최종 확인.
 - 사용자의 확인 및 요청 시 변경 파일 선별 커밋 및 푸시 보조.
 
+---
+
+## 세션 40 (2026-09-20)
+
+### 진행한 작업
+1. **Alembic 원격 Supabase DB 마이그레이션 안전 인터락 구축 (`app/infrastructure/db/migration_guard.py`, `alembic/env.py`)**:
+   - `core-api` 보안 표준에 맞춰 `backend-ai-agent`에도 원격 DB 보호 안전 인터락을 동일하게 적용.
+   - 대상 DB 호스트가 원격(`pooler.supabase.com` 등 `localhost`/`127.0.0.1` 외)일 때, 환경변수 `ALLOW_REMOTE_MIGRATION=true`가 명시되지 않은 상태에서 `alembic upgrade head`나 마이그레이션 실행 시 즉시 중단(`RuntimeError`)하고 안전 안내 문구를 출력하도록 인터락 구현.
+   - 온라인/오프라인 모드 양쪽에 안전 검사를 선행 적용하여 로컬 개발 중 실수로 인한 팀 공용 Supabase 스키마 변조 원천 차단.
+2. **운영 환경(APP_ENV=production) 취약 시크릿 기동 차단(Fail-Fast) 구축 (`app/core/config.py`)**:
+   - `APP_ENV=production` 또는 `prod`인 경우 `JWT_SECRET_KEY`가 기본값(`dont-paw-get-jwt-secret-change-in-prod-2026`)이거나 빈 값인 상태로 배포 기동될 때 `ValueError`를 발생시켜 서버 기동 fail-fast 방어 체계 완성.
+   - `.env` 및 `.env.example`에 `ALLOW_REMOTE_MIGRATION=false` 기본값 주석 추가.
+3. **단위 테스트 및 AI 자가 검증 (Self-Validation)**:
+   - `tests/unit/test_config.py`에 개발/프로덕션 환경 시크릿 검증 및 원격 DB 호스트 감지 단위 테스트 5종 신설.
+   - `tests/unit/test_alembic_migration.py`에 원격 호스트 마이그레이션 차단, 허용 플래그 적용, 로컬 DB 허용 단위 테스트 3종 추가.
+   - 전체 178개 단위 테스트 100% 그린 패스 통과 (`178 passed in 57.64s`), Ruff 린트/포맷 통과, Mypy 88개 소스 파일 100% 타입 무결성 통과.
+4. **하네스 문서 동기화**:
+   - `STATE.md`, `PLAN.md`, `DECISIONS.md`, `HANDOFF.md` 갱신 완료.
+
+### 다음 세션에서 할 일
+- 사용자의 확인 및 요청 시 `feat/remote-migration-guard-and-jwt-security` 브랜치 변경 사항 선별 커밋 및 푸시, PR 생성 보조.
+- Render 배포 환경변수 정상 반영 및 서비스 헬스체크 확인.
+
