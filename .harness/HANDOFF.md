@@ -1185,6 +1185,25 @@
 - 대표님의 로컬 터미널 grep 직접 검증(`grep -rn "StateGraph\|from langgraph" app/`) 확인 후, 승인 시 Phase 21 (Step 1 `check_user_reading_streak` 도구 구축) 진행.
 - 사용자 승인 시 변경된 파일 선별 커밋 및 푸시 보조.
 
+---
 
+## 세션 34 (2026-09-19)
 
+### 진행한 작업
+1. **작업 브랜치 생성 및 격리 개발**:
+   - DPYB 브랜치 규칙에 따라 `develop` 브랜치 기반 `feat/cors-pooler-deployment-readiness` 분기.
+2. **CORS 정규식 지원 및 와일드카드 보안 강화**:
+   - `app/core/config.py`에 `CORS_ORIGIN_REGEX` 필드(기본값 `^https?://(localhost|127\.0\.0\.1)(:\d+)?$`) 추가 및 `.env.example` 문서화.
+   - `app/main.py`의 `CORSMiddleware`에 `allow_origin_regex` 매핑하여 팀원의 임의 로컬 포트 개발 환경을 안전하게 수용하고 Cloudflare Pages 배포 대비 확장성 확보.
+3. **Supabase Transaction Pooler Prepared Statement 충돌 방지 강화**:
+   - `app/infrastructure/db/session.py`의 `create_async_engine` `connect_args`에 `prepared_statement_name_func=lambda: f"__asyncpg_{uuid4()}__"` 옵션 추가하여 Transaction Pooler(포트 6543) 환경의 충돌 원천 차단.
+4. **품질 검증 및 테스트 전수 통과**:
+   - `tests/unit/test_api.py`에 `test_cors_preflight_and_regex` 단위 테스트 추가 및 100% 통과 (13 passed).
+   - Ruff 린트 및 포맷 정렬 통과, Mypy 타입 체크 무결성 통과 (`59 source files`).
+5. **하네스 문서 동기화**:
+   - `STATE.md`, `PLAN.md`, `HANDOFF.md` 최신화 완료.
 
+### 다음 세션에서 할 일
+- 사용자 승인 시 `feat/cors-pooler-deployment-readiness` 커밋 및 푸시, PR 생성 보조.
+- Render에 Core API 및 AI Agent 배포 진행 및 `/health` 웜업 확인.
+- DB 정리 및 데모 계정 시나리오 데이터 세팅 진행 후 팀원에게 프론트 로컬 연동 가이드 공유.

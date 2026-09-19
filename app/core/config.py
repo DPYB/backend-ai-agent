@@ -25,6 +25,10 @@ class Settings(BaseSettings):
         default="http://localhost:3000,http://localhost:5173",
         alias="CORS_ORIGINS",
     )
+    cors_origin_regex: str = Field(
+        default=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+        alias="CORS_ORIGIN_REGEX",
+    )
 
     # Google Gemini AI (Smart Workload Routing & Multi-Key Free Tier)
     gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")

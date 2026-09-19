@@ -216,3 +216,20 @@ async def test_chat_persona_switch_sanitizes_history_tone():
         assert data2["active_persona"] == "GECKO"
         assert data2["display_name"] == "게코"
         assert data2["session_id"] == f"{test_session}:GECKO"
+
+
+@pytest.mark.asyncio
+async def test_cors_preflight_and_regex():
+    """Verify CORS preflight OPTIONS request and regex matching for localhost."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # Preflight from arbitrary localhost port (e.g., 5173, 8080)
+        headers = {
+            "Origin": "http://localhost:8080",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "authorization,content-type",
+        }
+        res = await client.options("/api/v1/chat", headers=headers)
+        assert res.status_code == 200
+        assert res.headers.get("access-control-allow-origin") == "http://localhost:8080"
+        assert res.headers.get("access-control-allow-credentials") == "true"
