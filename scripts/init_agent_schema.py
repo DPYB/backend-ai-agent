@@ -1,6 +1,11 @@
 """Initialize Supabase 'agent' schema and pgvector tables.
 
-Usage:
+Recommended modern usage (Alembic):
+    uv run alembic upgrade head
+    # or
+    uv run python scripts/run_migrations.py upgrade
+
+Legacy manual DDL fallback usage:
     uv run python scripts/init_agent_schema.py
     uv run python scripts/init_agent_schema.py --seed
 """

@@ -110,11 +110,16 @@ uv sync
 # 2. 코드 스타일 및 린트 검사
 uv run ruff check .
 
-# 3. 단위 테스트 실행
+# 3. DB 마이그레이션 적용 (Alembic)
+uv run alembic upgrade head
+# 또는 헬퍼 스크립트 실행: uv run python scripts/run_migrations.py upgrade
+
+# 4. 단위 테스트 실행
 uv run pytest tests/unit -v
 
-# 4. 로컬 개발 서버 실행
+# 5. 로컬 개발 서버 실행
 uv run uvicorn app.main:app --reload --port 8000
+
 ```
 
 - Swagger UI: [http://localhost:8000/docs](http://localhost:8000/docs)
