@@ -88,6 +88,13 @@ class Settings(BaseSettings):
         alias="NATIONAL_LIBRARY_API_URL",
     )
 
+    # Google Books API (Supplementary Fallback for missing Page Count & Cover Image)
+    google_books_api_key: str = Field(default="", alias="GOOGLE_BOOKS_API_KEY")
+    google_books_api_url: str = Field(
+        default="https://www.googleapis.com/books/v1/volumes",
+        alias="GOOGLE_BOOKS_API_URL",
+    )
+
     # backend-core-api REST Endpoint & Shared JWT Auth
     core_api_base_url: str = Field(default="http://localhost:8000", alias="CORE_API_BASE_URL")
     core_api_timeout_seconds: float = Field(default=5.0, alias="CORE_API_TIMEOUT_SECONDS")
