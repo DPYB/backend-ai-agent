@@ -1568,3 +1568,34 @@
 ### 다음 세션에서 할 일
 - [PR #39](https://github.com/DPYB/backend-ai-agent/pull/39) CI 통과 확인 및 사람 직접 머지.
 - Phase 42: `_is_same_work` 교체, 타임아웃 수정, 폴백 검증 보강, 오탐/통과 케이스 테스트 매트릭스 신설.
+
+---
+
+## 세션 43 (2026-09-20)
+
+### 진행한 작업
+1. **도서 큐레이션 도구(`request_book_curation`) description 및 경계 명확화 (`app/domain/graph/tools.py`)**:
+   - 감정/위로 기반 추천, 완곡한 탐색, 특정 도서 지목/등록 요청 시 필수 호출하도록 지침을 구체화.
+   - 단순 스몰톡("시간 있으면 이야기하자", "해줄래") 시 미호출 경계를 정의하여 LLM 네이티브 Function Calling 정확도 극대화.
+2. **사서 프롬프트 및 가드레일 강화 (`shared_rules.py`, `cat.py`, `sea_slug.py`, `shoebill.py`, `gecko.py`)**:
+   - "골라올게", "잠시만 기다려줘" 등 지연 예고 멘트로 턴을 마치는 행위 엄격 금지 및 도구 즉시 호출 지침 주입.
+   - `curated_books` 부재 시 가짜 책 제목 나열 및 `### 📖` 마크다운 헤딩 작성 금지, 가짜 카드 컴포넌트(`등록 ➔` 등) 마크다운 흉내 금지, 메타 비판 시 변명 금지.
+3. **코드 레벨 가짜 카드 세척기(`_sanitize_persona_output`) 구현 (`app/domain/graph/nodes.py`)**:
+   - `curated_books`가 없을 때 마크다운 내 가짜 카드 컴포넌트(`### 📖`, `등록 ➔`, `💡 추천 이유`, `👤 저자`, `사유:`)를 강제 소거.
+   - `curated_books`가 있을 때도 검증 목록에 없는 날조된 도서 헤딩 자동 필터링.
+4. **지연 약속 멘트 런타임 인터셉터(`_is_delayed_curation_promise`) 및 즉각 선위임 파이프라인 (`app/domain/graph/nodes.py`)**:
+   - LLM이 도구 호출 없이 지연 약속 멘트로 발화를 끝냈을 때 이를 감지하여 즉시 `curator_node`로 선위임(`curator_request = last_user_msg`)하도록 안전망 구축.
+5. **토론 모드 자연어 마무리 발화 선위임 가드 보강 (`app/domain/graph/nodes.py`)**:
+   - 자연어 마무리 발화("토론 마무리", "여기까지 하고 토론" 등) 시 `curator_node`로 즉시 선위임하여 피날레 도서 카드 서빙 보장.
+6. **회귀 방지 단위 테스트 추가 및 자가 검증 완료**:
+   - `tests/unit/test_graph_handoff.py`에 세척기 및 지연 약속 감지 테스트 3건 추가.
+   - `uv run pytest`: 전체 **197개 단위 테스트 100% 그린 패스 통과** (`197 passed, 1 warning in 61.61s`).
+   - `uv run ruff check .` / `uv run ruff format --check .`: 0 errors.
+   - `uv run mypy app/`: 60개 소스 파일 0 errors (`Success: no issues found in 60 source files`).
+7. **하네스 문서 동기화**:
+   - `.harness/STATE.md`, `.harness/DECISIONS.md`, `.harness/HANDOFF.md` 갱신 완료.
+
+### 다음 세션에서 할 일
+- 사용자의 확인 및 요청 시 본 작업 브랜치 변경 사항 선별 커밋 및 푸시.
+- 실환경 브라우저에서 감정 기반 추천 발화("미국연수 떨어졌어.. 위로가 되는 도서 추천해줄래?") 입력 시 지연 멘트 없이 1턴 만에 실존 검증 도서 카드가 안전하게 출력되는지 확인.
+
