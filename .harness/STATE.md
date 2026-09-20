@@ -6,6 +6,23 @@
 
 ## 완료된 단계
 
+- [x] **Phase 43: 도서 추천 즉각 호출 보장, 가짜 도서 카드 날조 코드 가드 및 지연 약속 멘트 즉각 선위임 파이프라인 구축**
+  - **도서 큐레이션 도구(`request_book_curation`) 호출 경계 명확화 (`app/domain/graph/tools.py`)**:
+    - 도구 description에 감정/위로 기반 추천, 완곡한 탐색, 특정 도서 지목/등록 등 호출 케이스와 일상 대화("시간 있으면", "해줄래") 미호출 경계를 엄격히 구분하여 LLM 네이티브 Function Calling의 신뢰성을 극대화.
+  - **사서 4종 및 서비스 공통 가드레일 프롬프트 강화 (`shared_rules.py`, `cat.py`, `sea_slug.py`, `shoebill.py`, `gecko.py`)**:
+    - "골라올게", "잠시만 기다려줘" 등 추천을 미루는 예고 멘트 종료를 엄격히 금지하고 즉시 도구를 호출하도록 명시.
+    - `curated_books`가 없는 상태에서 임의의 책 나열 및 `### 📖` 마크다운 헤딩 작성 금지, 가짜 카드 컴포넌트(`등록 ➔`, `💡 추천 이유` 등) 흉내 금지 및 메타 질문 시 핑계 금지 규정.
+  - **사서 응답 코드 레벨 가짜 카드 세척기(`_sanitize_persona_output`) (`app/domain/graph/nodes.py`)**:
+    - `curated_books`가 없을 때 마크다운에 삽입된 가짜 카드 UI 마커(`### 📖`, `📖`, `등록 ➔`, `💡 추천 이유`, `👤 저자`, `사유:`)를 코드 레벨에서 강제 소거하여 프론트엔드의 가짜 도서 등록 카드 렌더링을 원천 봉쇄.
+    - `curated_books`가 있을 때도 검증 목록에 없는 날조된 도서 헤딩을 자동으로 필터링.
+  - **지연 약속 멘트 런타임 인터셉터(`_is_delayed_curation_promise`) 및 즉각 선위임 파이프라인 (`app/domain/graph/nodes.py`)**:
+    - 사서 LLM이 도구 호출 없이 "골라올게", "찾아올게", "잠시만 기다려" 등의 지연 약속으로 발화를 맺었을 경우, 런타임에서 이를 감지하여 즉시 `curator_node`로 선위임(`curator_request = last_user_msg`)하도록 안전망 구축. 사용자가 재질의하지 않아도 1턴 만에 실존 검증 도서 카드를 수신하도록 보장.
+  - **토론 모드 자연어 마무리 발화 선위임 가드 보강 (`app/domain/graph/nodes.py`)**:
+    - 토론 모드에서 "토론 마무리", "여기까지 하고 토론" 등의 자연어 종료 발화 시 `curator_node`로 즉시 선위임하여 피날레 연계 도서 카드가 100% 서빙되도록 보장.
+  - **단위 테스트 및 회귀 방지 검증 (`tests/unit/test_graph_handoff.py`)**:
+    - `test_sanitize_persona_output_strips_fake_cards_when_curated_absent`, `test_sanitize_persona_output_preserves_verified_headings_when_curated_present`, `test_is_delayed_curation_promise` 신규 단위 테스트 추가.
+    - 전체 **197개 단위 테스트 100% 통과** (`197 passed, 1 warning in 61.61s`), Ruff 린트/포맷 0 errors, Mypy 타입 체크 60개 소스 파일 0 errors 무결성 달성.
+
 - [x] **Phase 41: 도서 큐레이터 아키텍처 근본 리팩터링 및 케이스 기반 테스트 체계 구축**
   - **휴리스틱(규칙/조사/정규식) 전면 제거 및 LLM 스키마 일원화 (`curator_node.py`)**:
     - Step A/B의 60여 줄 임의 정규식 휴리스틱을 완전 삭제하고, `CuratorResponse` 스키마에 `target_title: Optional[str]`을 추가하여 사용자의 특정 도서 지목/등록 의도를 LLM 구조화 출력으로 직접 판별하도록 개선.

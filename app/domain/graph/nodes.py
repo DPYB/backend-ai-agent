@@ -158,10 +158,6 @@ class ResilientLLM:
                 ],
             )
 
-        if "마무리" in last_msg or "피날레" in last_msg or "피날레" in system_text:
-            return AIMessage(
-                content="대화의 여운을 남기며, 오늘 나눈 사유를 바탕으로 추천해 드린 책을 서재에서 꼭 만나보시길 바랍니다. 감사합니다."
-            )
         if "서재" in last_msg or "책장" in last_msg:
             return AIMessage(
                 content="독자님의 서재를 확인해보니 흥미로운 책들이 가득하네요. 어떤 책에 대해 이야기해볼까요?"
@@ -179,6 +175,85 @@ class ResilientLLM:
         return AIMessage(
             content="책과 함께하는 시간은 언제나 마음에 잔잔한 파동을 남깁니다. 어떤 이야기를 나누고 싶으신가요?"
         )
+
+
+def _sanitize_persona_output(text: str, curated_books: Optional[List[Dict[str, Any]]]) -> str:
+    """Sanitize persona output at code level to strictly prevent fake card fabrication.
+
+    1. If curated_books is empty/absent:
+       - Strip all fake card markers ('📖', '등록 ➔', '### 📖', '💡 추천 이유', etc.)
+         so frontend will NEVER falsely render a book registration card.
+    2. If curated_books exists:
+       - Ensure only verified book titles in curated_books appear under '### 📖' headings.
+    """
+    if not text:
+        return text
+
+    if not curated_books:
+        # Strip standalone fake card lines and markers
+        lines = text.split("\n")
+        cleaned_lines = []
+        for line in lines:
+            stripped = line.strip()
+            # Strip lines that try to mimic card components
+            if stripped.startswith("### 📖"):
+                continue
+            if stripped == "📖":
+                continue
+            if "등록 ➔" in stripped or "등록➔" in stripped:
+                continue
+            if (
+                stripped.startswith("💡 추천 이유")
+                or stripped.startswith("🏷️ 장르")
+                or stripped.startswith("👤 저자")
+                or stripped.startswith("사유:")
+            ):
+                continue
+            cleaned_lines.append(line)
+        cleaned_text = "\n".join(cleaned_lines)
+        # Remove leftover isolated book emojis
+        cleaned_text = re.sub(r"(?<![A-Za-z0-9가-힣])📖(?![A-Za-z0-9가-힣])", "", cleaned_text)
+        return cleaned_text.strip()
+
+    # When curated_books exist, clean up any fabricated book headings not in curated_books
+    valid_titles = {
+        re.sub(r"[\s《》〈〉「」『』\"']", "", str(b.get("title", ""))) for b in curated_books
+    }
+    lines = text.split("\n")
+    curated_lines = []
+    for line in lines:
+        match = re.match(r"^###\s*📖\s*(.+)$", line.strip())
+        if match:
+            heading_title = re.sub(r"[\s《》〈〉「」『』\"']", "", match.group(1))
+            # Keep heading only if it matches one of the curated books
+            if any(vt in heading_title or heading_title in vt for vt in valid_titles if vt):
+                curated_lines.append(line)
+            else:
+                logger.warning("Sanitizer removed fabricated book heading: %s", match.group(1))
+                continue
+        else:
+            curated_lines.append(line)
+
+    return "\n".join(curated_lines).strip()
+
+
+def _is_delayed_curation_promise(text: str) -> bool:
+    """Check if the assistant's response ends with an empty promise to curate later."""
+    if not text:
+        return False
+    promise_markers = [
+        "골라올게",
+        "골라올마",
+        "골라오겠",
+        "찾아올게",
+        "찾아오겠",
+        "부탁해 볼게",
+        "부탁해볼게",
+        "잠시만 기다려",
+        "잠시 기다려",
+        "잠깐만 기다려",
+    ]
+    return any(marker in text for marker in promise_markers)
 
 
 def _get_llm(tools: Optional[List[Any]] = None) -> ResilientLLM:
@@ -426,16 +501,33 @@ async def _run_persona_node(
             last_user_msg = str(msg.content)
             break
 
-    # 1. Conclude Intent Check (UI explicit action='conclude' or already concluded)
+    # 1. Conclude Intent Check (UI explicit action='conclude', natural concluding phrases, or already concluded)
     action = state.get("action") or "chat"
     is_conclude_requested = action == "conclude"
     is_already_concluded = bool(state.get("is_concluded"))
 
-    # If conclude is explicitly requested via UI and books are not yet curated, delegate to curator_node
-    if (is_conclude_requested or is_already_concluded) and not state.get("curated_books"):
+    # Natural conclude phrases in debate mode
+    is_natural_conclude = False
+    if is_debate and not state.get("curated_books"):
+        conclude_keywords = [
+            "토론 마무리",
+            "토론 종료",
+            "토론 끝",
+            "여기까지 하고 토론",
+            "토론 그만",
+            "대화 마무리",
+        ]
+        is_natural_conclude = any(kw in last_user_msg for kw in conclude_keywords)
+
+    # If conclude is explicitly or naturally requested and books are not yet curated, delegate to curator_node
+    if (is_conclude_requested or is_natural_conclude or is_already_concluded) and not state.get(
+        "curated_books"
+    ):
         logger.info(
-            "Conclude action detected for persona %s. Delegating to curator_node for wrap-up books.",
+            "Conclude action detected for persona %s (explicit=%s, natural=%s). Delegating to curator_node for wrap-up books.",
             persona_id,
+            is_conclude_requested,
+            is_natural_conclude,
         )
         debate_topic = _extract_debate_topic(state.get("messages", []))
         return {
@@ -611,6 +703,27 @@ async def _run_persona_node(
                 "curator_request": curation_query,
                 "target_unresolved": None,
             }
+
+    # Safety Net: If the LLM response contains an empty delay promise without curated books,
+    # immediately delegate to curator_node so the user receives verified book cards in turn 1.
+    response_text = str(response.content) if response.content else ""
+    if not is_debate and not curated_books and _is_delayed_curation_promise(response_text):
+        logger.info(
+            "Delayed curation promise detected in LLM response for persona %s. Intercepting and delegating to curator_node.",
+            persona_id,
+        )
+        return {
+            "active_persona": persona_id,
+            "curator_request": last_user_msg,
+            "target_unresolved": None,
+        }
+
+    # Sanitize persona output to strictly prevent unverified book card UI fabrication
+    sanitized_content = _sanitize_persona_output(response_text, curated_books)
+    if sanitized_content != response_text:
+        response = AIMessage(
+            content=sanitized_content, additional_kwargs=getattr(response, "additional_kwargs", {})
+        )
 
     debate_summary: Optional[str] = None
     if is_conclude_active:
