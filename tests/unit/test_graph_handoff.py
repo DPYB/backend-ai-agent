@@ -231,3 +231,57 @@ async def test_no_switch_intent_on_casual_mention_without_explicit_switch():
     # Should NOT trigger switch or handoff because user didn't ask to switch librarian
     assert res.get("handoff_target") is None
     assert res.get("switch_suggestion") is None
+
+
+def test_sanitize_persona_output_strips_fake_cards_when_curated_absent():
+    """Verify that fake card UI markers and arbitrary headings are stripped when curated_books is None."""
+    from app.domain.graph.nodes import _sanitize_persona_output
+
+    raw_ai_text = (
+        "마음이 많이 복잡하셨겠어요. 따뜻한 책을 추천해 드릴게요.\n\n"
+        "### 📖 아무 책이나 지어내기\n"
+        "💡 추천 이유: 마음이 따뜻해집니다.\n"
+        "👤 저자: 아무개 작가\n"
+        "등록 ➔ 지금 등록하기\n"
+        "📖\n"
+        "이 책을 천천히 읽어보세요."
+    )
+    cleaned = _sanitize_persona_output(raw_ai_text, curated_books=None)
+
+    assert "### 📖 아무 책이나 지어내기" not in cleaned
+    assert "💡 추천 이유" not in cleaned
+    assert "👤 저자" not in cleaned
+    assert "등록 ➔" not in cleaned
+    assert "마음이 많이 복잡하셨겠어요" in cleaned
+    assert "이 책을 천천히 읽어보세요" in cleaned
+
+
+def test_sanitize_persona_output_preserves_verified_headings_when_curated_present():
+    """Verify that only verified book titles are preserved under '### 📖' headings."""
+    from app.domain.graph.nodes import _sanitize_persona_output
+
+    curated_books = [
+        {"title": "달러구트 꿈 백화점", "author": "이미예", "isbn": "9791165341909"},
+    ]
+    raw_ai_text = (
+        "엄선해 드린 책입니다.\n\n"
+        "### 📖 달러구트 꿈 백화점\n"
+        "잠든 동안에만 찾아갈 수 있는 꿈의 상점 이야기예요.\n\n"
+        "### 📖 가짜로 꾸며낸 책 제목\n"
+        "이 책은 가짜입니다."
+    )
+    cleaned = _sanitize_persona_output(raw_ai_text, curated_books=curated_books)
+
+    assert "### 📖 달러구트 꿈 백화점" in cleaned
+    assert "잠든 동안에만 찾아갈 수 있는 꿈의 상점 이야기예요" in cleaned
+    assert "### 📖 가짜로 꾸며낸 책 제목" not in cleaned
+
+
+def test_is_delayed_curation_promise():
+    """Verify detection of delayed curation promise markers."""
+    from app.domain.graph.nodes import _is_delayed_curation_promise
+
+    assert _is_delayed_curation_promise("내가 멋진 책을 골라올게! 잠시만 기다려줘.") is True
+    assert _is_delayed_curation_promise("전문 큐레이터에게 부탁해 볼게.") is True
+    assert _is_delayed_curation_promise("시간 있으면 이야기하자.") is False
+    assert _is_delayed_curation_promise("이 책은 정말 감동적인 이야기란다.") is False
