@@ -76,33 +76,42 @@ def test_debate_personas_homage_display_names():
 
 def test_debate_personas_required_format_and_recommendation_guidelines():
     """Verify each debate persona prompt enforces required answer formats and book recommendation link."""
-    # Critic: Star rating, one-line review, discourse question
-    critic_prompt = PERSONA_REGISTRY[DEBATE_CRITIC_ID]["system_prompt"]
-    assert "★ 별점:" in critic_prompt
-    assert "■ 한 줄 총평:" in critic_prompt
-    assert "◆ 오늘의 화두:" in critic_prompt
-    assert "토론 마무리 및 도서 추천 연계" in critic_prompt
+    # Critic: Opening has discourse question; Turn/Closing has star rating, one-line review, book intro
+    critic_opening = PERSONA_REGISTRY[DEBATE_CRITIC_ID]["opening_system_prompt"]
+    critic_turn = PERSONA_REGISTRY[DEBATE_CRITIC_ID]["turn_system_prompt"]
+    assert "◆ 오늘의 화두:" in critic_opening
+    assert "★ 별점:" in critic_turn
+    assert "■ 한 줄 총평:" in critic_turn
+    assert "토론 마무리" in critic_turn
+    assert "### 📖" in critic_turn
 
-    # Storyteller: Historical lesson, existential question, high-tension call
-    storyteller_prompt = PERSONA_REGISTRY[DEBATE_STORYTELLER_ID]["system_prompt"]
-    assert "🏛️ 역사가 주는 교훈:" in storyteller_prompt
-    assert "🔥 함께 던지는 질문:" in storyteller_prompt
-    assert "독자님!" in storyteller_prompt
-    assert "토론 마무리 및 도서 추천 연계" in storyteller_prompt
+    # Storyteller: Opening has question; Turn/Closing has historical lesson, book intro, high-tension call
+    storyteller_opening = PERSONA_REGISTRY[DEBATE_STORYTELLER_ID]["opening_system_prompt"]
+    storyteller_turn = PERSONA_REGISTRY[DEBATE_STORYTELLER_ID]["turn_system_prompt"]
+    assert "🔥 함께 던지는 질문:" in storyteller_opening
+    assert "독자님" in storyteller_opening or "독자님" in storyteller_turn
+    assert "🏛️ 역사가 주는 교훈:" in storyteller_turn
+    assert "토론 마무리" in storyteller_turn
+    assert "### 📖" in storyteller_turn
 
-    # Counselor: Mind care question, 109 crisis hotline, no medical diagnosis
-    counselor_prompt = PERSONA_REGISTRY[DEBATE_COUNSELOR_ID]["system_prompt"]
-    assert "🌱 마음 돌봄 질문:" in counselor_prompt
-    assert "109" in counselor_prompt
-    assert "진단명" in counselor_prompt
-    assert "토론 마무리 및 도서 추천 연계" in counselor_prompt
+    # Counselor: Opening has mind care question; Safety has 109 crisis hotline, no medical diagnosis; Turn has closing
+    counselor_opening = PERSONA_REGISTRY[DEBATE_COUNSELOR_ID]["opening_system_prompt"]
+    counselor_turn = PERSONA_REGISTRY[DEBATE_COUNSELOR_ID]["turn_system_prompt"]
+    assert "🌱 마음 돌봄 질문:" in counselor_opening
+    assert "109" in counselor_opening
+    assert "진단" in counselor_opening
+    assert "마음 돌봄 한마디" in counselor_turn or "🌱" in counselor_turn
+    assert "토론 마무리" in counselor_turn
+    assert "### 📖" in counselor_turn
 
-    # Observer: Behavioral signal review, reality observation question
-    observer_prompt = PERSONA_REGISTRY[DEBATE_OBSERVER_ID]["system_prompt"]
-    assert "🔍 행동 시그널 총평:" in observer_prompt
-    assert "⚡ 현실 관찰 질문:" in observer_prompt
-    assert "행동 시그널" in observer_prompt
-    assert "토론 마무리 및 도서 추천 연계" in observer_prompt
+    # Observer: Opening has observation question; Turn/Closing has behavioral signal review, book intro
+    observer_opening = PERSONA_REGISTRY[DEBATE_OBSERVER_ID]["opening_system_prompt"]
+    observer_turn = PERSONA_REGISTRY[DEBATE_OBSERVER_ID]["turn_system_prompt"]
+    assert "⚡ 현실 관찰 질문:" in observer_opening
+    assert "🔍 행동 시그널 총평:" in observer_turn
+    assert "행동 시그널" in observer_turn
+    assert "토론 마무리" in observer_turn
+    assert "### 📖" in observer_turn
 
 
 def test_librarian_personas_default_display_names():
@@ -189,27 +198,28 @@ def test_debate_personas_opening_turn_prompt_split():
 
 
 def test_debate_personas_opening_prompt_contains_fixed_formats():
-    """Verify each debate persona opening prompt still enforces its required fixed answer format."""
-    # Critic opening: star rating + one-line review + discourse question
+    """Verify each debate persona opening prompt enforces its required first-turn question format and avoids ratings."""
+    # Critic opening: discourse question (no star rating or one-line review in opening)
     critic_opening = PERSONA_REGISTRY[DEBATE_CRITIC_ID]["opening_system_prompt"]
-    assert "★ 별점:" in critic_opening
-    assert "■ 한 줄 총평:" in critic_opening
     assert "◆ 오늘의 화두:" in critic_opening
+    assert "별점과 총평은 첫 턴에 출력하지 않는다" in critic_opening or "마무리" in critic_opening
 
-    # Storyteller opening: historical lesson + existential question
+    # Storyteller opening: existential question (no historical lesson in opening)
     storyteller_opening = PERSONA_REGISTRY[DEBATE_STORYTELLER_ID]["opening_system_prompt"]
-    assert "🏛️ 역사가 주는 교훈:" in storyteller_opening
     assert "🔥 함께 던지는 질문:" in storyteller_opening
+    assert (
+        "교훈은 첫 턴에 출력하지 않는다" in storyteller_opening or "마무리" in storyteller_opening
+    )
 
     # Counselor opening: mind care question with 109 hotline
     counselor_opening = PERSONA_REGISTRY[DEBATE_COUNSELOR_ID]["opening_system_prompt"]
     assert "🌱 마음 돌봄 질문:" in counselor_opening
     assert "109" in counselor_opening
 
-    # Observer opening: behavioral signal review + reality observation question
+    # Observer opening: reality observation question (no behavioral signal review in opening)
     observer_opening = PERSONA_REGISTRY[DEBATE_OBSERVER_ID]["opening_system_prompt"]
-    assert "🔍 행동 시그널 총평:" in observer_opening
     assert "⚡ 현실 관찰 질문:" in observer_opening
+    assert "총평은 첫 턴에 출력하지 않는다" in observer_opening or "마무리" in observer_opening
 
 
 def test_debate_personas_turn_prompt_enforces_mirroring_and_open_questions():
