@@ -240,8 +240,8 @@ async def fetch_and_cache_trending_books(
     return trending_books
 
 
-async def get_trending_books_text(limit: int = 30) -> str:
-    """Retrieve live trending books and format as structured, rank-preserved open-book catalog grouped by KDC genre."""
+async def get_trending_books(limit: int = 30) -> List[Dict[str, Any]]:
+    """Retrieve live trending books list filtered for curatable monographs."""
     from app.infrastructure.national_library_client import is_curatable_book
 
     redis_mgr = get_redis_session_manager()
@@ -257,12 +257,16 @@ async def get_trending_books_text(limit: int = 30) -> str:
     if not trending_books:
         trending_books = list(EMERGENCY_FALLBACK_BOOKS)
 
-    # Filter curatable books while preserving rank
-    curatable_list = [
+    return [
         b
         for b in trending_books
         if is_curatable_book(b.get("title", ""), b.get("author", ""), b.get("publisher", ""))
     ][:limit]
+
+
+async def get_trending_books_text(limit: int = 30) -> str:
+    """Retrieve live trending books and format as structured, rank-preserved open-book catalog grouped by KDC genre."""
+    curatable_list = await get_trending_books(limit=limit)
 
     # Group into KDC categories
     lit_books: List[Dict[str, Any]] = []

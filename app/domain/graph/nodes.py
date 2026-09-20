@@ -495,6 +495,7 @@ async def _run_persona_node(
             return {
                 "active_persona": persona_id,
                 "curator_request": last_user_msg,
+                "target_unresolved": None,
             }
 
     # Inject verified curated books if returned from curator_node
@@ -527,6 +528,16 @@ async def _run_persona_node(
             "- [절대 준수]: 도서의 제목과 저자명(작가)은 위 목록에 적힌 그대로 정확하게 일치시켜 언급해야 합니다. 작가 이름을 임의로 다른 작가(예: 김애란 등)로 바꾸거나 날조하지 마십시오.\n"
             "- [중복 호출 금지]: 도서 검색/추천 도구를 다시 호출하지 마십시오. 이미 큐레이터가 최적의 책을 엄선했으므로, 위 목록의 책들을 독자에게 소개하는 데 집중하십시오.\n"
             "- 존재하지 않는 가짜 책을 임의로 지어내지 마십시오."
+        )
+
+    # Inform user if explicitly requested target book could not be verified in library DB
+    target_unresolved = state.get("target_unresolved")
+    if target_unresolved:
+        system_prompt += (
+            f"\n\n[⚠️ 지목 도서 미확인 안내]: 사용자가 직접 요청/등록을 원하신 《{target_unresolved}》 도서를 "
+            "국립중앙도서관 정식 서지 DB에서 정확히 확인하지 못했습니다. "
+            f"답변 서두에 '말씀해주신 《{target_unresolved}》의 정식 서지 정보를 아쉽게도 찾지 못했어요'라는 취지의 다정한 안내를 전한 뒤, "
+            "대신 엄선해 드린 위의 추천 도서를 소개하십시오."
         )
 
     # 2. Inject finale & debate wrap-up instructions if concluding
@@ -598,6 +609,7 @@ async def _run_persona_node(
             return {
                 "active_persona": persona_id,
                 "curator_request": curation_query,
+                "target_unresolved": None,
             }
 
     debate_summary: Optional[str] = None
@@ -611,6 +623,7 @@ async def _run_persona_node(
         "handoff_target": None,
         "is_concluded": is_conclude_active,
         "debate_summary": debate_summary,
+        "target_unresolved": None,  # Reset so it doesn't linger into the next turn
     }
     if curated_books:
         result["curated_books"] = curated_books

@@ -91,3 +91,6 @@ class AgentState(TypedDict):
 
     # Sliding window history of previously recommended book titles (to prevent repeating recommendations)
     recommended_history: Optional[List[str]]
+
+    # Targeted book requested by user that could not be verified in library DB
+    target_unresolved: Optional[str]

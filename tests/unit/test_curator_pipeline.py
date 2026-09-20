@@ -499,3 +499,247 @@ async def test_targeted_book_curation_metadata_completion():
     assert target.get("genre") == "LITERATURE"
     assert target.get("isbn") in target.get("cover_url", "")
     assert target.get("verified") is True
+
+
+@pytest.mark.asyncio
+async def test_meta_recommendation_query_not_converted_to_fake_book():
+    """Verify that queries like '이전에 추천받은 도서랑 비슷한 도서 추천해달라고 하면'
+    are not parsed as book titles and never produce fake book cards.
+    """
+    from app.domain.graph.curator_node import book_curator_node
+
+    state = {
+        "messages": [
+            HumanMessage(content="이전에 추천받은 도서랑 비슷한 도서 추천해달라고 하면"),
+        ],
+        "member_id": "test-member-meta",
+        "active_persona": "CAT",
+        "librarian_name": "블루",
+        "mode": "LIBRARIAN",
+        "switch_suggestion": None,
+        "context_summary": None,
+        "handoff_target": None,
+        "curator_request": "이전에 추천받은 도서랑 비슷한 도서 추천해달라고 하면",
+        "curated_books": None,
+        "recommended_history": ["데미안"],
+    }
+
+    result = await book_curator_node(cast(AgentState, state))
+    assert "curated_books" in result
+    curated = result["curated_books"]
+    assert len(curated) >= 1
+
+    # None of the curated books should have sentences/garbage as title
+    for book in curated:
+        title = book["title"]
+        assert "이전에" not in title
+        assert "비슷한" not in title
+        assert "추천" not in title
+        assert "해달라고" not in title
+        assert book["isbn"] != "9791100000000"
+        if not book.get("fallback"):
+            assert book["verified"] is True
+        else:
+            assert book["verified"] is False
+            assert book["isbn"] == ""
+
+
+@pytest.mark.parametrize(
+    "query,expected_target,must_not_contain",
+    [
+        ("다른 책 추천해줘", None, ["다른 책"]),
+        ("비 오는 날 읽을 책", None, ["비 오는 날 읽을"]),
+        ("이전에 추천받은 책이랑 비슷한 도서 추천해줘", None, ["이전에 추천받은"]),
+        ("《데미안》 등록해줘", "데미안", []),
+        ("프로젝트 헤일메리 추천해줘", "프로젝트 헤일메리", []),
+    ],
+)
+@pytest.mark.asyncio
+async def test_curator_query_case_matrix(query, expected_target, must_not_contain):
+    """Case Matrix test: verify various user intents produce exact 2 books,
+    identify target_title only when explicitly targeted, and never leak query sentences as book titles.
+    """
+    from app.domain.graph.curator_node import book_curator_node
+
+    state = {
+        "messages": [HumanMessage(content=query)],
+        "member_id": "test-case-matrix",
+        "active_persona": "CAT",
+        "librarian_name": "블루",
+        "mode": "LIBRARIAN",
+        "switch_suggestion": None,
+        "context_summary": None,
+        "handoff_target": None,
+        "curator_request": query,
+        "curated_books": None,
+        "recommended_history": ["코스모스"],
+    }
+
+    result = await book_curator_node(cast(AgentState, state))
+    assert "curated_books" in result
+    books = result["curated_books"]
+    assert len(books) == 2, f"Query '{query}' must yield exactly 2 books"
+
+    # If target is expected, #1 priority must match
+    if expected_target:
+        assert expected_target in books[0]["title"]
+        assert books[0]["verified"] is True
+        assert len(books[0]["isbn"]) == 13
+
+    # Ensure no garbage sentence text is treated as book title
+    for b in books:
+        for forbidden in must_not_contain:
+            assert forbidden not in b["title"]
+
+
+def test_assemble_curated_books_guarantees_exact_two_books_and_unverified_fallback():
+    """Verify assemble_curated_books guarantees exactly 2 books and marks unverified fallbacks correctly."""
+    from app.domain.graph.curator_node import assemble_curated_books
+
+    # Case A: 0 verified books -> 2 fallback books with verified: False and isbn: ""
+    assembled_a = assemble_curated_books(targeted=None, verified=[], recommended_history=[])
+    assert len(assembled_a) == 2
+    for b in assembled_a:
+        assert b["verified"] is False
+        assert b["isbn"] == ""
+        assert b.get("fallback") is True
+
+    # Case B: 1 targeted book + 0 verified -> fills 1 fallback book (total 2)
+    targeted = {
+        "title": "프로젝트 헤일메리",
+        "author": "앤디 위어",
+        "isbn": "9788925588735",
+        "verified": True,
+        "era": "targeted",
+    }
+    assembled_b = assemble_curated_books(targeted=targeted, verified=[], recommended_history=[])
+    assert len(assembled_b) == 2
+    assert assembled_b[0]["title"] == "프로젝트 헤일메리"
+    assert assembled_b[0]["verified"] is True
+    assert assembled_b[1]["verified"] is False
+    assert assembled_b[1]["isbn"] == ""
+
+
+def test_is_similar_title():
+    """Verify _is_similar_title correctly matches titles with subtitle or formatting differences."""
+    from app.domain.graph.curator_node import _is_similar_title
+
+    # 1. Exact match
+    assert _is_similar_title("프로젝트 헤일메리", "프로젝트 헤일메리") is True
+    # 2. Bracket edition / publisher tags
+    assert _is_similar_title("데미안", "데미안 (민음사)") is True
+    assert _is_similar_title("데미안", "데미안 [개정판]") is True
+    # 3. Subtitle variations (colon / dash)
+    assert _is_similar_title("데미안", "데미안 : 에밀 싱클레어의 청춘 이야기") is True
+    assert (
+        _is_similar_title(
+            "세네카, 오늘을 빼앗기고 있는 당신에게", "세네카 오늘을 빼앗기고 있는 당신에게"
+        )
+        is True
+    )
+    # 4. Series prefix / suffix containment
+    assert _is_similar_title("해리 포터와 마법사의 돌", "해리 포터 1 : 마법사의 돌") is True
+    # 5. Negative cases
+    assert _is_similar_title("완전 다른 책 제목", "전혀 무관한 소설") is False
+    assert _is_similar_title("", "데미안") is False
+
+
+@pytest.mark.asyncio
+async def test_target_unresolved_returned_when_targeted_book_fails_verification(monkeypatch):
+    """Verify that when target_title is identified but National Library verification fails,
+    book_curator_node returns target_unresolved in the state.
+    """
+    from app.domain.graph.curator_node import book_curator_node
+
+    # Mock resolve_targeted to return None for nonexistent book
+    async def mock_resolve_targeted(target_title):
+        return None
+
+    monkeypatch.setattr("app.domain.graph.curator_node.resolve_targeted", mock_resolve_targeted)
+
+    async def mock_generate_candidates(ctx, text):
+        return "세상에없는가공의책12345", []
+
+    monkeypatch.setattr(
+        "app.domain.graph.curator_node.generate_candidates",
+        mock_generate_candidates,
+    )
+
+    state = {
+        "messages": [HumanMessage(content="세상에없는가공의책12345 등록해줘")],
+        "member_id": "test-unresolved",
+        "active_persona": "CAT",
+        "librarian_name": "블루",
+        "mode": "LIBRARIAN",
+        "switch_suggestion": None,
+        "context_summary": None,
+        "handoff_target": None,
+        "curator_request": "세상에없는가공의책12345 등록해줘",
+        "curated_books": None,
+        "recommended_history": [],
+    }
+
+    result = await book_curator_node(cast(AgentState, state))
+    assert result.get("target_unresolved") == "세상에없는가공의책12345"
+    assert len(result["curated_books"]) == 2
+
+
+def test_assemble_curated_books_deduplicates_against_recommended_history():
+    """Verify assemble_curated_books filters out verified books that match recommended_history."""
+    from app.domain.graph.curator_node import assemble_curated_books
+
+    verified = [
+        {
+            "title": "데미안",
+            "author": "헤르만 헤세",
+            "isbn": "9788937460449",
+            "verified": True,
+        },
+        {
+            "title": "코스모스",
+            "author": "칼 세이건",
+            "isbn": "9788983711892",
+            "verified": True,
+        },
+    ]
+    # If "데미안" was recently recommended, it should be filtered out from verified list
+    recommended_history = ["데미안"]
+    assembled = assemble_curated_books(
+        targeted=None,
+        verified=verified,
+        recommended_history=recommended_history,
+    )
+    assert len(assembled) == 2
+    # "데미안" must NOT be in assembled books
+    assembled_titles = [b["title"] for b in assembled]
+    assert "데미안" not in assembled_titles
+    assert "코스모스" in assembled_titles
+
+
+@pytest.mark.asyncio
+async def test_persona_node_clears_target_unresolved_on_subsequent_turn(monkeypatch):
+    """Verify that _run_persona_node clears target_unresolved in its return dict to prevent stale warnings."""
+    from app.domain.graph.nodes import cat_node
+
+    class DummyLLM:
+        async def ainvoke(self, messages, config=None):
+            return AIMessage(content="일반 대화 응답입니다냥.")
+
+    monkeypatch.setattr("app.domain.graph.nodes._get_llm", lambda tools=None: DummyLLM())
+
+    state = {
+        "messages": [HumanMessage(content="오늘 날씨 어때?")],
+        "member_id": "test-member",
+        "active_persona": "CAT",
+        "librarian_name": "블루",
+        "mode": "LIBRARIAN",
+        "switch_suggestion": None,
+        "context_summary": None,
+        "handoff_target": None,
+        "curator_request": None,
+        "curated_books": None,
+        "target_unresolved": "이전턴에실패했던책",
+    }
+
+    result = await cat_node(cast(AgentState, state))
+    assert result.get("target_unresolved") is None
