@@ -736,8 +736,9 @@ class NationalLibraryClient:
         # In test environment or offline catalog fallback
         if settings.is_testing or getattr(settings, "app_env", "") == "test":
             res = self._generate_fallback_biblio(f"도서_{clean_isbn}")
-            res["isbn"] = clean_isbn
-            return res
+            if res:
+                res["isbn"] = clean_isbn
+                return res
 
         return None
 
@@ -778,7 +779,7 @@ class NationalLibraryClient:
 
         return biblio
 
-    def _generate_fallback_biblio(self, title: str, author: str = "") -> Dict[str, Any]:
+    def _generate_fallback_biblio(self, title: str, author: str = "") -> Optional[Dict[str, Any]]:
         """Generate verified deterministic Korean book metadata with 30+ 10-genre classics."""
         sample_catalog: Dict[str, Dict[str, Any]] = {
             # 문학 (800) - 고전 명작
@@ -1061,12 +1062,69 @@ class NationalLibraryClient:
             },
         }
 
-        # Check if title exactly matches any known item
+        # Check if title matches any known item in sample catalog
         for key, biblio in sample_catalog.items():
             if key in title or title in key:
                 return {**biblio, "source": "NATIONAL_LIBRARY_FALLBACK_CATALOG"}
 
-        # Deterministic fallback matching for uncataloged book
+        # Guard against sentence fragments, queries, and noisy text:
+        # A valid fallback book title must look like an actual book title.
+        forbidden_sentence_markers = [
+            "이전",
+            "아까",
+            "방금",
+            "비슷",
+            "다른",
+            "같은",
+            "추천",
+            "등록",
+            "해달라고",
+            "하면",
+            "어때",
+            "어떤",
+            "뭐가",
+            "무슨",
+            "알려줘",
+            "골라줘",
+            "도서랑",
+            "책이랑",
+            "해줘",
+            "주세요",
+        ]
+        has_forbidden_marker = any(m in title for m in forbidden_sentence_markers)
+        postpositions = (
+            "이랑",
+            "랑",
+            "으로",
+            "로",
+            "에서",
+            "에게",
+            "한테",
+            "하고",
+            "와",
+            "과",
+            "은",
+            "는",
+            "이",
+            "가",
+            "을",
+            "를",
+        )
+        has_postposition = any(title.strip().endswith(p) for p in postpositions)
+
+        if (
+            has_forbidden_marker
+            or has_postposition
+            or len(title.strip()) > 35
+            or len(title.strip()) < 2
+        ):
+            logger.info(
+                "Title '%s' rejected by fallback biblio guard (looks like sentence/fragment).",
+                title,
+            )
+            return None
+
+        # Deterministic fallback matching for valid uncataloged book title (e.g. test environments)
         return {
             "title": title,
             "author": author if author else "국립중앙도서관 정식 등록 작가",

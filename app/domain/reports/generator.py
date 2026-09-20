@@ -331,19 +331,20 @@ async def generate_ai_analysis_and_prescription(
     # If verification empty, fallback to catalog
     if not verified_books:
         fallback_biblio = nl_client._generate_fallback_biblio("코스모스", "칼 세이건")
-        verified_books.append(
-            RecommendedBookItem(
-                title=fallback_biblio["title"],
-                author=fallback_biblio["author"],
-                isbn=fallback_biblio["isbn"],
-                publisher=fallback_biblio["publisher"],
-                page_count=fallback_biblio["page_count"],
-                genre=fallback_biblio["genre"],
-                cover_url=fallback_biblio["cover_url"],
-                reason="미독서 장르인 자연과학의 경이로움을 만나는 가장 탁월한 안내서",
-                description=fallback_biblio["description"],
+        if fallback_biblio:
+            verified_books.append(
+                RecommendedBookItem(
+                    title=fallback_biblio["title"],
+                    author=fallback_biblio["author"],
+                    isbn=fallback_biblio["isbn"],
+                    publisher=fallback_biblio["publisher"],
+                    page_count=fallback_biblio["page_count"],
+                    genre=fallback_biblio["genre"],
+                    cover_url=fallback_biblio["cover_url"],
+                    reason="미독서 장르인 자연과학의 경이로움을 만나는 가장 탁월한 안내서",
+                    description=fallback_biblio["description"],
+                )
             )
-        )
 
     ai_analysis = AiAnalysis(
         reader_type=parsed.get("readerType", "사색하는 몰입형 독서가"),
