@@ -17,7 +17,10 @@
     - 웹 검색으로 찾은 신간 후보들을 국립중앙도서관 4단계 서지 검증 체인으로 교차 조회하여 실존 여부와 정식 서지 메타데이터(ISBN, 쪽수, 표준 장르)를 바인딩해 반환.
   - **사서 8종 프롬프트 가짜 카드 날조 금지 네거티브 가드레일 주입 (`app/domain/guardrails/shared_rules.py`, `app/domain/graph/tools.py`)**:
     - 사서가 본문에 `📖`, `등록 ➔`, `👤 저자` 같은 프론트엔드 카드 컴포넌트를 마크다운 텍스트로 직접 흉내 내지 못하도록 원천 차단.
-  - **자가 검증 통과**: `tests/unit/test_curator_pipeline.py`에 `test_targeted_book_curation_metadata_completion` 신규 단위 테스트 추가 및 전체 182개 단위 테스트 100% 통과 (`182 passed in 60.21s`), Ruff 린트/포맷 통과, Mypy 타입 체크 88개 소스 파일 무결성 통과.
+  - **`"읽고싶어"` 등 독서 욕구 발화 시 추천 카드 미노출 버그 수정 (`app/domain/graph/nodes.py`)**:
+    - `recommend_keywords`에 `"읽고싶"`, `"읽고 싶"`, `"읽어보고싶"`, `"읽어볼"`, `"재밌는 책"`, `"좋은 책"`, `"뭐 읽지"` 등 20개 독서 욕구/탐색 표현 추가.
+    - `test_graph_handoff.py`에 `test_cat_node_delegates_read_intent_to_curator` 회귀 방지 테스트 추가.
+  - **자가 검증 통과**: 전체 **183개 단위 테스트 100% 통과** (`183 passed in 68.25s`), Ruff 린트/포맷 통과, Mypy 타입 체크 88개 소스 파일 무결성 통과.
 
 
 - [x] **Phase 27: 전 사서/페르소나 도서 추천 응답 포맷 규격화 및 서재 조회 분기 체계화**
