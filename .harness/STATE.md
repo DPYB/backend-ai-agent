@@ -6,7 +6,21 @@
 
 ## 완료된 단계
 
-- [x] **Phase 43: 도서 추천 즉각 호출 보장, 가짜 도서 카드 날조 코드 가드 및 지연 약속 멘트 즉각 선위임 파이프라인 구축**
+- [x] **Phase 48: Google Books API 연동 및 서지 메타데이터(쪽수/표지) 다중 폴백 강화**
+  - **Google Books 보조 클라이언트 신설 (`app/infrastructure/google_books_client.py`)**:
+    - 비동기 httpx 기반 Google Books Volumes API(`https://www.googleapis.com/books/v1/volumes`) 연동.
+    - ISBN(`isbn:{isbn}`) 및 제목/저자(`intitle:{title}+inauthor:{author}`) 쿼리 지원, 정수 `pageCount` 및 고화질 썸네일 URL(HTTP ➔ HTTPS 승격) 파싱.
+    - 429 할당량 초과 및 네트워크 오류 시 0ms 안전 바이패스 처리(타임아웃 2.0초)로 큐레이션 파이프라인 안전성 확보.
+  - **국립중앙도서관 및 서지 체인 결합 (`app/infrastructure/national_library_client.py`)**:
+    - 국립도서관 검색 결과 중 `page_count`나 `cover_url`이 비어 있는 경우에만 조건부로 Google Books 조회를 수행하여 보강.
+    - 표지 3단 폴백: 국립도서관 ➔ Google Books ➔ 교보문고 고화질 CDN 0ms 무지연 폴백.
+    - 쪽수 3단 폴백: 국립도서관 PAGE ➔ Google Books pageCount ➔ 다중 판본 교차 추출.
+  - **환경변수 및 설정 확장 (`app/core/config.py`, `.env.example`)**:
+    - `GOOGLE_BOOKS_API_KEY`, `GOOGLE_BOOKS_API_URL` 옵셔널 설정 필드 추가.
+  - **품질 검증 및 단위 테스트 전수 통과**:
+    - `tests/unit/test_google_books_client.py` 5종 단위 테스트 추가.
+    - 전체 202개 단위 테스트 100% 그린(Success) 통과 (`202 passed in 61.32s`), Ruff 린트/포맷 통과, Mypy 타입 체크 무결성 달성.
+
   - **도서 큐레이션 도구(`request_book_curation`) 호출 경계 명확화 (`app/domain/graph/tools.py`)**:
     - 도구 description에 감정/위로 기반 추천, 완곡한 탐색, 특정 도서 지목/등록 등 호출 케이스와 일상 대화("시간 있으면", "해줄래") 미호출 경계를 엄격히 구분하여 LLM 네이티브 Function Calling의 신뢰성을 극대화.
   - **사서 4종 및 서비스 공통 가드레일 프롬프트 강화 (`shared_rules.py`, `cat.py`, `sea_slug.py`, `shoebill.py`, `gecko.py`)**:

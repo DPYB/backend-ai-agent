@@ -666,6 +666,34 @@ class NationalLibraryClient:
                                     selected.get("EA_ISBN") or selected.get("SET_ISBN", "")
                                 ).strip()
 
+                                # Google Books 보조 연동: 표지나 쪽수가 누락된 경우 한 번 더 교차 보강
+                                if not final_cover or final_page is None:
+                                    try:
+                                        from app.infrastructure.google_books_client import (
+                                            get_google_books_client,
+                                        )
+
+                                        gb_client = get_google_books_client()
+                                        (
+                                            enriched_page,
+                                            enriched_cover,
+                                        ) = await gb_client.enrich_missing_metadata(
+                                            isbn=final_isbn,
+                                            title=final_title,
+                                            author=author,
+                                            existing_page_count=final_page,
+                                            existing_cover_url=final_cover,
+                                        )
+                                        final_page = enriched_page
+                                        if not final_cover and enriched_cover:
+                                            final_cover = enriched_cover
+                                    except Exception as gb_err:
+                                        logger.debug("Google Books enrichment skipped: %s", gb_err)
+
+                                # 표지가 여전히 없다면 교보문고 고화질 CDN 0ms 폴백 적용
+                                if not final_cover and final_isbn:
+                                    final_cover = get_verified_cover_url(final_cover, final_isbn)
+
                                 return {
                                     "title": final_title,
                                     "author": clean_author_name(
