@@ -24,9 +24,10 @@ from app.domain.personas import (
 
 @pytest.mark.asyncio
 async def test_cat_node_generates_response():
-    """Verify Cat node produces an AI response message."""
+    """Verify Cat node produces an AI response message (non-recommendation intent)."""
+    # 추천 의도가 없는 순수 인사 메시지 → LLM 응답이 messages에 담겨야 함
     state = {
-        "messages": [HumanMessage(content="안녕하세요 고양이 사서님, 책 한 권 읽고 싶네요.")],
+        "messages": [HumanMessage(content="안녕하세요 고양이 사서님!")],
         "member_id": "test-uuid",
         "active_persona": CAT_ID,
         "librarian_name": None,
@@ -39,6 +40,27 @@ async def test_cat_node_generates_response():
     assert "messages" in result
     assert len(result["messages"]) == 1
     assert result["active_persona"] == CAT_ID
+
+
+@pytest.mark.asyncio
+async def test_cat_node_delegates_read_intent_to_curator():
+    """'읽고 싶어' 발화 시 curator_node로 선위임되어야 한다 (추천 카드 보장)."""
+    state = {
+        "messages": [HumanMessage(content="안녕하세요 고양이 사서님, 책 한 권 읽고 싶네요.")],
+        "member_id": "test-uuid",
+        "active_persona": CAT_ID,
+        "librarian_name": None,
+        "mode": "LIBRARIAN",
+        "switch_suggestion": None,
+        "context_summary": None,
+        "handoff_target": None,
+        "curator_request": None,
+        "curated_books": None,
+    }
+    result = await cat_node(state)
+    # '읽고 싶' 키워드 → curator_node 선위임이 올바른 동작
+    assert "curator_request" in result, "읽고싶어 발화는 curator_node로 위임되어야 합니다"
+    assert result["curator_request"] is not None
 
 
 @pytest.mark.asyncio
