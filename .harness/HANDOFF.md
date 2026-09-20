@@ -1547,3 +1547,24 @@
 
 
 
+
+---
+
+## 세션 42 예비 기록 (2026-09-20) — PR #39 생성
+
+### 진행한 작업
+1. **자가 검증 완료 후 커밋/푸시/PR 생성**:
+   - `uv run ruff check --fix .` → All checks passed, 1 file reformatted
+   - `uv run mypy .` → no issues in 88 source files
+   - `uv run pytest` → **194 passed, 1 warning in 61.47s**
+   - 2개 커밋 푸시: 소스 변경 + 하네스 문서 동기화
+   - [PR #39](https://github.com/DPYB/backend-ai-agent/pull/39) `feat/fix-recommendation-registration-pipeline` → `develop` 생성 완료
+
+2. **피드백 접수 및 Phase 42 등록 (치명적 아님)**:
+   - `_is_similar_title` 너무 느슨한 매칭 (이방인↔이방인의 노래 오탐 등) — Phase 42에서 `_is_same_work`로 교체 예정
+   - 타임아웃 불일치 (4×7=28초 > 외부 25초) — Phase 42에서 수정 예정
+   - 폴백 경로에서 국립도서관 검증 건너뜀 — Phase 42에서 수정 예정
+
+### 다음 세션에서 할 일
+- [PR #39](https://github.com/DPYB/backend-ai-agent/pull/39) CI 통과 확인 및 사람 직접 머지.
+- Phase 42: `_is_same_work` 교체, 타임아웃 수정, 폴백 검증 보강, 오탐/통과 케이스 테스트 매트릭스 신설.
