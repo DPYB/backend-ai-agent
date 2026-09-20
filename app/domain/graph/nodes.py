@@ -462,6 +462,27 @@ async def _run_persona_node(
             "결과 보여",
             "신간",
             "최신 도서",
+            # 독서 욕구 표현 (읽고 싶다 계열)
+            "읽고싶",
+            "읽고 싶",
+            "읽어보고싶",
+            "읽어보고 싶",
+            "읽어보려",
+            "읽어볼",
+            "읽어봐야",
+            "읽어봤으면",
+            "읽고파",
+            # 탐색/추천 요청
+            "책 좀",
+            "책 알려",
+            "뭐 읽",
+            "뭐 읽지",
+            "뭐 읽을",
+            "재밌는 책",
+            "좋은 책",
+            "재밌는거",
+            "흥미로운 책",
+            "괜찮은 책",
         ]
         has_recommend_intent = any(k in last_user_msg for k in recommend_keywords)
         # Also check if user mentions specific book in brackets (e.g. 《프로젝트 헤일메리》 추천해줘)

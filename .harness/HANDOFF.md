@@ -1447,4 +1447,25 @@
 - 사용자의 확인 및 요청 시 `feat/national-library-curation-pipeline` 브랜치 변경 사항 선별 커밋 및 푸시, PR 생성 보조.
 - 브라우저 실화면에서 "프로젝트 헤일메리 추천해줘", "최신 도서 없어?" 발화 시 완전한 메타데이터(표지, 쪽수, 장르)가 바인딩된 추천 카드 노출 및 원클릭 서재 등록 연동 최종 확인.
 
+---
+
+## 세션 44 (2026-09-20)
+
+### 진행한 작업
+1. **독서 욕구 발화 시 추천 카드 미노출 버그 수정 및 회귀 방지 (`app/domain/graph/nodes.py`)**:
+   - "읽고싶어", "읽고 싶다", "읽어볼 만한 책", "재밌는 책", "좋은 책", "뭐 읽지" 등 20여 개 독서 욕구/탐색 자연어 표현을 `recommend_keywords`에 추가하여 사서 노드에서 `curator_node`로의 선위임이 즉시 트리거되도록 보강.
+2. **단위 테스트 분리 및 회귀 테스트 추가 (`tests/unit/test_graph_handoff.py`, `tests/unit/test_curator_pipeline.py`)**:
+   - `test_graph_handoff.py`:
+     - 기존 `test_cat_node_generates_response`: 순수 인사 발화("안녕하세요 고양이 사서님!")로 분리하여 messages 응답 검증 유지.
+     - 신규 `test_cat_node_delegates_read_intent_to_curator`: "안녕하세요 고양이 사서님, 책 한 권 읽고 싶네요." 발화 시 `curator_request`로의 선위임 및 카드 보장 동작 검증.
+   - `test_curator_pipeline.py`: `test_recommendation_intent_delegation_keywords`에 독서 욕구 7종 질의 추가 검증.
+3. **품질 검증 및 커밋/푸시 완료**:
+   - 전체 183개 단위 테스트(Pytest) 100% 그린 패스 통과 (`183 passed, 0 failed in 68.25s`).
+   - 커밋: `fix[agent]: 읽고싶어 등 독서 욕구 발화 시 추천 카드 미노출 버그 수정 및 회귀 테스트 추가` (`1ca227b`) 푸시 완료.
+4. **하네스 문서 동기화**:
+   - `.harness/STATE.md` 및 `.harness/HANDOFF.md` 갱신 완료.
+
+### 다음 세션에서 할 일
+- `feat/national-library-curation-pipeline` PR 생성 보조 또는 프론트엔드 연동 최종 확인.
+
 
