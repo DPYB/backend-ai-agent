@@ -1469,6 +1469,106 @@
 - `feat/national-library-curation-pipeline` PR 생성 보조 또는 프론트엔드 연동 최종 확인.
 
 ---
+<<<<<<< HEAD
+
+## 세션 45 (2026-09-20)
+
+### 진행한 작업
+1. **AI 활용방식 및 결과 포트폴리오/서류 제출용 요약 문서화 (`docs/AI_UTILIZATION_SUMMARY.md`)**:
+   - 기존 레거시 서비스(AWS Bedrock, Claude, Strands SDK) 내용을 전면 제거하고, 현행 `backend-ai-agent` 시스템(Gemini Flash-Lite, LangGraph, 국립중앙도서관 4단계 검증, 0ms 가드레일, SSE 스트리밍, 183건 단위 테스트) 기반으로 100% 최신화.
+   - 근거 없는 과장 수치(50초➔2~3초 등)를 배제하고 첫 토큰 즉시 렌더링(TTFT 최소화) 메커니즘 중심으로 정제하여 신뢰도 높은 엔지니어링 어조 확립.
+   - 단일 문단형(공백 포함 461자, 공백 제외 364자)을 메인으로 채택하고 문서화 완료.
+
+### 다음 세션에서 할 일
+- `feat/national-library-curation-pipeline` PR 생성 보조 또는 프론트엔드 연동 최종 확인.
+
+---
+
+## 세션 46 (2026-09-20)
+
+### 진행한 작업
+1. **메타 질의 텍스트의 도서명 오탐 및 카드 변질 결함 해결 (`app/domain/graph/curator_node.py`)**:
+   - 사용자가 "이전에 추천받은 도서랑 비슷한 도서 추천해달라고 하면" 등 문장형 맥락 질의를 보냈을 때 `cleaned_req`의 찌꺼기 문자열("이전에 받은 랑 비슷한")이 도서명 후보(`title_candidates_to_check`)로 들어가지 않도록 메타 쿼리 마커(`이전`, `아까`, `방금`, `비슷`, `다른`, `같은`, `추천받`, `추천된`, `추천한`, `해달라고`, `하면` 등) 및 끝자리 조사(`이랑`, `랑`, `으로`, `은`, `는` 등) 검사 가드 추가.
+   - 단, "프로젝트 헤일메리 추천해줘"와 같은 실존 도서 지정 추천 요청은 정상 감지되도록 `meta_query_markers`와 키워드 제거 정규식을 정교하게 분리.
+2. **국립중앙도서관 가짜 서지 폴백(`VERIFIED_CATALOG_FALLBACK`) 원천 차단 (`app/infrastructure/national_library_client.py`)**:
+   - `_generate_fallback_biblio`에서 실존 검증 카탈로그에 없는 문장형 찌꺼기에 대해 임의의 가짜 ISBN(`9791100000000`)과 가짜 서지를 날조하던 동작을 차단하고 `None`을 반환하도록 개선.
+   - 이를 통해 엉뚱한 문장이 가짜 도서 카드로 둔갑하지 않고 LLM의 정상적인 큐레이션 및 추천 추론으로 넘어가도록 보장.
+3. **타입 무결성 방어 (`app/domain/reports/generator.py`)**:
+   - `_generate_fallback_biblio`의 반환형 `Optional[Dict[str, Any]]`에 맞추어 `fallback_biblio`가 `None`일 수 있는 분기를 안전하게 감싸서 Mypy 정적 타입 에러 8건 해결.
+4. **회귀 테스트 및 전체 무결성 자가 검증 완료**:
+   - `tests/unit/test_curator_pipeline.py`에 `test_meta_recommendation_query_not_converted_to_fake_book` 추가.
+   - `uv run pytest`: 전체 **184개 단위 테스트 100% 그린 패스 통과** (`184 passed, 1 warning in 58.54s`).
+   - `uv run ruff check .`: 0 errors.
+   - `uv run mypy .`: 88개 소스 파일 0 errors (`Success: no issues found in 88 source files`).
+5. **하네스 문서 동기화**:
+   - `.harness/STATE.md`, `.harness/PLAN.md`, `.harness/DECISIONS.md`, `.harness/HANDOFF.md` 갱신 완료.
+
+### 다음 세션에서 할 일
+- 사용자의 확인 및 요청 시 `feat/fix-recommendation-registration-pipeline` 브랜치 변경 사항 선별 커밋 및 푸시, PR 생성 보조.
+- 브라우저 실화면에서 "이전에 추천받은 책이랑 비슷한 거 추천해줘" 질의 시 텍스트 왜곡 없이 실존 도서 카드가 안전하게 서재 등록으로 이어지는지 점검.
+
+---
+
+## 세션 47 (2026-09-20)
+
+### 진행한 작업
+1. **도서 큐레이터 아키텍처 근본 리팩터링 및 휴리스틱 전면 제거 (`app/domain/graph/curator_node.py`)**:
+   - `curator_node.py`의 Step A/B에 걸쳐 있던 60여 줄의 키워드/조사/정규식 덧붙이기 로직을 완전 삭제.
+   - Pydantic 스키마 `CuratorResponse`에 `target_title: Optional[str]`을 추가하여 사용자의 지목/등록 의도 판별을 LLM의 구조화 출력으로 일원화.
+   - `BookCandidate.era`를 `Literal["trend", "recent", "life_pick", "classic"]`으로 엄격화하고 `min_length=2, max_length=2`로 정확히 2권 페어링 강제.
+2. **단일 거대 노드를 5단계 단일 책임 함수로 분리**:
+   - `resolve_context`: `HumanMessage` 기반으로 요청, 날씨, 중복 방지 히스토리 컨텍스트 구성.
+   - `generate_candidates`: 모듈 캐시된 `with_fallbacks` 체인 및 10초 타임아웃으로 후보 생성.
+   - `resolve_targeted`: 지목 도서가 있을 때만 국립도서관 단일 실서지 교차 검증 (타임아웃 4.0s).
+   - `verify_candidates`: `asyncio.gather` 병렬 호출(타임아웃 3.5s)로 다중 도서 서지 검증.
+   - `assemble_curated_books`: 정확히 2권(트렌드 1 + 인생책 1) 페어링 보장 및 중복 배제 조립.
+3. **최근 대화 맥락 주입 및 직전 대화 해석 복원**:
+   - `resolve_context`에서 최근 6턴 메시지(`messages[-6:]`)를 `conversation` 문자열로 포맷팅하여 프롬프트에 주입.
+   - "아까 그 책 등록해줘", "이전에 추천해준 책과 비슷한 거" 등 직전 대화 맥락을 LLM이 명확히 참조하여 `target_title`을 해석할 수 있도록 보완.
+4. **개별 모델 타임아웃/재시도 분리 및 `with_fallbacks` 활성화**:
+   - `ChatGoogleGenerativeAI`, `ChatOpenAI` 클라이언트 생성 시 `timeout=8.0, max_retries=1` 명시.
+   - 바깥 `asyncio.wait_for` 상한을 20초로 상향하여 1순위 모델 장애 시 2순위/폴백 체인이 정상 동작하도록 보장.
+5. **실서지 제목 유사도 검증(`_is_similar_title`)**:
+   - `clean_book_title` 정규화 및 `SequenceMatcher`를 조합하여 국립도서관 검색 결과와 사용자의 지목/후보 도서 간 제목 유사도를 교차 검증. 엉뚱한 책이 `verified: True`로 둔갑하는 현상 차단.
+6. **병렬 검증 및 지목 도서 미확인 피드백(`target_unresolved`)**:
+   - 지목 도서 검증(`resolve_targeted`)과 후보 도서 검증(`verify_candidates`)을 `asyncio.gather`로 병렬화하여 레이턴시 단축.
+   - 지목 도서가 도서관 DB에 없을 경우 `target_unresolved`를 사서 시스템 프롬프트에 주입하여 다정한 미확인 안내와 대체 추천을 제공.
+7. **품질 검사 및 자가 검증 완료**:
+   - `uv run pytest`: 전체 **192개 단위 테스트 100% 그린 패스 통과** (`192 passed, 1 warning in 60.74s`).
+   - `uv run ruff check .`: 0 errors (`All checks passed!`).
+   - `uv run mypy .`: 88개 소스 파일 0 errors (`Success: no issues found in 88 source files`).
+8. **하네스 문서 동기화**:
+   - `.harness/STATE.md`, `.harness/PLAN.md`, `.harness/DECISIONS.md`, `.harness/HANDOFF.md` 갱신 완료.
+
+### 다음 세션에서 할 일
+- 사용자의 확인 및 요청 시 `feat/fix-recommendation-registration-pipeline` 브랜치 변경 사항 선별 커밋 및 푸시, PR 생성 보조.
+- 브라우저 실화면에서 "이전에 추천받은 책이랑 비슷한 거 추천해줘" 질의 시 텍스트 왜곡 없이 실존 도서 카드가 안전하게 서재 등록으로 이어지는지 점검.
+
+
+
+
+
+
+---
+
+## 세션 42 예비 기록 (2026-09-20) — PR #39 생성
+
+### 진행한 작업
+1. **자가 검증 완료 후 커밋/푸시/PR 생성**:
+   - `uv run ruff check --fix .` → All checks passed, 1 file reformatted
+   - `uv run mypy .` → no issues in 88 source files
+   - `uv run pytest` → **194 passed, 1 warning in 61.47s**
+   - 2개 커밋 푸시: 소스 변경 + 하네스 문서 동기화
+   - [PR #39](https://github.com/DPYB/backend-ai-agent/pull/39) `feat/fix-recommendation-registration-pipeline` → `develop` 생성 완료
+
+2. **피드백 접수 및 Phase 42 등록 (치명적 아님)**:
+   - `_is_similar_title` 너무 느슨한 매칭 (이방인↔이방인의 노래 오탐 등) — Phase 42에서 `_is_same_work`로 교체 예정
+   - 타임아웃 불일치 (4×7=28초 > 외부 25초) — Phase 42에서 수정 예정
+   - 폴백 경로에서 국립도서관 검증 건너뜀 — Phase 42에서 수정 예정
+
+### 다음 세션에서 할 일
+- [PR #39](https://github.com/DPYB/backend-ai-agent/pull/39) CI 통과 확인 및 사람 직접 머지.
+- Phase 42: `_is_same_work` 교체, 타임아웃 수정, 폴백 검증 보강, 오탐/통과 케이스 테스트 매트릭스 신설.
 
 ## 세션 45 (2026-09-20)
 
@@ -1596,6 +1696,6 @@
    - `.harness/STATE.md`, `.harness/DECISIONS.md`, `.harness/HANDOFF.md` 갱신 완료.
 
 ### 다음 세션에서 할 일
-- 사용자의 확인 및 요청 시 본 작업 브랜치 변경 사항 선별 커밋 및 푸시.
+- PR #40 CI 통과 확인 및 사람 직접 머지.
 - 실환경 브라우저에서 감정 기반 추천 발화("미국연수 떨어졌어.. 위로가 되는 도서 추천해줄래?") 입력 시 지연 멘트 없이 1턴 만에 실존 검증 도서 카드가 안전하게 출력되는지 확인.
 
