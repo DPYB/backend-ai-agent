@@ -6,6 +6,43 @@
 
 ## 완료된 단계
 
+- [x] **Phase 41: 도서 큐레이터 아키텍처 근본 리팩터링 및 케이스 기반 테스트 체계 구축**
+  - **휴리스틱(규칙/조사/정규식) 전면 제거 및 LLM 스키마 일원화 (`curator_node.py`)**:
+    - Step A/B의 60여 줄 임의 정규식 휴리스틱을 완전 삭제하고, `CuratorResponse` 스키마에 `target_title: Optional[str]`을 추가하여 사용자의 특정 도서 지목/등록 의도를 LLM 구조화 출력으로 직접 판별하도록 개선.
+    - `BookCandidate.era`를 `Literal["trend", "recent", "life_pick", "classic"]`으로 엄격화.
+  - **최근 대화 히스토리 프롬프트 주입 및 맥락 해석 복원**:
+    - `resolve_context`에서 최근 6턴의 대화(`conversation`)를 추출하여 프롬프트에 주입함으로써, "아까 그 책 등록해줘", "이전에 추천받은 책과 비슷한 것" 등 직전 대화의 도서명을 참조하는 맥락적 지목을 완벽 해석하도록 지원.
+  - **개별 LLM 타임아웃/재시도 분리 및 `with_fallbacks` 활성화**:
+    - Gemini Light, Gemini 3.5, OpenAI 인스턴스 각각에 `timeout=8.0, max_retries=1`을 명시하고 전체 외부 `asyncio.wait_for`를 20초로 상향하여, 1순위 모델 지연 시 체인이 즉각적이고 안정적으로 다음 모델로 폴백되도록 보장.
+  - **실서지 제목 유사도 검증(`_is_similar_title`) 및 지목 도서 미확인 피드백(`target_unresolved`)**:
+    - 국립중앙도서관 검색 결과와 사용자의 지목/후보 도서 간 정규화 유사도(`_is_similar_title`)를 교차 검증하여 엉뚱한 도서가 바인딩되는 현상을 방지.
+    - 지목 도서 검색 실패 시 `target_unresolved`를 사서 프롬프트에 전달하여 다정한 미확인 안내와 대체 추천을 제공.
+  - **비동기 검증 병렬화**:
+    - 지목 도서 검증(`resolve_targeted`)과 후보 도서 검증(`verify_candidates`)을 `asyncio.gather`로 병렬 실행하여 응답 지연을 최소화.
+  - **단일 노드의 5단계 함수 분리 및 단일 책임화**:
+    - `resolve_context` ➔ `generate_candidates` ➔ `resolve_targeted` ➔ `verify_candidates` ➔ `assemble_curated_books`.
+  - **미검증 폴백 계약 정상화 (`assemble_curated_books`)**:
+    - 외부 검증 실패 시 하드코딩 가짜 ISBN(`9788937460000`)에 `verified: True`를 부여하던 결함을 제거하고, `verified: False`, `isbn: ""`으로 명확히 마킹하여 프론트/백엔드 다운스트림이 안전하게 처리하도록 규격화.
+    - 비상 폴백 시에도 `recommended_history`를 참조하여 직전 추천 도서와 중복되지 않는 명작을 우선 선별.
+  - **LLM 인스턴스 모듈 캐시 & `with_fallbacks` 전환**:
+    - 매 턴마다 4개의 LLM 인스턴스를 반복 생성하던 루프를 모듈 레벨 지연 로딩 캐시 및 `primary_llm.with_fallbacks([fallback1, fallback2, ...])`로 전환.
+    - 유효 API 키 판별 헬퍼(`is_valid_api_key`) 단일화 및 중복 클라이언트 호출 정리.
+  - **케이스 매트릭스(Case Table) 기반 회귀 방지 테스트 구축 (`test_curator_pipeline.py`)**:
+    - 케이스 매트릭스, 제목 유사도, 미확인 지목 도서 반환 테스트를 추가하여 전체 **192개 단위 테스트 100% 통과** (`192 passed, 1 warning in 60.74s`), Ruff 0 errors, Mypy 88개 소스 파일 0 errors 무결성 달성.
+
+- [x] **Phase 40: 메타 질의("이전 추천 도서와 비슷한 책") 도서명 둔갑 방지 및 가짜 서지 폴백 원천 차단**
+  - **`curator_node.py`의 직접 지정 도서(Targeted Book) 탐색 가드 구축**:
+    - "이전에 추천받은 도서랑 비슷한 도서 추천해줘", "아까 그 책", "골라준 책과 다른 것" 등 메타/상대적 질의 키워드가 포함되었거나, 끝자리에 조사(`랑`, `이랑`, `으로`, `은`, `는` 등)가 남은 문장형 발화가 도서명 후보(`title_candidates_to_check`)로 오탐 추출되는 결함을 원천 차단.
+    - 명시적 꺽쇠/따옴표 표기(`《...》`, `「...」`, `"..."`) 또는 2~30자의 순수 단행본 제목 형태일 때만 실서지 직접 검색을 수행하도록 정밀화.
+  - **`national_library_client.py`의 가짜 서지 폴백(`VERIFIED_CATALOG_FALLBACK`) 남발 차단**:
+    - 국립중앙도서관 API 및 내부 30여 권 명작 카탈로그에 없는 문장형 텍스트에 대해 임의의 가짜 ISBN(`9791100000000`)과 가짜 서지를 날조하던 동작을 제거하고, 실존 도서가 아니면 `None`을 반환하도록 수정.
+    - 이를 통해 질문 텍스트 전체가 책 제목으로 둔갑하여 프론트엔드 도서 카드로 변질되거나 서재 등록 시 400/422 에러를 유발하던 치명적 버그를 원천 해결.
+  - **`reports/generator.py` 타입 안정성 보강**:
+    - `_generate_fallback_biblio`의 반환 타입(`Optional[Dict[str, Any]]`)에 맞추어 `None` 방어 코드를 적용하여 Mypy 정적 타입 무결성 보장.
+  - **단위 테스트 및 회귀 방지 검증 (`tests/unit/test_curator_pipeline.py`)**:
+    - `test_meta_recommendation_query_not_converted_to_fake_book` 신규 단위 테스트 추가.
+    - 전체 184개 단위 테스트 100% 통과 (`184 passed in 58.54s`), Ruff 린트/포맷 0 에러, Mypy 타입 체크 88개 소스 파일 0 에러 달성.
+
 - [x] **Phase 39: 도서 추천/신간 검색 국립중앙도서관 실서지 검증 및 도서 카드 메타데이터 자동 완성 강화**
   - **SSE 스트리밍 큐레이터 노드 이벤트명 오타 교정 (`app/api/router.py`)**:
     - `node_name in ("curator_node", "book_curator_node")`로 교정하여 실시간 스트리밍 중에도 `event: books`가 누락 없이 프론트엔드로 즉시 발행되도록 보장.
