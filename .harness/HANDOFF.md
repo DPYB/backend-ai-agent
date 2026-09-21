@@ -1796,4 +1796,39 @@
 - 사용자의 확인 및 요청 시 `feat/session-security-namespace` 브랜치 커밋 및 푸시, PR 생성 (`feat[agent]: 세션 네임스페이스 격리 및 UUID 검증 구현`).
 - PR 머지 후 [2단계] 프론트엔드 대화 초기화 및 방어 로직 구현 착수 (`frontend-reader-web`).
 
+---
+
+## 세션 52 (2026-09-21)
+
+### 진행한 작업
+1. **바코드/표지 VLM 프롬프트에 5자리 부가기호(KDC) 및 청구기호 추출 규칙 반영**:
+   - `app/vision/gemini_ocr_client.py`:
+     - `GEMINI_COVER_SYSTEM_PROMPT`에 바코드 근처 5자리 숫자(03320, 93810 등) 및 도서관 라벨 청구기호(813.6-박24ㄱ 등)를 `kdc` 필드에 추출하도록 지시 추가.
+     - 가격(15,000 등)이나 13자리 ISBN은 `kdc` 필드에 넣지 않도록 네거티브 가드레일 추가.
+     - JSON 출력 스키마에 `"kdc": "03320 또는 null"` 명시.
+     - `CoverOcrResult` Pydantic 모델에 `kdc: Optional[str] = None` 필드 확장 및 JSON 파싱/보조 추출 연동.
+2. **Vision Cover OCR 응답 스키마 및 엔드포인트 핸들러 확장**:
+   - `app/api/v1/vision.py`:
+     - `OcrCoverResponse` 모델에 `kdc: Optional[str] = Field(default=None, description="바코드 옆 5자리 부가기호 또는 청구기호")` 추가.
+     - 바코드 검출 경로: 국립도서관 `book_doc.get("kdc")`를 루트 `kdc` 및 `book["kdc"]`에 바인딩.
+     - VLM 표지 OCR 경로: VLM이 추출한 `cover_result.kdc`를 1순위로 루트 `kdc` 및 `book["kdc"]`에 바인딩하여 `backend-core-api` 도서 등록 시 원본 그대로 전달되도록 보장.
+3. **5자리 부가기호 및 청구기호 보조 추출 헬퍼 구현**:
+   - `app/vision/isbn_utils.py`:
+     - `extract_kdc_candidates` 및 `find_first_kdc`: 5자리 숫자(가격 '원' 배제) 및 도서관 청구기호(자모 'ㄱ-ㅎ' 포함 정밀 정규식) 안전 추출 지원.
+4. **국립중앙도서관 서지 클라이언트 원본 KDC 보존**:
+   - `app/infrastructure/national_library_client.py`:
+     - `search_book` 및 `search_by_isbn`의 반환 딕셔너리에 `kdc: raw_kdc`를 바인딩하여 다운스트림 전달 보장.
+5. **AI 자가 검증 (Self-Validation)**:
+   - 신규 단위 테스트 추가 (`tests/unit/test_vision.py` 내 `test_kdc_candidates_extraction`, `test_cover_ocr_kdc_passthrough`).
+   - `uv run pytest`: 전체 **207개 단위 테스트 100% 통과** (`207 passed, 1 warning in 119.51s`).
+   - `uv run ruff check --fix .`: All checks passed.
+   - `uv run mypy .`: Success: no issues found in 92 source files.
+6. **하네스 문서 동기화**:
+   - `.harness/STATE.md`, `PLAN.md`, `DECISIONS.md`, `HANDOFF.md`에 Phase 51 작업 내역 및 설계 결정 기록 완료.
+
+### 다음 세션에서 할 일
+- 사용자의 확인 및 요청 시 `feat/vision-kdc-extraction` 브랜치 커밋/푸시 및 PR 생성 (`feat[vision]: 도서 표지/바코드 5자리 부가기호(KDC) 추출 및 응답 스키마 확장`).
+- PR 머지 완료 확인 후 develop 동기화.
+
+
 

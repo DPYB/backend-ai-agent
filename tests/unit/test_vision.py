@@ -414,3 +414,63 @@ async def test_sentence_ocr_with_crop_box():
             called_bytes = mock_ocr.call_args[0][0]
             with Image.open(BytesIO(called_bytes)) as cropped_img:
                 assert cropped_img.size == (50, 50)
+
+
+def test_kdc_candidates_extraction():
+    """Verify extract_kdc_candidates extracts 5-digit supplementary and call numbers."""
+    from app.vision.isbn_utils import extract_kdc_candidates, find_first_kdc
+
+    # 1. 5-digit supplementary code next to barcode
+    ocr_with_supp = "ISBN 978-89-349-3960-3 03320\n가격 15,000원"
+    cands = extract_kdc_candidates(ocr_with_supp)
+    assert "03320" in cands
+    assert find_first_kdc(ocr_with_supp) == "03320"
+
+    # 2. Library call number label
+    ocr_with_label = "도서관 청구기호: 813.6-박24ㄱ\n국립중앙도서관"
+    cands_label = extract_kdc_candidates(ocr_with_label)
+    assert "813.6-박24ㄱ" in cands_label
+    assert find_first_kdc(ocr_with_label) == "813.6-박24ㄱ"
+
+    # 3. Simple decimal classification
+    ocr_simple = "KDC 320.1 사회과학"
+    assert find_first_kdc(ocr_simple) == "320.1"
+
+
+@pytest.mark.asyncio
+async def test_cover_ocr_kdc_passthrough():
+    """Verify cover OCR endpoint extracts and passes through kdc field in root and book metadata."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        img_bytes = _create_dummy_image_bytes()
+        files = {"image": ("back_cover.jpg", img_bytes, "image/jpeg")}
+
+        from app.vision.gemini_ocr_client import CoverOcrResult
+
+        mock_cover_result = CoverOcrResult(
+            isbn="9788934939603",
+            kdc="03320",
+            title="정의란 무엇인가",
+            author="마이클 샌델",
+            publisher="김영사",
+            lines=["정의란 무엇인가", "마이클 샌델", "03320"],
+            raw_text="ISBN 978-89-349-3960-3 03320",
+            request_id="kdc-test-req-id",
+        )
+
+        with (
+            patch("app.api.v1.vision.barcode_service.scan_isbn", return_value=None),
+            patch(
+                "app.api.v1.vision.gemini_ocr_client.extract_cover_info",
+                new_callable=AsyncMock,
+                return_value=mock_cover_result,
+            ),
+        ):
+            response = await client.post("/api/v1/vision/ocr/covers", files=files)
+            assert response.status_code == 200
+            data = response.json()
+            assert data["isbn"] == "9788934939603"
+            assert data["kdc"] == "03320"
+            assert data["book"] is not None
+            assert data["book"]["kdc"] == "03320"
+

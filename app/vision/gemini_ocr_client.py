@@ -28,16 +28,21 @@ GEMINI_COVER_SYSTEM_PROMPT = """당신은 '도서 표지/뒷표지 서지 정보
 
 [핵심 추출 지침]
 1. isbn: 바코드 하단 또는 주변에 인쇄된 13자리 숫자(978 또는 979로 시작하는 ISBN)를 정확히 읽어내세요. 하이픈이나 공백이 있어도 괜찮습니다. 바코드 선 자체보다 그 밑에 적힌 인쇄 숫자를 사람 눈처럼 똑똑하게 읽으세요.
-2. title: 도서 정식 제목 (앞표지에서 가장 크고 굵게 강조된 실제 책 이름).
+2. [바코드 및 서지 분류기호 추출 규칙]
+   - 도서 뒷면 바코드 근처에 인쇄된 5자리 숫자(예: 03320, 93810, 03005)가 보이면 'kdc' 필드에 반드시 담아주세요.
+   - 도서관 바코드/라벨 스티커에 '813.6-박24ㄱ', '320.1' 등의 청구기호가 보이면 이를 'kdc' 필드에 담아주세요.
+   - 가격(예: 15,000)이나 ISBN(978...)은 kdc 필드에 넣지 마세요. 보이지 않으면 null을 반환하세요.
+3. title: 도서 정식 제목 (앞표지에서 가장 크고 굵게 강조된 실제 책 이름).
    ⚠️ [뒷표지 방어 규칙]: 만약 사진에 '추천사', '리뷰', '가격(원)', '바코드' 등이 주로 보인다면 이는 책의 '뒷표지'입니다. 뒷표지의 자극적인 홍보 문구(예: "올해 최고의 감동!", "100만 독자가 극찬한 책")를 절대 도서 제목으로 착각하지 마세요! 도서 정식 명칭을 100% 명확히 식별할 수 없다면 title에는 반드시 null을 반환하세요.
-3. author: 저자명 (지은이, 글, 저자 표기). 명확하지 않으면 null을 반환하세요.
-4. publisher: 출판사명. 명확하지 않으면 null을 반환하세요.
-5. lines: 사진에서 식별된 주요 텍스트 줄 목록.
+4. author: 저자명 (지은이, 글, 저자 표기). 명확하지 않으면 null을 반환하세요.
+5. publisher: 출판사명. 명확하지 않으면 null을 반환하세요.
+6. lines: 사진에서 식별된 주요 텍스트 줄 목록.
 
 [출력 형식]
 반드시 마크다운 코드블록(```)이나 부연 설명 없이, 오직 아래 JSON 규격으로만 출력하세요:
 {
   "isbn": "9788934939603 또는 null",
+  "kdc": "03320 또는 null",
   "title": "도서 제목 또는 null",
   "author": "저자명 또는 null",
   "publisher": "출판사명 또는 null",
@@ -59,12 +64,14 @@ class CoverOcrResult(BaseModel):
     """Structured result of book cover / back cover OCR extraction."""
 
     isbn: Optional[str] = None
+    kdc: Optional[str] = None
     title: Optional[str] = None
     author: Optional[str] = None
     publisher: Optional[str] = None
     lines: List[str] = []
     raw_text: str = ""
     request_id: str = ""
+
 
 
 class GeminiOcrClient:
@@ -377,6 +384,7 @@ class GeminiOcrClient:
             logger.debug("Failed to parse Cover OCR as pure JSON (%s). Using text extraction.", err)
 
         isbn = parsed_data.get("isbn") if isinstance(parsed_data, dict) else None
+        kdc = parsed_data.get("kdc") or parsed_data.get("raw_kdc") if isinstance(parsed_data, dict) else None
         title = parsed_data.get("title") if isinstance(parsed_data, dict) else None
         author = parsed_data.get("author") if isinstance(parsed_data, dict) else None
         publisher = parsed_data.get("publisher") if isinstance(parsed_data, dict) else None
@@ -399,8 +407,16 @@ class GeminiOcrClient:
             if isbn_cands:
                 isbn = isbn_cands[0]
 
+        # Secondary search for KDC / 5-digit supplementary code inside lines or raw response
+        if not kdc:
+            from app.vision.isbn_utils import find_first_kdc
+
+            combined_kdc_text = f"{clean_resp}\n" + "\n".join(lines)
+            kdc = find_first_kdc(combined_kdc_text)
+
         return CoverOcrResult(
             isbn=str(isbn).strip() if isbn else None,
+            kdc=str(kdc).strip() if kdc else None,
             title=str(title).strip() if title else None,
             author=str(author).strip() if author else None,
             publisher=str(publisher).strip() if publisher else None,
