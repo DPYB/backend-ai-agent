@@ -1826,9 +1826,29 @@
 6. **하네스 문서 동기화**:
    - `.harness/STATE.md`, `PLAN.md`, `DECISIONS.md`, `HANDOFF.md`에 Phase 51 작업 내역 및 설계 결정 기록 완료.
 
-### 다음 세션에서 할 일
+#### 다음 세션에서 할 일
 - 사용자의 확인 및 요청 시 `feat/vision-kdc-extraction` 브랜치 커밋/푸시 및 PR 생성 (`feat[vision]: 도서 표지/바코드 5자리 부가기호(KDC) 추출 및 응답 스키마 확장`).
 - PR 머지 완료 확인 후 develop 동기화.
 
+---
 
+## 세션 53 (2026-09-21)
 
+### 진행한 작업
+1. **422 Unprocessable Content 및 로컬 오프라인 폴백 원인 규명**:
+   - 세션 51에서 도입된 `ChatRequest.session_id`의 엄격한 UUID 검증으로 인해, 기존 클라이언트 브라우저 `sessionStorage`에 저장되어 있던 콜론(`:`) 구분자 세션 키(`{member_id}:{uuid}:{persona}` 또는 `{uuid}:{persona}`)를 재전송할 때 백엔드 Pydantic 검증에서 422가 발생함.
+   - 프론트엔드가 422 에러를 수신하자마자 로컬 오프라인 검색 엔진(`answerQuestion`)으로 폴백되어, "'엥 아니 읽을만한 책 없냐고'에 딱 맞는 책을 서재에서 찾지 못했어요"라는 황당한 답변이 노출되던 원인을 규명함.
+2. **세션 ID 복합 포맷 하위 호환 및 순수 UUID 정규화 (`app/api/schemas.py`)**:
+   - `ChatRequest.session_id` 검증 시 콜론이 포함된 복합 문자열이 들어오더라도 세그먼트를 순회하며 유효한 UUID를 자동 탐색/추출하여 `self.session_id`를 순수 UUID로 정규화.
+   - 클라이언트가 브라우저 세션 스토리지를 수동으로 초기화하지 않아도 422 거부 없이 100% 정상 수용하며, 비-UUID 악성 키는 기존대로 422 차단 유지.
+3. **단위 테스트 추가 및 AI 자가 검증 (Self-Validation)**:
+   - `tests/unit/test_session_security.py`에 `test_composite_session_id_backward_compatibility` 단위 테스트 추가하여 운영 환경(APP_ENV=production)에서도 복합 세션 ID가 422 없이 정상 통과함을 검증.
+   - `uv run pytest tests/unit/test_session_security.py`: 4개 테스트 전원 통과.
+   - `uv run ruff check .` & `uv run ruff format --check .`: 100% 무결점 통과.
+   - `uv run mypy app tests`: 87개 소스 파일 0 errors 확인.
+4. **하네스 문서 동기화**:
+   - `.harness/STATE.md`, `PLAN.md`, `DECISIONS.md`, `HANDOFF.md`에 Phase 52 작업 내역 및 설계 결정 기록 완료.
+
+### 다음 세션에서 할 일
+- 사용자의 확인 및 요청 시 `feat/session-uuid-compatibility` 브랜치 커밋 및 푸시, PR 생성 (`fix[agent]: 세션 ID 복합 포맷 하위 호환 및 422 에러 방어`).
+- PR 머지 및 Render 자동 배포 완료 후 브라우저에서 대화 정상 동작 재확인.

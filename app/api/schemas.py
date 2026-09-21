@@ -109,6 +109,24 @@ class ChatRequest(BaseModel):
         if not self.session_id:
             self.session_id = str(uuid4())
         else:
+            raw_sid = str(self.session_id).strip()
+            # If client passed composite session_id (e.g. "{member_id}:{uuid}:{persona}" or "{uuid}:{persona}"),
+            # extract the pure UUID segment for backward compatibility and clean client-side token storage.
+            extracted_uuid: Optional[str] = None
+            if ":" in raw_sid:
+                segments = raw_sid.split(":")
+                # Search segments for a valid UUID
+                # If there are multiple (e.g. member_id:uuid:persona), the second segment is usually session UUID
+                for seg in segments:
+                    try:
+                        UUID(seg)
+                        extracted_uuid = seg
+                    except (ValueError, TypeError, AttributeError):
+                        continue
+                if extracted_uuid:
+                    self.session_id = extracted_uuid
+                    return self
+
             try:
                 UUID(str(self.session_id))
             except (ValueError, TypeError, AttributeError) as err:
