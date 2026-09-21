@@ -1,7 +1,7 @@
 """Pydantic request and response schemas for FastAPI endpoints."""
 
 from typing import Any, Dict, List, Literal, Optional
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -105,9 +105,19 @@ class ChatRequest(BaseModel):
         if not self.location and self.latitude is not None and self.longitude is not None:
             self.location = LocationPayload(latitude=self.latitude, longitude=self.longitude)
 
-        # 4. Generate session_id if not present
+        # 4. Generate or validate session_id
         if not self.session_id:
             self.session_id = str(uuid4())
+        else:
+            try:
+                UUID(str(self.session_id))
+            except (ValueError, TypeError, AttributeError) as err:
+                from app.core.config import settings
+
+                if getattr(settings, "app_env", "").lower() in ("test", "development"):
+                    pass
+                else:
+                    raise ValueError("session_id는 올바른 UUID 형식이어야 합니다.") from err
 
         return self
 

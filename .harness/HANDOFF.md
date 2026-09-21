@@ -1753,3 +1753,47 @@
 - PR 머지 후 Actions 탭에서 Render Deploy Hook 정상 호출 확인.
 - 저녁 시간대에 Render에서 평론가 페르소나 개편본이 실환경에 정상 반영되는지 확인.
 
+---
+
+## 세션 50 (2026-09-21)
+
+### 진행한 작업
+1. **대화 24시간 유지 및 화면 가림/초기화 부재 문제 상황 분석 및 설계 확정**:
+   - 사서/토론 대화가 지속되어 칠판(화면 말풍선)이 꽉 차고, 토론 모드 '끝내기' 후에도 화면이 리셋되지 않아 새 주제 대화가 불편했던 근본 문제 진단.
+   - 업계 표준 패턴 확립: **"새 칠판 = 새 번호표(UUID)", "칠판(단기 말풍선)과 공책(DB 영구 기억)의 분리", "즉시 리셋 + 5초 되돌리기(Undo) 토스트"**.
+2. **사용자 피드백 기반 4대 핵심 주의사항 설계 반영 및 안전망 수립**:
+   - **백엔드 보안 패치**: 클라이언트가 임의의 `session_id`를 보내 다른 방을 엿볼 수 있는 취약점을 막기 위해, 서버에서 로그인한 `effective_member_id`를 번호표 앞에 강제 접두(`{member_id}:{validated_uuid}`)하도록 설계 확정. UUID 정규식 검증 추가 및 다중 계정 격리 단위 테스트 계획 수립. 프론트엔드와 별도 브랜치/커밋으로 분리 진행 결정.
+   - **지연 저장(5초 뒤 conclude) 4대 결함 방어**:
+     - 캡처 고정: 타이머 등록 시점의 `oldSessionId`, `oldMessages`를 클로저 변수로 묶어 새 칠판 오염 차단.
+     - 겹침 방어: 5초 내 '새 대화' 재클릭 시 이전 대기분을 즉시 전송 후 새 타이머 세팅.
+     - 이탈 방어: 컴포넌트 언마운트/창닫기 시 `fetch(..., { keepalive: true })`로 JWT 인증 헤더를 보존하여 안전 전송.
+     - 조건 엄밀화: 사서 첫 인사 제외 순수 유저 메시지 2회 이상(`userMessages.length >= 2`), `chatMode === 'debate'`에서만 지연 저장 적용.
+   - **중복 저장 방어**: 서버의 `currentAnswer?.is_concluded` 필드 실측 확인 후 이미 끝난 토론은 conclude 재전송 생략.
+   - **유령 답변 방어**: 새 대화 클릭 시 진행 중인 통신 `abortController.abort()` 호출 및 응답 번호표 대조. 중단된 턴 되돌리기 후 이어서 말하기 시나리오 스모크 테스트 계획 수립.
+3. **하네스 문서 동기화**:
+   - `.harness/PLAN.md`에 Phase 50 상세 구현 계획(1단계 백엔드 보안 패치, 2단계 프론트엔드 대화 초기화 및 방어 로직) 반영 완료.
+
+---
+
+## 세션 51 (2026-09-21)
+
+### 진행한 작업
+1. **Phase 50 [1단계] 백엔드 세션 보안 패치 구현 (`feat/session-security-namespace`)**:
+   - `app/api/schemas.py`: `ChatRequest.session_id`에 대해 운영 환경(APP_ENV != 'test'/'development')에서 올바른 UUID 형식을 강제 검증하고, 테스트 환경 픽스처 호환성을 지원하도록 유효성 검사 추가.
+   - `app/api/router.py`: 정회원 대화 요청 시 `effective_member_id`를 번호표 앞에 강제 결합(`{effective_member_id}:{validated_uuid}:{persona}`)하여, 타인의 방 번호표를 임의 주입하더라도 다른 회원의 방을 엿볼 수 없도록 네임스페이스 물리적 격리 완성.
+   - Redis 세션 적재, LangGraph 스레드, 실시간 SSE 스트리밍, `save_debate_insight_task` 백그라운드 DB 적재까지 모두 동일한 회원 네임스페이스 세션 키를 바라보도록 정합성 일치.
+2. **다중 계정 격리 검증 단위 테스트 작성 (`tests/unit/test_session_security.py`)**:
+   - 두 계정(A, B)이 동일한 UUID를 보내더라도 각자의 세션 키(`{member_a}:{uuid}:CAT`, `{member_b}:{uuid}:CAT`)로 분기되어 Redis 대화 메모리가 100% 격리됨을 실측 검증.
+   - 운영 환경 비-UUID 차단(422) 및 conclude 백그라운드 태스크의 네임스페이스 키 저장 검증.
+3. **AI 자가 검증 (Self-Validation)**:
+   - `uv run pytest`: 전체 **205개 단위 테스트 100% 통과** (`205 passed in 67.09s`).
+   - `uv run ruff check .` & `uv run ruff format .`: 0 errors / All checks passed.
+   - `uv run mypy app tests`: 87개 소스 파일 0 errors 무결성 확인.
+4. **하네스 문서 동기화**:
+   - `.harness/STATE.md`, `.harness/PLAN.md`, `.harness/DECISIONS.md`, `.harness/HANDOFF.md` 최신 상태 동기화.
+
+### 다음 세션에서 할 일
+- 사용자의 확인 및 요청 시 `feat/session-security-namespace` 브랜치 커밋 및 푸시, PR 생성 (`feat[agent]: 세션 네임스페이스 격리 및 UUID 검증 구현`).
+- PR 머지 후 [2단계] 프론트엔드 대화 초기화 및 방어 로직 구현 착수 (`frontend-reader-web`).
+
+

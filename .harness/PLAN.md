@@ -4,6 +4,26 @@
 
 ---
 
+### 📌 Phase 50: 세션 보안 강화 및 대화 초기화(새 대화/되돌리기) 연동
+
+#### [2단계] 프론트엔드 대화 초기화 및 방어 로직 구현 (`frontend-reader-web`)
+
+- [ ] **`is_concluded` 필드 실측 및 중복 방지 플래그**:
+  - 서버 응답에 `is_concluded: bool`이 정상 반환됨을 확인 (`currentAnswer?.is_concluded`)
+  - 이미 완료된 토론은 새 대화를 눌러도 conclude 재전송 스킵
+- [ ] **지연 저장(5초 뒤 conclude) 4대 안전망 구축**:
+  - **옛 스냅샷 고정**: 타이머 생성 시점의 `oldSessionId`, `oldMessages`를 클로저 변수로 캡처하여 새 칠판 오염 방지
+  - **순수 유저 2턴 이상 검증**: 사서 첫 인사 제외하고 `userMessages.length >= 2`일 때만 지연 conclude 예약
+  - **연속 새 대화 클릭(겹침) 방어**: 이전 대기 중인 저장이 있다면 즉시 실행 후 새 타이머 세팅
+  - **컴포넌트 언마운트 / 탭 닫기 방어**: `fetch(..., { keepalive: true })`로 페이지 이탈/모드 변경 시에도 인증 헤더를 보존하여 안전 전송
+- [ ] **즉시 리셋 + 5초 되돌리기(Undo) 토스트 UI**:
+  - 새 번호표 발급 (`crypto.randomUUID()`)
+  - 되돌리기 클릭 시 `sessionStorage`와 리액트 상태 동시 복원
+  - 작성 중 새 대화 클릭 시 `abortController.abort()` 호출 및 `activeSessionId` 대조로 유령 답변 드랍
+  - 중단된 턴에 대해 되돌린 후 이어서 질문 시나리오 스모크 테스트
+
+---
+
 ### 📌 Milestone 4 (Phase 20 E2E 통합 검증): 프론트엔드 연동 후 3대 서비스 통합 스모크 테스트
 > **백엔드(backend-ai-agent) 구현 및 단위 테스트 완료 상태**
 

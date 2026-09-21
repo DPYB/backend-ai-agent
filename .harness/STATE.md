@@ -6,7 +6,19 @@
 
 ## 완료된 단계
 
+- [x] **Phase 50: 세션 보안 강화 및 회원 네임스페이스 격리 (Backend Session Security Patch)**
+  - **UUID 형식 검증 및 회원별 네임스페이스 강제 접두 (`app/api/schemas.py`, `app/api/router.py`)**:
+    - `ChatRequest.session_id`: 운영 환경에서 정규식/UUID 형식 검증을 강제하여 임의의 키 주입을 차단하고, 테스트/개발 환경 픽스처와의 호환성을 유지함.
+    - `router.py` 세션 파티셔닝: 정회원 요청 시 `raw_session_id = f"{effective_member_id}:{validated_uuid}"` 형태로 회원 ID를 강제 결합하고 최종 `{effective_member_id}:{validated_uuid}:{persona}`로 물리적 격리. 타인의 세션 번호표를 도청/전송하더라도 본인의 방만 조회/생성되도록 원천 방어.
+    - 일관성 검증: Redis 세션 적재, 실시간 SSE 스트리밍 및 백그라운드 토론 인사이트 비동기 적재(`save_debate_insight_task`)까지 모두 동일한 회원 네임스페이스 격리 키를 참조하도록 정합성 완비.
+  - **다중 계정 격리 검증 단위 테스트 구축 (`tests/unit/test_session_security.py`)**:
+    - 서로 다른 2개 계정(A, B)이 완전히 동일한 `session_id`(UUID)를 전송하더라도 서로의 대화 히스토리 및 Redis 메모리를 엿볼 수 없음을 테스트로 완벽 입증.
+    - 운영 환경 비-UUID 차단(422) 및 conclude 백그라운드 DB 적재의 네임스페이스 세션 키 일치성 검증.
+  - **자가 검증 무결성 달성**:
+    - 전체 205개 단위 테스트 100% 그린(Success) 통과 (`205 passed in 67.09s`), Ruff 린트/포맷 통과, Mypy 타입 체크 무결성 87개 소스 파일 통과.
+
 - [x] **Phase 49: Render 자동 배포 연동 워크플로우 구축 (Deploy Hook Trigger)**
+
   - **GitHub Actions 배포 워크플로우 신설 (`.github/workflows/deploy.yml`)**:
     - `develop` 브랜치 푸시/머지 시 GitHub Actions가 `RENDER_DEPLOY_HOOK_URL` 시크릿을 통해 Render Deploy Hook을 자동 호출하도록 구축.
     - `workflow_dispatch` 수동 트리거 지원 및 배포 HTTP 상태 코드 유효성 검증.

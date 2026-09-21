@@ -183,4 +183,4 @@ async def test_chat_conclude_auto_saves_debate_insight_in_background():
     assert saved["persona_id"] == "DEBATE_CRITIC"
     assert saved["summary"] == data["debate_summary"]
     assert saved["session_id"] == data["session_id"]
-    assert saved["session_id"] == "conclude-auto-save-session:DEBATE_CRITIC"
+    assert saved["session_id"] == f"{member_id}:conclude-auto-save-session:DEBATE_CRITIC"
