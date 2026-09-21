@@ -40,6 +40,9 @@ def test_map_kdc_to_genre():
     assert map_kdc_to_genre("", "따뜻한 위로의 힐링 소설") == "LITERATURE"
     assert map_kdc_to_genre("", "감성 산문과 에세이 모음") == "LITERATURE"
     assert map_kdc_to_genre("", "") == "GENERAL"
+    assert map_kdc_to_genre("513.8", "", title="그림의 힘") == "PHILOSOPHY"
+    assert map_kdc_to_genre("513.8", "미술치료") == "PHILOSOPHY"
+    assert map_kdc_to_genre("", "심리치료") == "PHILOSOPHY"
 
     # KDC 000 series splitting (004/005 -> TECHNOLOGY, 020s -> PHILOSOPHY, others -> GENERAL)
     assert map_kdc_to_genre("004") == "TECHNOLOGY"

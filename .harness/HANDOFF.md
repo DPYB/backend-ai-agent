@@ -1852,3 +1852,20 @@
 ### 다음 세션에서 할 일
 - 사용자의 확인 및 요청 시 `feat/session-uuid-compatibility` 브랜치 커밋 및 푸시, PR 생성 (`fix[agent]: 세션 ID 복합 포맷 하위 호환 및 422 에러 방어`).
 - PR 머지 및 Render 자동 배포 완료 후 브라우저에서 대화 정상 동작 재확인.
+
+---
+
+## 세션 54 (2026-09-21)
+
+### 진행한 작업
+1. **미술치료 및 심리치유 도서의 국립중앙도서관 KDC 매핑 1순위 키워드 확장 (`app/infrastructure/national_library_client.py`)**:
+   - 국립중앙도서관 KDC 분류 체계에서 513.8(의학/건강)로 1차 분류되어 `TECHNOLOGY`(기술과학)로 오분류되던 문제를 해결하기 위해, 1차 주제어/제목 키워드 검사에 `"그림의 힘"`, `"미술치료"`, `"심리치료"`, `"마음치유"`를 `PHILOSOPHY`로 추가.
+   - 오프라인/테스트 폴백 카탈로그(`sample_catalog`)에 《그림의 힘》(김선현 저, 세계사, ISBN 9788933871898)을 KDC 513.8 및 장르 `PHILOSOPHY`로 공식 등재.
+2. **단위 테스트 및 AI 자가 검증 (Self-Validation)**:
+   - `tests/unit/test_recommend_metadata.py`: 제목 기반(그림의 힘), 주제어 기반(미술치료, 심리치료) 장르 판별 단위 테스트 추가 및 전체 14개 테스트 100% 그린 패스 (`14 passed in 5.40s`).
+   - `uv run ruff check --fix .`, `uv run ruff format .`, `uv run mypy .`: 0 errors / All checks passed 무결점 확인.
+3. **하네스 문서 동기화**:
+   - `.harness/STATE.md`, `HANDOFF.md`에 Phase 53 기록 완료.
+
+### 다음 세션에서 할 일
+- 사용자의 확인 및 요청 시 `feat/therapy-keywords-kdc-mapping` 브랜치 커밋 및 푸시, PR 생성 (`feat[curator]: 미술치료 및 심리치유 도서의 철학(PHILOSOPHY) 장르 매핑 1순위 보강`).
