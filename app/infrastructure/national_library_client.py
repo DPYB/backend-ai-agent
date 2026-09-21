@@ -178,6 +178,10 @@ def map_kdc_to_genre(kdc: str = "", subject: str = "", title: str = "") -> str:
         ("철학", "PHILOSOPHY"),
         ("인문", "PHILOSOPHY"),
         ("심리", "PHILOSOPHY"),
+        ("그림의 힘", "PHILOSOPHY"),
+        ("미술치료", "PHILOSOPHY"),
+        ("심리치료", "PHILOSOPHY"),
+        ("마음치유", "PHILOSOPHY"),
         ("사색", "PHILOSOPHY"),
         ("사유", "PHILOSOPHY"),
         ("어휘력", "PHILOSOPHY"),
@@ -1091,6 +1095,17 @@ class NationalLibraryClient:
                 "page_count": 174,
                 "genre": "LITERATURE",
                 "description": "세상이 나를 싫어하는 것 같고 무기력할 때 거침없고 유쾌한 조언으로 마음의 엉킨 결을 정리해 주는 신간 에세이.",
+            },
+            "그림의 힘": {
+                "title": "그림의 힘",
+                "author": "김선현",
+                "publisher": "세계사(세계사컨텐츠그룹)",
+                "isbn": "9788933871898",
+                "kdc": "513.8",
+                "cover_url": get_verified_cover_url("", "9788933871898"),
+                "page_count": 336,
+                "genre": "PHILOSOPHY",
+                "description": "명화들이 건네는 따뜻한 위로와 치유의 힘으로 지친 마음의 활력을 되찾아주는 미술치료 명저.",
             },
         }
 

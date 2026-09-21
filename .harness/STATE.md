@@ -6,6 +6,14 @@
 
 ## 완료된 단계
 
+- [x] **Phase 53: 미술치료/심리치유 1차 주제어 및 KDC 3중 안전망 동기화**
+  - **`map_kdc_to_genre` 1차 주제어 및 제목 키워드 확장 (`app/infrastructure/national_library_client.py`)**:
+    - `"그림의 힘"`, `"미술치료"`, `"심리치료"`, `"마음치유"`를 `PHILOSOPHY` 1순위 키워드로 추가하여 KDC 513.8(의학/건강)로 빠지던 심리치료 도서를 철학/심리로 정확 라우팅.
+    - 국립중앙도서관 샘플/테스트 카탈로그(`sample_catalog`)에 《그림의 힘》(김선현 저, 세계사, ISBN 9788933871898)을 KDC 513.8 및 장르 `PHILOSOPHY`로 공식 등재.
+  - **단위 테스트 및 AI 자가 검증 (Self-Validation)**:
+    - `tests/unit/test_recommend_metadata.py`: 제목 기반(그림의 힘), 주제어 기반(미술치료, 심리치료) 장르 판별 단위 테스트 추가 및 전체 14개 테스트 100% 그린 패스.
+    - Ruff 린트/포맷 0 에러, Mypy 타입 체크 무결성 92개 소스 파일 통과.
+
 - [x] **Phase 52: 세션 ID 복합 포맷(`{member_id}:{uuid}:{persona}`) 하위 호환 및 순수 UUID 정규화**
   - **`ChatRequest.session_id` 복합 포맷 유연 수용 및 UUID 자동 추출 (`app/api/schemas.py`)**:
     - 클라이언트 `sessionStorage`에 잔존하던 복합 세션 키(`{member_id}:{uuid}:{persona}` 또는 `{uuid}:{persona}`)를 파싱하여 내부 순수 UUID 세그먼트를 자동 탐색/추출하도록 개선.
