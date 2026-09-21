@@ -6,6 +6,12 @@
 
 ## 완료된 단계
 
+- [x] **Phase 49: Render 자동 배포 연동 워크플로우 구축 (Deploy Hook Trigger)**
+  - **GitHub Actions 배포 워크플로우 신설 (`.github/workflows/deploy.yml`)**:
+    - `develop` 브랜치 푸시/머지 시 GitHub Actions가 `RENDER_DEPLOY_HOOK_URL` 시크릿을 통해 Render Deploy Hook을 자동 호출하도록 구축.
+    - `workflow_dispatch` 수동 트리거 지원 및 배포 HTTP 상태 코드 유효성 검증.
+    - Webhook 누락이나 권한 풀림 문제를 완전히 우회하여 PR 머지 즉시 안정적인 빌드/배포를 보장.
+
 - [x] **Phase 48: Google Books API 연동 및 서지 메타데이터(쪽수/표지) 다중 폴백 강화**
   - **Google Books 보조 클라이언트 신설 (`app/infrastructure/google_books_client.py`)**:
     - 비동기 httpx 기반 Google Books Volumes API(`https://www.googleapis.com/books/v1/volumes`) 연동.

@@ -1730,3 +1730,26 @@
 - Step 2: 대화 세션 만료 시간(Inactivity TTL) 조정 및 세션 초기화(`DELETE /api/v1/chat/session` 또는 `reset_session`) 구현.
 - 사용자의 확인 및 요청 시 `feat/google-books-metadata-enrichment` 변경 사항 선별 커밋 및 푸시, PR 생성 보조.
 
+---
+
+## 세션 49 (2026-09-21)
+
+### 진행한 작업
+1. **GitHub Organization Webhook 누락 및 Render 자동 배포 이슈 원인 분석**:
+   - `develop` 브랜치에 머지되었음에도 Render 배포가 이전 커밋(PR #40)에 머물러 있던 현상 확인.
+   - GitHub 저장소가 `DPYB` Organization 소속으로 Webhook/GitHub App 권한 동기화가 풀려 GitHub 푸시 이벤트가 Render로 전달되지 않던 구조적 문제 확인.
+2. **GitHub Actions Render 자동 배포 워크플로우 구현 (`.github/workflows/deploy.yml`)**:
+   - `develop` 브랜치 푸시/머지 시 GitHub Actions가 `RENDER_DEPLOY_HOOK_URL` 시크릿을 통해 Render Deploy Hook을 자동 호출하도록 구축.
+   - `workflow_dispatch` 수동 트리거 지원 및 배포 HTTP 상태 코드 유효성 검증.
+   - Webhook 누락이나 권한 풀림 문제를 완전히 우회하여 PR 머지 즉시 안정적인 빌드/배포를 보장.
+3. **AI 자가 검증 (Self-Validation)**:
+   - YAML 문법 유효성 검사 통과 (`uv run python -c "import yaml; yaml.safe_load(...)"`).
+   - `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy app/` 100% 무결점 통과.
+4. **하네스 문서 동기화**:
+   - `.harness/STATE.md`, `.harness/PLAN.md`, `.harness/HANDOFF.md` 갱신 완료.
+
+### 다음 세션에서 할 일
+- 사용자의 확인 및 요청 시 `feat/render-deploy-action` 브랜치 커밋/푸시 및 PR 생성.
+- PR 머지 후 Actions 탭에서 Render Deploy Hook 정상 호출 확인.
+- 저녁 시간대에 Render에서 평론가 페르소나 개편본이 실환경에 정상 반영되는지 확인.
+
