@@ -380,7 +380,6 @@ async def test_two_turn_continuous_chat_persists_recommended_history_across_turn
     # Clean up before testing
     await session_mgr.delete_session(partitioned_key)
 
-
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         # Turn 1: First recommendation
         resp1 = await ac.post(
