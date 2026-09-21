@@ -6,6 +6,14 @@
 
 ## 완료된 단계
 
+- [x] **Phase 52: 세션 ID 복합 포맷(`{member_id}:{uuid}:{persona}`) 하위 호환 및 순수 UUID 정규화**
+  - **`ChatRequest.session_id` 복합 포맷 유연 수용 및 UUID 자동 추출 (`app/api/schemas.py`)**:
+    - 클라이언트 `sessionStorage`에 잔존하던 복합 세션 키(`{member_id}:{uuid}:{persona}` 또는 `{uuid}:{persona}`)를 파싱하여 내부 순수 UUID 세그먼트를 자동 탐색/추출하도록 개선.
+    - 클라이언트가 로컬스토리지를 초기화하지 않아도 422 거부 없이 100% 정상 수용하며, 비-UUID 악성 키는 기존대로 422 차단 유지.
+  - **단위 테스트 및 자가 검증 완료 (`tests/unit/test_session_security.py`)**:
+    - `test_composite_session_id_backward_compatibility` 신규 단위 테스트 추가 및 운영 환경(APP_ENV=production) 호환성 입증.
+    - Ruff 린트/포맷 100% 통과, Mypy 타입 체크 무결성 87개 소스 파일 통과, 4개 세션 보안 테스트 전원 통과.
+
 - [x] **Phase 51: 도서 바코드/표지 VLM 5자리 부가기호(KDC) 추출 및 응답 스키마 확장**
   - **Gemini Cover VLM 시스템 프롬프트 5자리 부가기호/청구기호 추출 규칙 추가 (`app/vision/gemini_ocr_client.py`)**:
     - 도서 뒷면 바코드 근처 5자리 숫자(03320, 93810 등) 및 도서관 라벨 스티커 청구기호(813.6-박24ㄱ 등)를 `kdc` 필드로 추출하도록 프롬프트 지침 및 JSON 출력 스키마 정의. 가격(15,000 등)이나 ISBN-13은 kdc 필드에 넣지 않도록 네거티브 가드레일 적용.

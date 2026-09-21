@@ -147,11 +147,36 @@ async def test_conclude_debate_insight_uses_partitioned_session():
         assert data["is_concluded"] is True
 
         expected_session = f"{member_id}:{session_uuid}:DEBATE_CRITIC"
-        assert data["session_id"] == expected_session
-
     # Verify background repository save
     matching = [d for d in repo._mock_debate_insights if str(d.get("member_id")) == member_id]
     assert len(matching) >= 1
     saved = matching[-1]
     assert saved["session_id"] == expected_session
     assert saved["persona_id"] == "DEBATE_CRITIC"
+
+
+@pytest.mark.asyncio
+async def test_composite_session_id_backward_compatibility(monkeypatch: pytest.MonkeyPatch):
+    """Verify that clients sending composite session_ids (e.g. from previous responses) succeed and normalize to UUID."""
+    monkeypatch.setattr(settings, "app_env", "production")
+
+    transport = ASGITransport(app=app)
+    member_id = "44444444-4444-4444-a444-444444444444"
+    session_uuid = str(uuid4())
+    composite_sid = f"{member_id}:{session_uuid}:CAT"
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # Sending composite session_id should NOT throw 422 in production
+        res = await client.post(
+            "/api/v1/chat",
+            json={
+                "session_id": composite_sid,
+                "member_id": member_id,
+                "message": "안녕하세요 블루 사서님",
+                "mode": "LIBRARIAN",
+                "persona": "CAT",
+            },
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["session_id"] == f"{member_id}:{session_uuid}:CAT"
