@@ -78,3 +78,55 @@ def find_first_valid_isbn(text: str) -> Optional[str]:
     """Find the best matching 13-digit ISBN from text, returning None if no candidates exist."""
     candidates = extract_isbn_candidates(text)
     return candidates[0] if candidates else None
+
+
+def extract_kdc_candidates(text: str) -> List[str]:
+    """Extract potential KDC / call number or 5-digit ISBN supplementary classification codes.
+
+    1. 5-digit ISBN supplementary codes (e.g., '03320', '93810', '03005')
+    2. Library call number labels (e.g., '813.6-박24ㄱ', '320.1', 'K813.6', 'KDC 813.6', 'DDC 005.133')
+    Excludes pure 13-digit ISBNs (978..., 979...), prices (15,000 등) and random punctuation.
+    """
+    if not text:
+        return []
+
+    candidates: List[str] = []
+
+    # 1. 5-digit supplementary code: standalone 5-digit number (e.g. 03320, 93810, 03005)
+    # Must not be part of longer numbers, and must not be a price (followed by '원')
+    supp_5digit_pattern = r"(?:^|[^\d])(\d{5})(?:[^\d]|$)"
+    for m in re.finditer(supp_5digit_pattern, text):
+        val = m.group(1)
+        end_idx = m.end(1)
+        surrounding = text[end_idx : end_idx + 4] if end_idx < len(text) else ""
+        if "원" in surrounding:
+            continue
+        if val not in candidates:
+            candidates.append(val)
+
+    # 2. Library call number pattern:
+    # Explicit prefix or decimal classification followed by optional author code (e.g. '813.6-박24ㄱ', '320.1', 'KDC 813.6')
+    call_no_pattern = (
+        r"(?:(?:KDC|DDC|분류(?:기호)?)\s*:?\s*)?([A-Z]?\d{3}(?:\.\d+)?(?:-[가-힣ㄱ-ㅎA-Za-z0-9]+)?)"
+    )
+    for m in re.finditer(call_no_pattern, text, flags=re.IGNORECASE):
+        matched = m.group(1).strip()
+        # Avoid matching ISBN prefixes like 978 or 979 as call numbers
+        if matched.startswith(("978", "979")):
+            continue
+        start, end = m.span(1)
+        # Check that it is not embedded in longer digits or hyphens that look like ISBN
+        if start > 0 and text[start - 1] in "0123456789-":
+            continue
+        if end < len(text) and text[end] in "0123456789-":
+            continue
+        if matched and matched not in candidates:
+            candidates.append(matched)
+
+    return candidates
+
+
+def find_first_kdc(text: str) -> Optional[str]:
+    """Find the best matching KDC candidate or 5-digit supplementary code."""
+    cands = extract_kdc_candidates(text)
+    return cands[0] if cands else None

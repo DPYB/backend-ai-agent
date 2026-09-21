@@ -49,6 +49,10 @@ class OcrCoverResponse(BaseModel):
     """Cover/barcode OCR response matching frontend recordApi expectations."""
 
     isbn: Optional[str] = Field(default=None, description="인식된 ISBN")
+    kdc: Optional[str] = Field(
+        default=None,
+        description="바코드 옆 5자리 부가기호(예: 03320) 또는 도서관 라벨 청구기호",
+    )
     title_candidate: str = Field(default="", description="제목 후보")
     author_candidates: List[str] = Field(default_factory=list, description="저자 후보 목록")
     lines: List[str] = Field(default_factory=list, description="인식된 줄 목록")
@@ -195,14 +199,17 @@ async def _handle_cover_ocr(image: UploadFile) -> OcrCoverResponse:
         # 뒷표지의 추천사나 광고 문구("올해 최고의 감동!")가 제목으로 오인되는 것을 100% 원천 차단
         logger.info("바코드 ISBN %s 검출 성공. OCR 텍스트 무시하고 서지 DB 직행.", isbn)
         book_doc = await nl_client.fetch_and_fill_book_info_by_isbn(isbn)
+        kdc_cand: Optional[str] = None
         if book_doc:
             title_cand = book_doc.get("title", "")
             if book_doc.get("author"):
                 author_cand = [str(book_doc.get("author"))]
+            kdc_cand = book_doc.get("kdc")
             book_info = {
                 "title": book_doc.get("title"),
                 "author": book_doc.get("author"),
                 "isbn": isbn,
+                "kdc": kdc_cand,
                 "publisher": book_doc.get("publisher"),
                 "totalPages": book_doc.get("page_count") or 0,
                 "coverUrl": book_doc.get("cover_url"),
@@ -211,6 +218,7 @@ async def _handle_cover_ocr(image: UploadFile) -> OcrCoverResponse:
 
         return OcrCoverResponse(
             isbn=isbn,
+            kdc=kdc_cand,
             title_candidate=title_cand,
             author_candidates=author_cand,
             lines=[],
@@ -225,6 +233,7 @@ async def _handle_cover_ocr(image: UploadFile) -> OcrCoverResponse:
     cover_result = await gemini_ocr_client.extract_cover_info(image_bytes, image.content_type)
     lines = cover_result.lines
     title_cand = cover_result.title or ""
+    kdc_cand = cover_result.kdc
     if cover_result.author:
         author_cand = [cover_result.author]
 
@@ -240,7 +249,14 @@ async def _handle_cover_ocr(image: UploadFile) -> OcrCoverResponse:
         combined_text = f"{cover_result.raw_text}\n" + "\n".join(lines)
         isbn = find_first_valid_isbn(combined_text)
 
-    # 2-2. Vision OCR에서 ISBN을 건졌다면, 뒷표지 텍스트(lines)는 무시하고 정식 ISBN 서지 조회
+    # 2-2. KDC/5자리 부가기호가 아직 비어있다면 OCR 텍스트에서 보조 추출
+    if not kdc_cand:
+        from app.vision.isbn_utils import find_first_kdc
+
+        combined_text = f"{cover_result.raw_text}\n" + "\n".join(lines)
+        kdc_cand = find_first_kdc(combined_text)
+
+    # 2-3. Vision OCR에서 ISBN을 건졌다면, 뒷표지 텍스트(lines)는 무시하고 정식 ISBN 서지 조회
     if isbn:
         logger.info("Vision OCR에서 인쇄된 ISBN %s 검출 성공. 서지 DB 조회.", isbn)
         book_doc = await nl_client.fetch_and_fill_book_info_by_isbn(isbn)
@@ -255,10 +271,13 @@ async def _handle_cover_ocr(image: UploadFile) -> OcrCoverResponse:
                 "국립중앙도서관"
             ):
                 author_cand = [str(book_doc.get("author"))]
+            # VLM이 추출한 kdc가 우선, 없으면 국립도서관 KDC 활용
+            final_kdc = kdc_cand or book_doc.get("kdc")
             book_info = {
                 "title": title_cand or book_doc.get("title"),
                 "author": (author_cand[0] if author_cand else book_doc.get("author")),
                 "isbn": isbn,
+                "kdc": final_kdc,
                 "publisher": book_doc.get("publisher"),
                 "totalPages": book_doc.get("page_count") or 0,
                 "coverUrl": book_doc.get("cover_url"),
@@ -266,6 +285,7 @@ async def _handle_cover_ocr(image: UploadFile) -> OcrCoverResponse:
             }
         return OcrCoverResponse(
             isbn=isbn,
+            kdc=kdc_cand or (book_doc.get("kdc") if book_doc else None),
             title_candidate=title_cand,
             author_candidates=author_cand,
             lines=lines,
@@ -273,7 +293,7 @@ async def _handle_cover_ocr(image: UploadFile) -> OcrCoverResponse:
             already_registered=False,
         )
 
-    # 2-3. ISBN이 전혀 없는 앞표지 사진인 경우: 제목/저자 기반 국립도서관 검색
+    # 2-4. ISBN이 전혀 없는 앞표지 사진인 경우: 제목/저자 기반 국립도서관 검색
     if title_cand:
         search_author = author_cand[0] if author_cand else ""
         book_doc = await nl_client.search_book(title_cand, search_author)
@@ -282,10 +302,12 @@ async def _handle_cover_ocr(image: UploadFile) -> OcrCoverResponse:
             title_cand = book_doc.get("title", title_cand)
             if book_doc.get("author"):
                 author_cand = [str(book_doc.get("author"))]
+            final_kdc = kdc_cand or book_doc.get("kdc")
             book_info = {
                 "title": book_doc.get("title"),
                 "author": book_doc.get("author"),
                 "isbn": isbn,
+                "kdc": final_kdc,
                 "publisher": book_doc.get("publisher"),
                 "totalPages": book_doc.get("page_count") or 0,
                 "coverUrl": book_doc.get("cover_url"),
@@ -294,6 +316,7 @@ async def _handle_cover_ocr(image: UploadFile) -> OcrCoverResponse:
 
     return OcrCoverResponse(
         isbn=isbn,
+        kdc=kdc_cand or (book_info.get("kdc") if book_info else None),
         title_candidate=title_cand,
         author_candidates=author_cand,
         lines=lines,

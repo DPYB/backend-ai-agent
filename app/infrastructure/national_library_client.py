@@ -694,6 +694,7 @@ class NationalLibraryClient:
                                 if not final_cover and final_isbn:
                                     final_cover = get_verified_cover_url(final_cover, final_isbn)
 
+                                raw_kdc = str(selected.get("KDC", "")).strip() or None
                                 return {
                                     "title": final_title,
                                     "author": clean_author_name(
@@ -701,6 +702,7 @@ class NationalLibraryClient:
                                     ),
                                     "publisher": selected.get("PUBLISHER", "출판사 미상"),
                                     "isbn": final_isbn,
+                                    "kdc": raw_kdc,
                                     "cover_url": final_cover,
                                     "page_count": final_page,
                                     "genre": genre,
@@ -746,11 +748,13 @@ class NationalLibraryClient:
                                 title=item_title,
                             )
                             kyobo_url = f"https://contents.kyobobook.co.kr/sih/fit-in/458x0/pdt/{clean_isbn}.jpg"
+                            raw_kdc = str(item.get("KDC", "")).strip() or None
                             return {
                                 "title": item_title,
                                 "author": item_author,
                                 "publisher": item.get("PUBLISHER", "출판사 미상"),
                                 "isbn": clean_isbn,
+                                "kdc": raw_kdc,
                                 "cover_url": kyobo_url,
                                 "page_count": page_count,
                                 "genre": genre,
