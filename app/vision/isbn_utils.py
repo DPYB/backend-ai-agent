@@ -106,9 +106,10 @@ def extract_kdc_candidates(text: str) -> List[str]:
 
     # 2. Library call number pattern:
     # Explicit prefix or decimal classification followed by optional author code (e.g. '813.6-박24ㄱ', '320.1', 'KDC 813.6')
-    call_no_pattern = r"(?:(?:KDC|DDC|분류(?:기호)?)\s*:?\s*)?([A-Z]?\d{3}(?:\.\d+)?(?:-[가-힣ㄱ-ㅎA-Za-z0-9]+)?)"
+    call_no_pattern = (
+        r"(?:(?:KDC|DDC|분류(?:기호)?)\s*:?\s*)?([A-Z]?\d{3}(?:\.\d+)?(?:-[가-힣ㄱ-ㅎA-Za-z0-9]+)?)"
+    )
     for m in re.finditer(call_no_pattern, text, flags=re.IGNORECASE):
-
         matched = m.group(1).strip()
         # Avoid matching ISBN prefixes like 978 or 979 as call numbers
         if matched.startswith(("978", "979")):
@@ -129,5 +130,3 @@ def find_first_kdc(text: str) -> Optional[str]:
     """Find the best matching KDC candidate or 5-digit supplementary code."""
     cands = extract_kdc_candidates(text)
     return cands[0] if cands else None
-
-

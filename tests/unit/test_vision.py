@@ -473,4 +473,3 @@ async def test_cover_ocr_kdc_passthrough():
             assert data["kdc"] == "03320"
             assert data["book"] is not None
             assert data["book"]["kdc"] == "03320"
-

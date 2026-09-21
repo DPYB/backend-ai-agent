@@ -73,7 +73,6 @@ class CoverOcrResult(BaseModel):
     request_id: str = ""
 
 
-
 class GeminiOcrClient:
     """Client for Google Gemini Flash Vision based OCR with OpenAI fallback."""
 
@@ -384,7 +383,11 @@ class GeminiOcrClient:
             logger.debug("Failed to parse Cover OCR as pure JSON (%s). Using text extraction.", err)
 
         isbn = parsed_data.get("isbn") if isinstance(parsed_data, dict) else None
-        kdc = parsed_data.get("kdc") or parsed_data.get("raw_kdc") if isinstance(parsed_data, dict) else None
+        kdc = (
+            parsed_data.get("kdc") or parsed_data.get("raw_kdc")
+            if isinstance(parsed_data, dict)
+            else None
+        )
         title = parsed_data.get("title") if isinstance(parsed_data, dict) else None
         author = parsed_data.get("author") if isinstance(parsed_data, dict) else None
         publisher = parsed_data.get("publisher") if isinstance(parsed_data, dict) else None
