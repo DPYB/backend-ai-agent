@@ -375,10 +375,11 @@ async def test_two_turn_continuous_chat_persists_recommended_history_across_turn
 
     session_mgr = get_redis_session_manager()
     session_id = "test-two-turn-integration-session"
-    partitioned_key = f"{session_id}:CAT"
+    partitioned_key = f"test-member:{session_id}:CAT"
 
     # Clean up before testing
     await session_mgr.delete_session(partitioned_key)
+
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         # Turn 1: First recommendation

@@ -367,11 +367,18 @@ async def _prepare_chat_context(
 
     target_persona = normalize_persona(raw_persona, default_mode=requested_mode)
 
-    # 1. Automatic Session Partitioning by Persona ({raw_session_id}:{persona})
-    # Partition session_id at the DB level ({session}:{persona}) for all 8 personas
-    # For guest users, strictly anchor the session to {guest_id}:{persona} so conversations are isolated per guest
+    # 1. Automatic Session Partitioning by Member and Persona ({effective_member_id}:{validated_uuid}:{persona})
+    # Partition session_id at the DB level for all 8 personas.
+    # For guest users, strictly anchor the session to {guest_id}:{persona} so conversations are isolated per guest.
+    # For registered members, enforce namespace prefixing f"{effective_member_id}:{validated_uuid}" to prevent cross-account eavesdropping.
     if user_role == "guest" and guest_id:
         raw_session_id = guest_id
+    elif effective_member_id and user_role != "guest":
+        base_sid = request.session_id or "default"
+        if base_sid.startswith(f"{effective_member_id}:"):
+            raw_session_id = base_sid
+        else:
+            raw_session_id = f"{effective_member_id}:{base_sid}"
     else:
         raw_session_id = request.session_id or "default"
 
@@ -630,7 +637,7 @@ async def chat_with_persona(
         await session_mgr.save_session(
             session_id=session_id,
             data={
-                "member_id": request.member_id,
+                "member_id": initial_state.get("member_id"),
                 "active_persona": active_persona,
                 "librarian_name": request.librarian_name,
                 "mode": persona_mode,
@@ -696,7 +703,7 @@ async def chat_with_persona(
         await session_mgr.save_session(
             session_id=session_id,
             data={
-                "member_id": request.member_id,
+                "member_id": initial_state.get("member_id"),
                 "active_persona": current_active_persona,
                 "librarian_name": request.librarian_name,
                 "mode": persona_mode,
@@ -1050,7 +1057,7 @@ async def chat_stream_with_persona(
             await session_mgr.save_session(
                 session_id=session_id,
                 data={
-                    "member_id": request.member_id,
+                    "member_id": initial_state.get("member_id"),
                     "active_persona": last_active_persona,
                     "librarian_name": request.librarian_name,
                     "mode": final_mode,
