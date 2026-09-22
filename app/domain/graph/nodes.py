@@ -264,7 +264,7 @@ def _get_llm(tools: Optional[List[Any]] = None) -> ResilientLLM:
     gemini_fallback_key = getattr(settings, "gemini_fallback_api_key", "").strip()
     openai_key = settings.openai_api_key.strip()
 
-    # 1. Primary: Google Gemini 3.5 Flash Lite with Primary Key
+    # 1. Primary: Google Gemini 3.5 Flash Lite with Primary Key (max_retries=0: 즉시 다음 후보로 토스)
     if gemini_key and not gemini_key.startswith("your_") and len(gemini_key) > 10:
         try:
             from langchain_google_genai import ChatGoogleGenerativeAI
@@ -272,6 +272,7 @@ def _get_llm(tools: Optional[List[Any]] = None) -> ResilientLLM:
             llm1: Any = ChatGoogleGenerativeAI(
                 model=settings.gemini_model,
                 google_api_key=gemini_key,
+                max_retries=0,
             )
             if tools:
                 llm1 = llm1.bind_tools(tools)
@@ -279,7 +280,7 @@ def _get_llm(tools: Optional[List[Any]] = None) -> ResilientLLM:
         except Exception as e:
             logger.warning("Failed to initialize primary Gemini LLM (%s).", e)
 
-    # 2. Secondary: Google Gemini 3.5 Flash Lite with Fallback Key (Teammate Key)
+    # 2. Secondary: Google Gemini 3.5 Flash Lite with Fallback Key (팀원 키로 3.5 재시도)
     if (
         gemini_fallback_key
         and not gemini_fallback_key.startswith("your_")
@@ -291,6 +292,7 @@ def _get_llm(tools: Optional[List[Any]] = None) -> ResilientLLM:
             llm2: Any = ChatGoogleGenerativeAI(
                 model=settings.gemini_model,
                 google_api_key=gemini_fallback_key,
+                max_retries=0,
             )
             if tools:
                 llm2 = llm2.bind_tools(tools)
@@ -298,37 +300,59 @@ def _get_llm(tools: Optional[List[Any]] = None) -> ResilientLLM:
         except Exception as e:
             logger.warning("Failed to initialize fallback Gemini LLM (%s).", e)
 
-    # 3. Tertiary: Google Gemini 3.1 Flash Lite (Workload Light Model)
-    light_key = gemini_key or gemini_fallback_key
+    # 3. Tertiary: Google Gemini 3.1 Flash Lite with Primary Key (안정적인 경량 모델)
     light_model = getattr(settings, "gemini_light_model", "gemini-3.1-flash-lite")
-    if light_key and not light_key.startswith("your_") and len(light_key) > 10:
+    if gemini_key and not gemini_key.startswith("your_") and len(gemini_key) > 10:
         try:
             from langchain_google_genai import ChatGoogleGenerativeAI
 
             llm3: Any = ChatGoogleGenerativeAI(
                 model=light_model,
-                google_api_key=light_key,
+                google_api_key=gemini_key,
+                max_retries=0,
             )
             if tools:
                 llm3 = llm3.bind_tools(tools)
             candidates.append(llm3)
         except Exception as e:
-            logger.warning("Failed to initialize light Gemini LLM (%s).", e)
+            logger.warning("Failed to initialize primary light Gemini LLM (%s).", e)
 
-    # 4. Emergency: Gemma 4 31B (14,400 RPD safety net)
-    emergency_model = getattr(settings, "gemma_emergency_model", "gemma-4-31b-it")
-    if light_key and not light_key.startswith("your_") and len(light_key) > 10:
+    # 4. Quaternary: Google Gemini 3.1 Flash Lite with Fallback Key (팀원 키로 3.1)
+    if (
+        gemini_fallback_key
+        and not gemini_fallback_key.startswith("your_")
+        and len(gemini_fallback_key) > 10
+    ):
         try:
             from langchain_google_genai import ChatGoogleGenerativeAI
 
             llm4: Any = ChatGoogleGenerativeAI(
-                model=emergency_model,
-                google_api_key=light_key,
-                temperature=0.7,
+                model=light_model,
+                google_api_key=gemini_fallback_key,
+                max_retries=0,
             )
             if tools:
                 llm4 = llm4.bind_tools(tools)
             candidates.append(llm4)
+        except Exception as e:
+            logger.warning("Failed to initialize fallback light Gemini LLM (%s).", e)
+
+    # 5. Emergency: Gemma 4 31B (안전망)
+    emergency_model = getattr(settings, "gemma_emergency_model", "gemma-4-31b-it")
+    emergency_key = gemini_key or gemini_fallback_key
+    if emergency_key and not emergency_key.startswith("your_") and len(emergency_key) > 10:
+        try:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+
+            llm5: Any = ChatGoogleGenerativeAI(
+                model=emergency_model,
+                google_api_key=emergency_key,
+                temperature=0.7,
+                max_retries=0,
+            )
+            if tools:
+                llm5 = llm5.bind_tools(tools)
+            candidates.append(llm5)
         except Exception as e:
             logger.warning("Failed to initialize emergency Gemma LLM (%s).", e)
 
