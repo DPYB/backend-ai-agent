@@ -1960,3 +1960,37 @@
 
 ### 다음 세션에서 할 일
 - 사용자의 확인 및 요청 시 `feat/curator-timeout-and-biblio-enrichment` 브랜치 커밋 및 푸시, PR 생성 (`feat[curator]: 큐레이터 타임아웃 15초 현실화 및 폴백 도서 100% 실서지 완성형 바인딩`).
+- **Phase 60 구현 착수 (KDC 부재 시 EA_ADD_CODE 5자리 다중 폴백 및 분류 체계 SSOT 강화)**:
+  1. `app/infrastructure/national_library_client.py`:
+     - `search_book` 및 `search_by_isbn`에서 KDC 공백 시 `EA_ADD_CODE` 5자리의 뒤 3자리를 KDC 코드로 추출/보강
+     - `map_kdc_to_genre`에서 KDC 513.8 및 비숫자 주제어 텍스트 우선 매핑 분기 강화
+  2. `app/api/router.py`:
+     - `classify_genre` 응답에 `subject`, `display_genre` 동반 반환
+  3. 단위 테스트 작성 (`tests/unit/test_recommend_metadata.py`) 및 전체 테스트 검증
+
+---
+
+## 세션 59 (2026-09-22)
+
+### 진행한 작업
+1. **작업 브랜치 분기**:
+   - `develop` 최신화 상태에서 `feat/curator-verified-cover-selection` 브랜치 분기.
+2. **국립도서관 표지 생존 판본 최우선 선별 및 디폴트 커버 방어 (`app/infrastructure/national_library_client.py`)**:
+   - `search_book`에서 검색 결과(`ranked_docs`) 순회 시 표지(국립도서관 `TITLE_URL` 또는 교보문고 CDN)가 실제로 살아있는(HTTP 200 OK & 34,150B 미존재 회색 플레이스홀더 배제) 판본을 즉시 최우선(`best_item`)으로 채택하여, 오래된 초판본/절판본이 1순위로 잘못 선택되는 현상 원천 차단.
+   - `DEFAULT_BOOK_COVER_URL = "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=450&q=80"` SSOT 상수를 정의하여, 표지가 전무한 희귀 도서의 경우에도 엑스박스나 교보의 '이미지 제공 안 됨' 대신 안정적인 고화질 도서 커버를 보장.
+   - `get_verified_cover_url`, `search_book`, `search_by_isbn`에서 깨진 CDN 조립을 차단하고 생존 검증 및 `DEFAULT_BOOK_COVER_URL` 폴백을 일관 적용.
+3. **단위 테스트 작성 및 AI 자가 검증 (Self-Validation)**:
+   - `tests/unit/test_recommend_metadata.py`:
+     - `test_get_verified_cover_url_kyobo_fallback`: 빈 입력 시 `DEFAULT_BOOK_COVER_URL` 반환 검증.
+     - `test_search_book_prioritizes_alive_cover`: 구판본(1998 초판, 표지 깨짐) 대신 신판본(2013 개정판, 표지 살아있음)을 우선 채택하는지 검증.
+     - `test_search_book_falls_back_to_default_cover_when_all_dead`: 모든 후보 표지가 깨져있을 때 `DEFAULT_BOOK_COVER_URL`로 폴백되는지 검증.
+     - `test_search_by_isbn_covers_alive_and_dead`: ISBN 검색 시 생존 표지 및 디폴트 커버 폴백 검증.
+   - 전체 **212개 단위 테스트 100% 그린(Success) 통과** (`212 passed, 1 warning in 81.34s`).
+   - `uv run ruff check --fix .` & `uv run ruff format .`: 0 errors 무결점 통과.
+   - `uv run mypy app tests`: 87개 소스 파일 0 errors 무결점 통과.
+4. **하네스 문서 동기화**:
+   - `STATE.md`, `PLAN.md`, `DECISIONS.md`, `HANDOFF.md` 갱신 완료.
+
+### 다음 세션에서 할 일
+- 사용자 컨펌 후 `feat/curator-verified-cover-selection` 브랜치 커밋 및 푸시, PR 생성 (`fix[curator]: 국립도서관 표지 생존 판본 최우선 채택 및 디폴트 커버 방어`).
+- Phase 60 (KDC 부재 시 EA_ADD_CODE 5자리 다중 폴백 및 분류 체계 SSOT 강화) 순차 진행.

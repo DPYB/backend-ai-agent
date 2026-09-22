@@ -93,7 +93,9 @@ def test_get_verified_cover_url_kyobo_fallback():
 
     # When neither cover nor valid ISBN exists
     placeholder_url = get_verified_cover_url("", "")
-    assert "placeholder" in placeholder_url
+    from app.infrastructure.national_library_client import DEFAULT_BOOK_COVER_URL
+
+    assert placeholder_url == DEFAULT_BOOK_COVER_URL
 
 
 @pytest.mark.asyncio
@@ -465,3 +467,172 @@ async def test_chat_stream_done_event_includes_library_books(monkeypatch):
         assert len(done_payload["library_books"]) == 1
         assert done_payload["library_books"][0]["title"] == "참을 수 없는 존재의 가벼움"
         assert done_payload["library_books"][0]["author"] == "밀란 쿤데라"
+
+
+@pytest.mark.asyncio
+async def test_search_book_prioritizes_alive_cover(monkeypatch):
+    """Verify that search_book chooses the edition whose cover image is alive over an older edition with broken cover."""
+    import httpx
+
+    client = NationalLibraryClient(cert_key="test_approved_key")
+
+    mock_docs = [
+        {
+            "TITLE": "모순 (1998 초판)",
+            "AUTHOR": "양귀자",
+            "PUBLISHER": "살림출판사",
+            "EA_ISBN": "9788952200001",
+            "PUBLISH_PREDATE": "1998",
+            "PAGE": "250 쪽",
+            "TITLE_URL": "http://broken.cover/1998.jpg",
+        },
+        {
+            "TITLE": "모순 (2013 개정판)",
+            "AUTHOR": "양귀자",
+            "PUBLISHER": "쓰다",
+            "EA_ISBN": "9788998441012",
+            "PUBLISH_PREDATE": "2013",
+            "PAGE": "296 쪽",
+            "TITLE_URL": "https://contents.kyobobook.co.kr/sih/fit-in/458x0/pdt/9788998441012.jpg",
+        },
+    ]
+
+    # Mock National Library API HTTP response
+    async def mock_nl_get(self, url, params=None, **kwargs):
+        class MockResponse:
+            status_code = 200
+
+            def json(self):
+                return {"docs": mock_docs}
+
+        return MockResponse()
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", mock_nl_get)
+
+    # Mock check_cover_alive: First ISBN is broken (34150B or dead), second ISBN is alive
+    async def mock_check_cover(url, timeout=1.0):
+        if "9788952200001" in url or "broken" in url:
+            return False
+        if "9788998441012" in url:
+            return True
+        return False
+
+    monkeypatch.setattr(
+        "app.infrastructure.national_library_client.check_cover_alive", mock_check_cover
+    )
+
+    result = await client.search_book("모순", "양귀자")
+    assert result is not None
+    # Must pick the edition with alive cover (2013 개정판)
+    assert result["isbn"] == "9788998441012"
+    assert "9788998441012" in result["cover_url"]
+
+
+@pytest.mark.asyncio
+async def test_search_book_falls_back_to_default_cover_when_all_dead(monkeypatch):
+    """Verify that search_book falls back to DEFAULT_BOOK_COVER_URL when all candidate covers are dead."""
+    import httpx
+
+    from app.infrastructure.national_library_client import (
+        DEFAULT_BOOK_COVER_URL,
+    )
+
+    client = NationalLibraryClient(cert_key="test_approved_key")
+
+    mock_docs = [
+        {
+            "TITLE": "희귀 고서",
+            "AUTHOR": "미상",
+            "PUBLISHER": "고서출판",
+            "EA_ISBN": "9788900000000",
+            "PUBLISH_PREDATE": "1970",
+            "PAGE": "150 쪽",
+            "TITLE_URL": "",
+        }
+    ]
+
+    async def mock_nl_get(self, url, params=None, **kwargs):
+        class MockResponse:
+            status_code = 200
+
+            def json(self):
+                return {"docs": mock_docs}
+
+        return MockResponse()
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", mock_nl_get)
+
+    # All covers dead
+    async def mock_check_cover(url, timeout=1.0):
+        return False
+
+    monkeypatch.setattr(
+        "app.infrastructure.national_library_client.check_cover_alive", mock_check_cover
+    )
+
+    # Mock Google Books to return no cover
+    from app.infrastructure.google_books_client import GoogleBooksClient
+
+    async def mock_enrich(self, **kwargs):
+        return kwargs.get("existing_page_count"), ""
+
+    monkeypatch.setattr(GoogleBooksClient, "enrich_missing_metadata", mock_enrich)
+
+    result = await client.search_book("희귀 고서", "미상")
+    assert result is not None
+    assert result["cover_url"] == DEFAULT_BOOK_COVER_URL
+
+
+@pytest.mark.asyncio
+async def test_search_by_isbn_covers_alive_and_dead(monkeypatch):
+    """Verify search_by_isbn uses kyobo cover if alive, falls back to DEFAULT_BOOK_COVER_URL if dead."""
+    import httpx
+
+    from app.infrastructure.national_library_client import DEFAULT_BOOK_COVER_URL
+
+    client = NationalLibraryClient(cert_key="test_approved_key")
+
+    mock_docs = [
+        {
+            "TITLE": "테스트 도서",
+            "AUTHOR": "테스트 저자",
+            "PUBLISHER": "테스트 출판사",
+            "PAGE": "200 쪽",
+            "TITLE_URL": "",
+        }
+    ]
+
+    async def mock_nl_get(self, url, params=None, **kwargs):
+        class MockResponse:
+            status_code = 200
+
+            def json(self):
+                return {"docs": mock_docs}
+
+        return MockResponse()
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", mock_nl_get)
+
+    # 1. When cover is alive
+    async def mock_check_alive(url, timeout=1.0):
+        return True
+
+    monkeypatch.setattr(
+        "app.infrastructure.national_library_client.check_cover_alive", mock_check_alive
+    )
+
+    res_alive = await client.search_by_isbn("9788937460449")
+    assert res_alive is not None
+    assert "9788937460449" in res_alive["cover_url"]
+
+    # 2. When cover is dead
+    async def mock_check_dead(url, timeout=1.0):
+        return False
+
+    monkeypatch.setattr(
+        "app.infrastructure.national_library_client.check_cover_alive", mock_check_dead
+    )
+
+    res_dead = await client.search_by_isbn("9788937460449")
+    assert res_dead is not None
+    assert res_dead["cover_url"] == DEFAULT_BOOK_COVER_URL
