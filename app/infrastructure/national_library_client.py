@@ -686,7 +686,9 @@ class NationalLibraryClient:
                                 # KDC 부재 시 EA_ADD_CODE(5자리 부가기호) 다중 폴백
                                 raw_kdc = str(selected.get("KDC", "")).strip() or None
                                 if not raw_kdc and selected.get("EA_ADD_CODE"):
-                                    extracted_code = extract_kdc_code(str(selected.get("EA_ADD_CODE", "")))
+                                    extracted_code = extract_kdc_code(
+                                        str(selected.get("EA_ADD_CODE", ""))
+                                    )
                                     if extracted_code:
                                         raw_kdc = extracted_code
 
@@ -746,7 +748,8 @@ class NationalLibraryClient:
                                     "display_genre": display_genre,
                                     "cover_url": final_cover,
                                     "page_count": final_page,
-                                    "description": raw_subject or f"《{final_title}》 정식 서지정보",
+                                    "description": raw_subject
+                                    or f"《{final_title}》 정식 서지정보",
                                     "source": "NATIONAL_LIBRARY_API",
                                 }
             except Exception as e:
@@ -825,8 +828,7 @@ class NationalLibraryClient:
                                 "display_genre": display_genre,
                                 "cover_url": cover_url,
                                 "page_count": page_count,
-                                "description": raw_subject
-                                or f"《{item_title}》 정식 서지정보",
+                                "description": raw_subject or f"《{item_title}》 정식 서지정보",
                                 "source": "NATIONAL_LIBRARY_API",
                             }
             except Exception as e:
