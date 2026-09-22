@@ -846,6 +846,16 @@ class NationalLibraryClient:
                 "genre": "LITERATURE",
                 "description": "오늘 엄마가 죽었다. 부조리한 세상 속에서 진실에 정직하고자 했던 한 인간의 강렬한 초상.",
             },
+            "모모": {
+                "title": "모모",
+                "author": "미하엘 엔데",
+                "publisher": "비룡소",
+                "isbn": "9788949110271",
+                "cover_url": get_verified_cover_url("", "9788949110271"),
+                "page_count": 372,
+                "genre": "LITERATURE",
+                "description": "시간을 훔치는 회색 도둑들과 맞서 시간의 진정한 비밀을 찾아 떠나는 모모의 신비로운 모험.",
+            },
             "참을 수 없는 존재의 가벼움": {
                 "title": "참을 수 없는 존재의 가벼움",
                 "author": "밀란 쿤데라",
