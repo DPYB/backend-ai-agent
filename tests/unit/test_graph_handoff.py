@@ -285,3 +285,60 @@ def test_is_delayed_curation_promise():
     assert _is_delayed_curation_promise("전문 큐레이터에게 부탁해 볼게.") is True
     assert _is_delayed_curation_promise("시간 있으면 이야기하자.") is False
     assert _is_delayed_curation_promise("이 책은 정말 감동적인 이야기란다.") is False
+
+
+@pytest.mark.asyncio
+async def test_curated_books_prompt_enforces_recommendation_sequence(monkeypatch):
+    """Verify that when curated_books are present, the system prompt strictly enforces the 4-step sequence."""
+    from langchain_core.messages import SystemMessage
+
+    from app.domain.graph.nodes import cat_node
+
+    captured_system_prompts = []
+
+    class MockLLM:
+        async def ainvoke(self, messages, config=None):
+            for m in messages:
+                if isinstance(m, SystemMessage):
+                    captured_system_prompts.append(m.content)
+            return AIMessage(
+                content="사용자님, 마음이 많이 허전하셨겠어요.\n\n### 📖 코스모스\n우주적 관점을 주는 책입니다."
+            )
+
+    from app.domain.graph import nodes
+
+    monkeypatch.setattr(nodes, "_get_llm", lambda tools=None: MockLLM())
+
+    curated_books = [
+        {
+            "title": "코스모스",
+            "author": "칼 세이건",
+            "publisher": "사이언스북스",
+            "isbn": "9788983711892",
+            "reason": "우주적 관점에서 인간의 고뇌를 조망하게 해 줍니다.",
+        }
+    ]
+
+    state = {
+        "messages": [
+            HumanMessage(content="해외 연수 떨어져서 너무 울적해. 위로가 될 책 추천해줘.")
+        ],
+        "member_id": "test-uuid",
+        "active_persona": "CAT",
+        "curated_books": curated_books,
+        "mode": "LIBRARIAN",
+    }
+
+    result = await cat_node(state)
+    assert result is not None
+    assert len(captured_system_prompts) > 0
+    prompt_text = captured_system_prompts[0]
+
+    # Verify anti-format-hijacking and strict sequence instructions
+    assert "도서 추천 시 필수 출력 순서 및 구성 원칙" in prompt_text
+    assert "포맷 하이재킹 및 자판기식 출력 엄격 금지" in prompt_text
+    assert "1단계: (상황 공감 및 캐릭터 고유 사색" in prompt_text
+    assert "2단계: (도서 추천 및 구체적 처방 사유" in prompt_text
+    assert "3단계: (마크다운 헤딩 규격 및 카드 트리거" in prompt_text
+    assert "### 📖 {도서명}" in prompt_text
+    assert "코스모스" in prompt_text

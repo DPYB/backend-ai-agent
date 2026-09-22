@@ -1869,3 +1869,44 @@
 
 ### 다음 세션에서 할 일
 - 사용자의 확인 및 요청 시 `feat/therapy-keywords-kdc-mapping` 브랜치 커밋 및 푸시, PR 생성 (`feat[curator]: 미술치료 및 심리치유 도서의 철학(PHILOSOPHY) 장르 매핑 1순위 보강`).
+
+---
+
+## 세션 55 (2026-09-22)
+
+### 진행한 작업
+1. **국립중앙도서관 매퍼 내 특정 도서명 하드코딩 제거 (`app/infrastructure/national_library_client.py`)**:
+   - `map_kdc_to_genre`의 키워드 매핑 루프에서 `"오디세이아"`, `"오뒷세이아"`, `"그림의 힘"` 등 특정 도서명 하드코딩을 완전히 제거.
+   - 범용 도메인 키워드(`"미술치료"`, `"심리치료"`, `"마음치유"`, `"소설"`, `"에세이"` 등)와 `NON_CURATABLE_KEYWORDS`는 그대로 유지하여 분류 순수성 및 SSOT 확보.
+2. **단위 테스트 갱신 및 자가 검증 (Self-Validation)**:
+   - `tests/unit/test_recommend_metadata.py`: `title="그림의 힘"` 단독 호출 테스트를 범용 키워드 `title="미술치료 입문"`으로 갱신.
+   - `pytest tests/unit/test_recommend_metadata.py`: 14개 테스트 100% 그린 패스 (`14 passed`).
+   - `ruff check app/infrastructure/national_library_client.py tests/unit/test_recommend_metadata.py`: All checks passed 무결점 통과.
+3. **하네스 문서 동기화**:
+   - `.harness/STATE.md`, `HANDOFF.md`에 Phase 55 기록 완료.
+
+### 다음 세션에서 할 일
+- 사용자의 요청에 따라 커밋 생성 및 푸시.
+
+---
+
+## 세션 56 (2026-09-22)
+
+### 진행한 작업
+1. **작업 브랜치 분기 및 격리 개발**:
+   - DPYB 브랜치 규칙에 따라 `feat/recommend-response-sequence` 분기 (`main` <- `develop` <- `feat/*`).
+2. **도서 큐레이션 응답 시스템 프롬프트 순서(Sequence) 제약 추가 (`app/domain/graph/nodes.py`)**:
+   - `[도서 큐레이터가 엄선 및 검증한 국립중앙도서관 실존 도서 목록]` 지침에 4단계 필수 출력 순서(1단계: 상황 공감/사색 ➔ 2단계: 처방/추천 사유 ➔ 3단계: `### 📖 {도서명}` 헤딩 및 카드 트리거 ➔ 4단계: 마무리 응원 멘트)를 엄격히 규정.
+   - 공감/사유 없이 책 제목이나 헤딩부터 출력하는 '포맷 하이재킹(Format Hijacking) / 자판기식 출력'을 원천 금지.
+3. **서비스 공통 가드레일 네거티브 룰 보강 (`app/domain/guardrails/shared_rules.py`)**:
+   - `SHARED_GUARDRAILS`의 도서 추천 항목에 감정/상황에 대한 위로와 사유 설명 없이 카드 마커/헤딩만 기계적으로 던지는 행위 금지 명시.
+4. **단위 테스트 작성 및 AI 자가 검증 100% 그린 패스 (Self-Validation)**:
+   - `tests/unit/test_graph_handoff.py`: 큐레이션 도서 주입 시 시스템 프롬프트에 4단계 출력 순서 가이드라인이 누락 없이 주입되는지 검증하는 단위 테스트(`test_curated_books_prompt_enforces_recommendation_sequence`) 추가.
+   - 전체 **209개 단위 테스트 100% 통과** (`209 passed, 1 warning in 78.83s`).
+   - `uv run ruff check --fix .` & `uv run ruff format --check .`: 0 errors / All checks passed.
+   - `uv run mypy app/ tests/`: 87개 소스 파일 0 errors 무결성 확인.
+5. **하네스 문서 동기화**:
+   - `.harness/STATE.md`, `PLAN.md`, `DECISIONS.md`, `HANDOFF.md`에 Phase 54 작업 내역 및 설계 결정 기록 완료.
+
+### 다음 세션에서 할 일
+- 사용자의 확인 및 요청 시 `feat/recommend-response-sequence` 브랜치 커밋 및 푸시, PR 생성 (`feat[agent]: 도서 추천 포맷 하이재킹 방지 및 4단계 응답 시퀀스 강제화`).
