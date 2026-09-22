@@ -2,6 +2,7 @@
 
 import logging
 import re
+import time
 from typing import Any, Dict, List, Optional
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
@@ -675,7 +676,12 @@ async def _run_persona_node(
         ]
 
     llm = _get_llm(tools=active_tools)
+    t_llm_start = time.perf_counter()
     response = await llm.ainvoke(prompt_messages, config=config)
+    t_llm_ms = (time.perf_counter() - t_llm_start) * 1000
+    logger.info(
+        "[PROFILE] [Persona Node LLM] %s ainvoke completed in %.2f ms", persona_id, t_llm_ms
+    )
 
     # Check for Agent Tool Calls (trigger_debate_conclude or request_book_curation)
     tool_calls = getattr(response, "tool_calls", None) or []

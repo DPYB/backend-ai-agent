@@ -3,6 +3,7 @@
 import json
 import logging
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
@@ -397,7 +398,11 @@ async def _prepare_chat_context(
         session_id,
     )
     # Retrieve session history from Redis if exists for this partitioned session
+    t0 = time.perf_counter()
     saved_session = await session_mgr.get_session(session_id)
+    t_redis_get = (time.perf_counter() - t0) * 1000
+    logger.info("[PROFILE] [Step 1/6] Redis get_session: %.2f ms", t_redis_get)
+
     history_messages: List[BaseMessage] = []
     active_persona = target_persona
     context_summary = None
@@ -433,6 +438,7 @@ async def _prepare_chat_context(
     location_source = "none"
     weather_summary_for_signals: Optional[str] = None
 
+    t_weather_start = time.perf_counter()
     if request.location:
         location_coords = {
             "latitude": request.location.latitude,
@@ -461,6 +467,11 @@ async def _prepare_chat_context(
         else:
             weather_context = "[위치 권한 미허용 상태]"
             location_source = "none"
+
+    t_weather_ms = (time.perf_counter() - t_weather_start) * 1000
+    logger.info(
+        "[PROFILE] [Step 2/6] Weather fetch: %.2f ms (source=%s)", t_weather_ms, location_source
+    )
 
     signals = _build_signals(weather_summary_for_signals, location_source, request.message)
 
@@ -969,6 +980,10 @@ async def chat_stream_with_persona(
                 initial_state.get("recommended_history") or []
             )
 
+            t_stream_start = time.perf_counter()
+            first_token_time: Optional[float] = None
+            logger.info("[PROFILE] [Step 3/6] Starting _graph.astream_events...")
+
             run_config = {"configurable": {"thread_id": session_id}}
             async for event in _graph.astream_events(
                 initial_state, version="v2", config=run_config
@@ -984,6 +999,12 @@ async def chat_stream_with_persona(
                         if hasattr(chunk, "content"):
                             text_delta = extract_message_text(chunk.content)
                         if text_delta:
+                            if first_token_time is None:
+                                first_token_time = time.perf_counter()
+                                logger.info(
+                                    "[PROFILE] [Step 4/6] First token (TTFT): %.2f ms (from stream start)",
+                                    (first_token_time - t_stream_start) * 1000,
+                                )
                             accumulated_text += text_delta
                             tokens_emitted += 1
                             yield _format_sse("token", {"delta": text_delta})
@@ -991,6 +1012,11 @@ async def chat_stream_with_persona(
                 elif kind == "on_chain_end":
                     node_name = event.get("name")
                     output = event.get("data", {}).get("output")
+                    logger.info(
+                        "[PROFILE] on_chain_end: node=%s elapsed=%.2f ms",
+                        node_name,
+                        (time.perf_counter() - t_stream_start) * 1000,
+                    )
                     if node_name in ALL_PERSONA_NODES and isinstance(output, dict):
                         if output.get("active_persona"):
                             last_active_persona = output["active_persona"]
@@ -1113,6 +1139,12 @@ async def chat_stream_with_persona(
             extracted_stream_lib_books = _extract_library_books_from_text(accumulated_text)
 
             # 4. Emit done event
+            t_total_ms = (time.perf_counter() - t_stream_start) * 1000
+            logger.info(
+                "[PROFILE] [Step 5/6] Stream completed in %.2f ms (tokens_emitted=%d)",
+                t_total_ms,
+                tokens_emitted,
+            )
             yield _format_sse(
                 "done",
                 {
