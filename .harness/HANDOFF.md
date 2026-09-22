@@ -1910,3 +1910,22 @@
 
 ### 다음 세션에서 할 일
 - 사용자의 확인 및 요청 시 `feat/recommend-response-sequence` 브랜치 커밋 및 푸시, PR 생성 (`feat[agent]: 도서 추천 포맷 하이재킹 방지 및 4단계 응답 시퀀스 강제화`).
+
+---
+
+## 세션 57 (2026-09-22)
+
+### 진행한 작업
+1. **작업 브랜치 분기**:
+   - DPYB 브랜치 규칙에 따라 `develop` 브랜치에서 `feat/kdc-513-therapy-override` 분기.
+2. **KDC 513.8 철학(PHILOSOPHY) 라우팅 예외 룰 반영 (`app/infrastructure/national_library_client.py`)**:
+   - `map_kdc_to_genre`에서 국립중앙도서관 API가 `subject`를 누락하더라도 순수 KDC `513.8`(치료학/미술치료) 코드를 인식하여 500번대(기술과학) 앞자리 컷에 걸리지 않고 `PHILOSOPHY`로 정상 승격되도록 규칙 추가.
+3. **단위 테스트 추가 및 자가 검증 (Self-Validation)**:
+   - `tests/unit/test_recommend_metadata.py`: 제목/주제어 없이 순수 KDC 코드만 주어졌을 때 검증(`assert map_kdc_to_genre("513.8") == "PHILOSOPHY"`) 단위 테스트 추가.
+   - `pytest tests/unit/test_recommend_metadata.py`: 14개 테스트 100% 그린 패스.
+   - `ruff check`: All checks passed.
+4. **하네스 문서 동기화**:
+   - `.harness/STATE.md`, `HANDOFF.md`에 Phase 56 기록 완료.
+
+### 다음 세션에서 할 일
+- 사용자의 요청에 따라 커밋 생성, 푸시 및 PR 발행.

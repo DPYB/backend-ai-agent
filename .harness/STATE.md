@@ -6,6 +6,14 @@
 
 ## 완료된 단계
 
+- [x] **Phase 56: KDC 513.8(미술치료/심리요법) 철학(PHILOSOPHY) 라우팅 SSOT 강화**
+  - **`map_kdc_to_genre` KDC 513.8 예외 룰 추가 (`app/infrastructure/national_library_client.py`)**:
+    - 국립중앙도서관 API가 `subject`를 제공하지 않아도 순수 KDC 코드 `513.8`을 감지하여 `PHILOSOPHY`(철학/심리)로 승격하는 라우팅 규칙(`if raw_code.startswith("513.8"): return "PHILOSOPHY"`) 반영.
+    - 도서명 하드코딩 없이 KDC 표준 십진분류체계 기반으로 코어 API와 100% 동일한 분류 SSOT 확립.
+  - **단위 테스트 및 AI 자가 검증 (Self-Validation)**:
+    - `tests/unit/test_recommend_metadata.py`: `assert map_kdc_to_genre("513.8") == "PHILOSOPHY"` 단위 테스트 추가 및 전체 14개 테스트 100% 그린 패스.
+    - Ruff 린트/포맷 0 에러 무결점 통과.
+
 - [x] **Phase 54: 도서 추천 포맷 하이재킹 방지 및 응답 시퀀스(공감 ➔ 사유 ➔ 헤딩) 강제화**
   - **도서 큐레이션 응답 시스템 프롬프트 순서(Sequence) 제약 추가 (`app/domain/graph/nodes.py`)**:
     - `[도서 큐레이터가 엄선 및 검증한 국립중앙도서관 실존 도서 목록]` 안내 지침에 도서 추천 시 필수 출력 순서(1단계: 상황 공감/사색 ➔ 2단계: 처방/추천 사유 ➔ 3단계: `### 📖 {도서명}` 헤딩 및 카드 트리거 ➔ 4단계: 마무리 응원 멘트)를 엄격히 규정.
