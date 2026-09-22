@@ -142,12 +142,18 @@ def extract_kdc_code(kdc_str: Optional[str]) -> Optional[str]:
 
     clean = kdc_str.strip()
 
-    # 1. 3자리 정수 + 선택적 소수점 (예: 813.6, 005.133, 843, K813.6, [5] 813.6, 813.6/005)
+    # 1. 5자리 ISBN 부가기호 처리 (예: '03320' -> 뒤 3자리 '320' 추출, '93810' -> '810')
+    # ISBN(10/13자리)이나 가격(예: 15000원)과 혼동되지 않도록 비숫자 경계의 5자리 단독 패턴 우선 검사
+    match5 = re.search(r"(?:^|[^\d])\d{2}(\d{3})(?:[^\d]|$)", clean)
+    if match5:
+        return match5.group(1)
+
+    # 2. 3자리 정수 + 선택적 소수점 (예: 813.6, 005.133, 843, K813.6, [5] 813.6, 813.6/005)
     match3 = re.search(r"(?:^|[^\d])(\d{3}(?:\.\d+)?)(?:[^\d]|$)", clean)
     if match3:
         return match3.group(1)
 
-    # 2. 접두사/약식 1~2자리 (예: '81', '00', '8', '0')
+    # 3. 접두사/약식 1~2자리 (예: '81', '00', '8', '0')
     # 판차('5판'), 권차('제2권', 'v.5') 등 한글/영문 수식어가 직전/직후에 붙은 경우 배제
     match_short = re.search(r"(?:^|[\s/\[\(])(\d{1,2}(?:\.\d+)?)(?:[\s/\]\)]|$)", clean)
     if match_short:
@@ -162,8 +168,19 @@ def map_kdc_to_genre(kdc: str = "", subject: str = "", title: str = "") -> str:
     Returns:
         Standard uppercase genre Enum (LITERATURE, PHILOSOPHY, SOCIAL_SCIENCE, etc.)
     """
-    # First check title and subject for explicit literary / thematic keywords
-    combined_hint = f"{title} {subject}".lower()
+    # 1. KDC 분류기호가 직접 주어졌거나 유효한 경우 우선 정제
+    raw_code = extract_kdc_code(kdc) or ""
+
+    # [KDC 체계 모순 해결] 513.8(미술치료/심리요법/치료학) 등은 500번대(기술/의학)여도 철학/심리로 즉시 승격
+    if raw_code.startswith("513.8"):
+        return "PHILOSOPHY"
+
+    # 2. SUBJECT 및 TITLE 키워드 매핑 (서술형 텍스트 주제어 우선)
+    # 단, SUBJECT가 '3' 같은 1자리 KDC 대분류 숫자만 오는 경우는 키워드 매칭이 아닌 KDC 코드로 취급
+    subject_str = (subject or "").strip()
+    is_pure_digit_subject = subject_str.isdigit() and len(subject_str) <= 5
+
+    combined_hint = f"{title} {subject_str if not is_pure_digit_subject else ''}".lower()
     for keyword, mapped in [
         ("소설", "LITERATURE"),
         ("시집", "LITERATURE"),
@@ -204,15 +221,14 @@ def map_kdc_to_genre(kdc: str = "", subject: str = "", title: str = "") -> str:
         if keyword in combined_hint:
             return mapped
 
-    raw_code = extract_kdc_code(kdc) or ""
-    if not raw_code and subject:
-        # National library CIP often stores KDC major category digit in SUBJECT field (e.g. '8', '813')
-        raw_code = extract_kdc_code(subject) or ""
+    # 3. KDC 코드가 없고 SUBJECT가 제공된 경우 (CIP 등에서 '8', '813', '03320' 등으로 들어옴)
+    if not raw_code and subject_str:
+        raw_code = extract_kdc_code(subject_str) or ""
 
     if not raw_code:
         return "GENERAL"
 
-    # [KDC 체계 모순 해결] 513.8(미술치료/심리요법/치료학) 등은 500번대(기술/의학)여도 철학/심리로 승격
+    # [KDC 체계 모순 해결] 513.8 재확인 (subject에서 추출된 경우 포함)
     if raw_code.startswith("513.8"):
         return "PHILOSOPHY"
 
@@ -343,8 +359,11 @@ def clean_book_title(title: str) -> str:
     return clean.strip()
 
 
+DEFAULT_BOOK_COVER_URL = "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=450&q=80"
+
+
 def get_verified_cover_url(cover_url: str, isbn: str) -> str:
-    """Return verified cover URL, falling back to Kyobo CDN with 0ms server latency."""
+    """Return verified cover URL, falling back to Kyobo CDN or DEFAULT_BOOK_COVER_URL with 0ms server latency."""
     clean_url = (cover_url or "").strip()
     # Reject known broken/placeholder national library URLs
     if clean_url and clean_url.startswith("http") and "ecip/dbfiles" not in clean_url:
@@ -354,7 +373,7 @@ def get_verified_cover_url(cover_url: str, isbn: str) -> str:
     if clean_isbn and len(clean_isbn) in (10, 13):
         return f"https://contents.kyobobook.co.kr/sih/fit-in/458x0/pdt/{clean_isbn}.jpg"
 
-    return clean_url if clean_url else "https://via.placeholder.com/300x450.png?text=Book+Cover"
+    return clean_url if clean_url else DEFAULT_BOOK_COVER_URL
 
 
 async def check_cover_alive(url: str, timeout: float = 1.0) -> bool:
@@ -662,11 +681,23 @@ class NationalLibraryClient:
 
                                 raw_item_title = str(selected.get("TITLE", title))
                                 final_title = clean_book_title(raw_item_title) or raw_item_title
+                                raw_subject = str(selected.get("SUBJECT", "")).strip() or None
+
+                                # KDC 부재 시 EA_ADD_CODE(5자리 부가기호) 다중 폴백
+                                raw_kdc = str(selected.get("KDC", "")).strip() or None
+                                if not raw_kdc and selected.get("EA_ADD_CODE"):
+                                    extracted_code = extract_kdc_code(
+                                        str(selected.get("EA_ADD_CODE", ""))
+                                    )
+                                    if extracted_code:
+                                        raw_kdc = extracted_code
+
                                 genre = map_kdc_to_genre(
-                                    str(selected.get("KDC", "")),
-                                    str(selected.get("SUBJECT", "")),
+                                    raw_kdc or str(selected.get("KDC", "")),
+                                    raw_subject or "",
                                     title=final_title,
                                 )
+                                display_genre = raw_subject or genre_to_korean(genre)
                                 final_isbn = str(
                                     selected.get("EA_ISBN") or selected.get("SET_ISBN", "")
                                 ).strip()
@@ -695,11 +726,15 @@ class NationalLibraryClient:
                                     except Exception as gb_err:
                                         logger.debug("Google Books enrichment skipped: %s", gb_err)
 
-                                # 표지가 여전히 없다면 교보문고 고화질 CDN 0ms 폴백 적용
+                                # 표지가 여전히 없다면 교보문고 고화질 CDN 폴백 적용 (단, 생존 여부 검증)
                                 if not final_cover and final_isbn:
-                                    final_cover = get_verified_cover_url(final_cover, final_isbn)
+                                    kyobo_fallback = f"https://contents.kyobobook.co.kr/sih/fit-in/458x0/pdt/{re.sub(r'[^0-9X]', '', final_isbn)}.jpg"
+                                    if await check_cover_alive(kyobo_fallback):
+                                        final_cover = kyobo_fallback
 
-                                raw_kdc = str(selected.get("KDC", "")).strip() or None
+                                if not final_cover:
+                                    final_cover = DEFAULT_BOOK_COVER_URL
+
                                 return {
                                     "title": final_title,
                                     "author": clean_author_name(
@@ -708,10 +743,12 @@ class NationalLibraryClient:
                                     "publisher": selected.get("PUBLISHER", "출판사 미상"),
                                     "isbn": final_isbn,
                                     "kdc": raw_kdc,
+                                    "subject": raw_subject,
+                                    "genre": genre,
+                                    "display_genre": display_genre,
                                     "cover_url": final_cover,
                                     "page_count": final_page,
-                                    "genre": genre,
-                                    "description": selected.get("SUBJECT", "")
+                                    "description": raw_subject
                                     or f"《{final_title}》 정식 서지정보",
                                     "source": "NATIONAL_LIBRARY_API",
                                 }
@@ -747,24 +784,51 @@ class NationalLibraryClient:
                                 str(item.get("AUTHOR", "") or "저자 미상")
                             )
                             page_count = parse_page_count(str(item.get("PAGE", "")))
+                            raw_subject = str(item.get("SUBJECT", "")).strip() or None
+
+                            # KDC 부재 시 EA_ADD_CODE(5자리 부가기호) 다중 폴백
+                            raw_kdc = str(item.get("KDC", "")).strip() or None
+                            if not raw_kdc and item.get("EA_ADD_CODE"):
+                                extracted_code = extract_kdc_code(str(item.get("EA_ADD_CODE", "")))
+                                if extracted_code:
+                                    raw_kdc = extracted_code
+
                             genre = map_kdc_to_genre(
-                                str(item.get("KDC", "")),
-                                str(item.get("SUBJECT", "")),
+                                raw_kdc or str(item.get("KDC", "")),
+                                raw_subject or "",
                                 title=item_title,
                             )
-                            kyobo_url = f"https://contents.kyobobook.co.kr/sih/fit-in/458x0/pdt/{clean_isbn}.jpg"
-                            raw_kdc = str(item.get("KDC", "")).strip() or None
+                            display_genre = raw_subject or genre_to_korean(genre)
+                            raw_cover = str(item.get("TITLE_URL", "")).strip()
+                            cover_url = ""
+                            if (
+                                raw_cover
+                                and raw_cover.startswith("http")
+                                and "ecip/dbfiles" not in raw_cover
+                            ):
+                                if await check_cover_alive(raw_cover):
+                                    cover_url = raw_cover
+
+                            if not cover_url and clean_isbn:
+                                kyobo_candidate = f"https://contents.kyobobook.co.kr/sih/fit-in/458x0/pdt/{clean_isbn}.jpg"
+                                if await check_cover_alive(kyobo_candidate):
+                                    cover_url = kyobo_candidate
+
+                            if not cover_url:
+                                cover_url = DEFAULT_BOOK_COVER_URL
+
                             return {
                                 "title": item_title,
                                 "author": item_author,
                                 "publisher": item.get("PUBLISHER", "출판사 미상"),
                                 "isbn": clean_isbn,
                                 "kdc": raw_kdc,
-                                "cover_url": kyobo_url,
-                                "page_count": page_count,
+                                "subject": raw_subject,
                                 "genre": genre,
-                                "description": item.get("SUBJECT", "")
-                                or f"《{item_title}》 정식 서지정보",
+                                "display_genre": display_genre,
+                                "cover_url": cover_url,
+                                "page_count": page_count,
+                                "description": raw_subject or f"《{item_title}》 정식 서지정보",
                                 "source": "NATIONAL_LIBRARY_API",
                             }
             except Exception as e:
@@ -1123,7 +1187,15 @@ class NationalLibraryClient:
         # Check if title matches any known item in sample catalog
         for key, biblio in sample_catalog.items():
             if key in title or title in key:
-                return {**biblio, "source": "NATIONAL_LIBRARY_FALLBACK_CATALOG"}
+                genre_val = biblio.get("genre", "GENERAL")
+                subj_val = biblio.get("subject")
+                disp_val = subj_val or genre_to_korean(genre_val)
+                return {
+                    **biblio,
+                    "subject": subj_val,
+                    "display_genre": disp_val,
+                    "source": "NATIONAL_LIBRARY_FALLBACK_CATALOG",
+                }
 
         # Guard against sentence fragments, queries, and noisy text:
         # A valid fallback book title must look like an actual book title.
@@ -1188,6 +1260,9 @@ class NationalLibraryClient:
             "author": author if author else "국립중앙도서관 정식 등록 작가",
             "publisher": "DPYB 검증 출판사",
             "isbn": "9791100000000",
+            "kdc": None,
+            "subject": None,
+            "display_genre": "문학",
             "cover_url": get_verified_cover_url("", "9791100000000"),
             "page_count": 280,
             "genre": "LITERATURE",

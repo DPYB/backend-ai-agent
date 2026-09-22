@@ -6,6 +6,18 @@
 
 ## 완료된 단계
 
+- [x] **Phase 59: 국립중앙도서관 표지 생존 판본 최우선 선별 및 디폴트 커버 방어**
+  - **표지 생존 판본 최우선 선별 및 디폴트 커버 방어 (`app/infrastructure/national_library_client.py`)**:
+    - 국립도서관 검색 결과(`ranked_docs`) 순회 시 표지(국립도서관 `TITLE_URL` 또는 교보문고 CDN)가 실제로 살아있는(HTTP 200 & 34,150B 회색 플레이스홀더 배제) 판본을 즉시 최우선(`best_item`)으로 채택하여 오래된 절판본/표지 미제공본이 1순위로 선정되는 결함 원천 차단.
+    - `DEFAULT_BOOK_COVER_URL = "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=450&q=80"` SSOT 상수를 정의하여, 표지가 아예 없는 희귀 도서의 경우에도 깨진 엑스박스나 교보 34,150B 플레이스홀더 대신 안정적인 고화질 도서 커버를 보장.
+    - `get_verified_cover_url`, `search_book`, `search_by_isbn`에서 깨진 CDN 조립을 차단하고 생존 검증 및 `DEFAULT_BOOK_COVER_URL` 폴백 일관 적용.
+  - **단위 테스트 작성 및 AI 자가 검증 (Self-Validation)**:
+    - `tests/unit/test_recommend_metadata.py`:
+      - `test_search_book_prioritizes_alive_cover`: 구판본(1998 초판, 표지 깨짐) 대신 신판본(2013 개정판, 표지 살아있음)을 정확히 우선 채택하는지 검증 통과.
+      - `test_search_book_falls_back_to_default_cover_when_all_dead`: 모든 후보 표지가 깨져있을 때 `DEFAULT_BOOK_COVER_URL`로 안전하게 폴백되는지 검증 통과.
+      - `test_search_by_isbn_covers_alive_and_dead`: ISBN 직접 검색 시에도 표지 생존 여부에 따라 교보 CDN 또는 `DEFAULT_BOOK_COVER_URL`이 적용되는지 검증 통과.
+    - 전체 **212개 단위 테스트 100% 통과** (`212 passed, 1 warning in 81.34s`), Ruff 린트/포맷 0 에러, Mypy 타입 체크 87개 소스 파일 0 에러 무결점 달성.
+
 - [x] **Phase 58: 큐레이터 타임아웃 현실화(15초) 및 비상 폴백 도서 100% 실서지 메타데이터(ISBN/표지/쪽수) 완성형 바인딩**
   - **큐레이터 LLM 및 검증 타임아웃 넉넉하게 확장 (`app/domain/graph/curator_node.py`)**:
     - 개별 LLM 타임아웃 7.0초 ➔ 15.0초 상향, 전체 `wait_for` 타임아웃 25.0초 ➔ 35.0초 상향, 국립중앙도서관 서지 검증 타임아웃 3.5초/4.0초 ➔ 5.0초 상향으로 네트워크 레이턴시로 인한 억울한 폴백 원천 방어.
