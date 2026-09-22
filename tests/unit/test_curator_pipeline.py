@@ -540,8 +540,10 @@ async def test_meta_recommendation_query_not_converted_to_fake_book():
         if not book.get("fallback"):
             assert book["verified"] is True
         else:
-            assert book["verified"] is False
-            assert book["isbn"] == ""
+            # Enriched fallback books now have 100% real biblio metadata (ISBN, verified: True)
+            assert book["verified"] is True
+            assert len(book["isbn"]) == 13
+            assert book["cover_url"].startswith("http")
 
 
 @pytest.mark.parametrize(
@@ -592,19 +594,24 @@ async def test_curator_query_case_matrix(query, expected_target, must_not_contai
             assert forbidden not in b["title"]
 
 
-def test_assemble_curated_books_guarantees_exact_two_books_and_unverified_fallback():
-    """Verify assemble_curated_books guarantees exactly 2 books and marks unverified fallbacks correctly."""
+@pytest.mark.asyncio
+async def test_assemble_curated_books_guarantees_exact_two_books_and_enriched_fallback():
+    """Verify assemble_curated_books guarantees exactly 2 books and enriches fallback books with full metadata."""
     from app.domain.graph.curator_node import assemble_curated_books
 
-    # Case A: 0 verified books -> 2 fallback books with verified: False and isbn: ""
-    assembled_a = assemble_curated_books(targeted=None, verified=[], recommended_history=[])
+    # Case A: 0 verified books -> 2 fallback books enriched with 100% real metadata (ISBN, cover, page)
+    assembled_a = await assemble_curated_books(targeted=None, verified=[], recommended_history=[])
     assert len(assembled_a) == 2
     for b in assembled_a:
-        assert b["verified"] is False
-        assert b["isbn"] == ""
+        assert b["verified"] is True
+        assert len(b["isbn"]) == 13
+        assert b["cover_url"].startswith("http")
+        assert b["page_count"] is not None and b["page_count"] > 0
+        assert b["publisher"] != ""
+        assert b["genre"] is not None
         assert b.get("fallback") is True
 
-    # Case B: 1 targeted book + 0 verified -> fills 1 fallback book (total 2)
+    # Case B: 1 targeted book + 0 verified -> fills 1 fallback book with full metadata (total 2)
     targeted = {
         "title": "프로젝트 헤일메리",
         "author": "앤디 위어",
@@ -612,12 +619,16 @@ def test_assemble_curated_books_guarantees_exact_two_books_and_unverified_fallba
         "verified": True,
         "era": "targeted",
     }
-    assembled_b = assemble_curated_books(targeted=targeted, verified=[], recommended_history=[])
+    assembled_b = await assemble_curated_books(
+        targeted=targeted, verified=[], recommended_history=[]
+    )
     assert len(assembled_b) == 2
     assert assembled_b[0]["title"] == "프로젝트 헤일메리"
     assert assembled_b[0]["verified"] is True
-    assert assembled_b[1]["verified"] is False
-    assert assembled_b[1]["isbn"] == ""
+    assert assembled_b[1]["verified"] is True
+    assert len(assembled_b[1]["isbn"]) == 13
+    assert assembled_b[1]["cover_url"].startswith("http")
+    assert assembled_b[1].get("fallback") is True
 
 
 def test_is_similar_title():
@@ -684,7 +695,8 @@ async def test_target_unresolved_returned_when_targeted_book_fails_verification(
     assert len(result["curated_books"]) == 2
 
 
-def test_assemble_curated_books_deduplicates_against_recommended_history():
+@pytest.mark.asyncio
+async def test_assemble_curated_books_deduplicates_against_recommended_history():
     """Verify assemble_curated_books filters out verified books that match recommended_history."""
     from app.domain.graph.curator_node import assemble_curated_books
 
@@ -704,7 +716,7 @@ def test_assemble_curated_books_deduplicates_against_recommended_history():
     ]
     # If "데미안" was recently recommended, it should be filtered out from verified list
     recommended_history = ["데미안"]
-    assembled = assemble_curated_books(
+    assembled = await assemble_curated_books(
         targeted=None,
         verified=verified,
         recommended_history=recommended_history,

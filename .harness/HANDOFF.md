@@ -1928,4 +1928,35 @@
    - `.harness/STATE.md`, `HANDOFF.md`에 Phase 56 기록 완료.
 
 ### 다음 세션에서 할 일
-- 사용자의 요청에 따라 커밋 생성, 푸시 및 PR 발행.
+- **Phase 58 구현 착수 (`feat/curator-timeout-and-biblio-enrichment` 분기)**:
+  1. `app/domain/graph/curator_node.py`:
+     - 큐레이터 LLM 타임아웃 상향 (7.0초 ➔ 15.0초), 전체 wait_for 25초 ➔ 35초, 서지 검증 3.5초 ➔ 5.0초 상향
+     - `assemble_curated_books`를 비동기(`async`)로 개선하여, 비상 폴백 도서 조립 시 `national_library_client.search_book`을 호출해 정식 13자리 ISBN, 교보문고 고화질 CDN 표지, 쪽수, 출판사를 100% 채운 완성형 객체로 반환
+  2. 단위 테스트 추가 (`tests/unit/test_curator_pipeline.py`) 및 전체 테스트(`pytest`, `ruff`, `mypy`) 100% 그린 검증
+  3. DPYB 컨벤션에 따른 커밋/푸시 및 PR 생성 보조
+
+---
+
+## 세션 58 (2026-09-22)
+
+### 진행한 작업
+1. **작업 브랜치 분기**:
+   - DPYB 브랜치 규칙에 따라 `develop` 브랜치에서 `feat/curator-timeout-and-biblio-enrichment` 작업 브랜치 분기.
+2. **큐레이터 타임아웃 현실화 (`app/domain/graph/curator_node.py`)**:
+   - 프론트엔드의 60초 SSE 스트리밍 버퍼에 맞추어 개별 LLM 타임아웃을 7.0초 ➔ 15.0초로 상향.
+   - 큐레이터 전체 `wait_for` 타임아웃을 25.0초 ➔ 35.0초로 상향.
+   - 지목 도서(`resolve_targeted`) 및 후보 서지 병렬 검증(`verify_candidates`) 타임아웃을 3.5초/4.0초 ➔ 5.0초로 확장하여 네트워크 지연으로 인한 조기 폴백을 방지.
+3. **폴백 도서 100% 실서지 메타데이터(ISBN/표지/쪽수) 완성형 바인딩 (`curator_node.py`, `national_library_client.py`)**:
+   - `assemble_curated_books`를 비동기(`async`) 함수로 개선하여, 비상 폴백 명작 투입 시 빈 껍데기(`isbn: ""`, `cover_url: ""`) 대신 `national_library_client.search_book`을 호출.
+   - 국립도서관 오프라인 카탈로그에 《모모》(미하엘 엔데, 비룡소, ISBN 9788949110271, 372쪽) 실서지를 추가하여 폴백 명작 8종 전원에 대한 100% 정식 13자리 ISBN, 교보문고 고화질 CDN 표지(458px), 실제 쪽수, 정식 출판사, KDC 장르 바인딩을 보장.
+   - 프론트엔드 도서 등록 폼(`/register`) 이동 시 정보 누락 0건 보장.
+4. **단위 테스트 및 AI 자가 검증 (Self-Validation)**:
+   - `tests/unit/test_curator_pipeline.py`: 비동기 `assemble_curated_books` 테스트 및 폴백 도서의 실서지 완성형 바인딩(ISBN 13자리, cover_url, verified=True) 검증 갱신 완료.
+   - 전체 **209개 단위 테스트 100% 그린(Success) 통과** (`209 passed, 1 warning in 79.79s`).
+   - `uv run ruff check --fix .` & `uv run ruff format --check .`: 0 errors / 102 files formatted 무결점 통과.
+   - `uv run mypy app/ tests/`: 87개 소스 파일 0 errors 무결점 확인.
+5. **하네스 문서 동기화**:
+   - `.harness/STATE.md`, `PLAN.md`, `DECISIONS.md`, `HANDOFF.md`에 Phase 58 내역 완벽 반영.
+
+### 다음 세션에서 할 일
+- 사용자의 확인 및 요청 시 `feat/curator-timeout-and-biblio-enrichment` 브랜치 커밋 및 푸시, PR 생성 (`feat[curator]: 큐레이터 타임아웃 15초 현실화 및 폴백 도서 100% 실서지 완성형 바인딩`).

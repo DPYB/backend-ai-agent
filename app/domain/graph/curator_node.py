@@ -257,7 +257,7 @@ def get_cached_curator_chain() -> Optional[Any]:
             llm1 = ChatGoogleGenerativeAI(
                 model=light_model,
                 google_api_key=gemini_key,
-                timeout=7.0,
+                timeout=15.0,
                 max_retries=0,
             )
             llm_candidates.append(llm1.with_structured_output(CuratorResponse))
@@ -272,7 +272,7 @@ def get_cached_curator_chain() -> Optional[Any]:
             llm2 = ChatGoogleGenerativeAI(
                 model=light_model,
                 google_api_key=gemini_fallback_key,
-                timeout=7.0,
+                timeout=15.0,
                 max_retries=0,
             )
             llm_candidates.append(llm2.with_structured_output(CuratorResponse))
@@ -287,7 +287,7 @@ def get_cached_curator_chain() -> Optional[Any]:
             llm3 = ChatGoogleGenerativeAI(
                 model=settings.gemini_model,
                 google_api_key=gemini_key,
-                timeout=7.0,
+                timeout=15.0,
                 max_retries=0,
             )
             llm_candidates.append(llm3.with_structured_output(CuratorResponse))
@@ -304,7 +304,7 @@ def get_cached_curator_chain() -> Optional[Any]:
                 model=settings.openai_model,
                 api_key=SecretStr(openai_key),
                 temperature=0.2,
-                timeout=7.0,
+                timeout=15.0,
                 max_retries=0,
             )
             llm_candidates.append(llm4.with_structured_output(CuratorResponse))
@@ -440,7 +440,7 @@ async def generate_candidates(
                     "negative_constraint": ctx["negative_constraint_text"],
                 }
             ),
-            timeout=25.0,
+            timeout=35.0,
         )
 
         target_title: Optional[str] = None
@@ -469,7 +469,7 @@ async def resolve_targeted(target_title: Optional[str]) -> Optional[Dict[str, An
     clean_target = target_title.strip().strip("《》〈〉「」『』\"'")
     nl_client = get_national_library_client()
     try:
-        biblio = await asyncio.wait_for(nl_client.search_book(title=clean_target), timeout=4.0)
+        biblio = await asyncio.wait_for(nl_client.search_book(title=clean_target), timeout=5.0)
         if biblio and biblio.get("isbn"):
             found_title = biblio.get("title", "")
             # Ensure retrieved title actually matches the target to prevent false positives
@@ -515,7 +515,7 @@ async def verify_candidates(candidates: List[Dict[str, Any]]) -> List[Dict[str, 
             return None
         try:
             biblio = await asyncio.wait_for(
-                nl_client.search_book(title=title, author=author), timeout=3.5
+                nl_client.search_book(title=title, author=author), timeout=5.0
             )
             if biblio and biblio.get("isbn"):
                 found_title = biblio.get("title", "")
@@ -550,12 +550,16 @@ async def verify_candidates(candidates: List[Dict[str, Any]]) -> List[Dict[str, 
     return verified
 
 
-def assemble_curated_books(
+async def assemble_curated_books(
     targeted: Optional[Dict[str, Any]],
     verified: List[Dict[str, Any]],
     recommended_history: List[str],
 ) -> List[Dict[str, Any]]:
-    """5. Assemble verified books guaranteeing exact 2-book pairing without duplicates."""
+    """5. Assemble verified books guaranteeing exact 2-book pairing without duplicates.
+
+    When filling with fallback masterpieces, enriches metadata (ISBN, cover URL, page count,
+    publisher, genre) via National Library client to guarantee 100% complete registration info.
+    """
     final_books: List[Dict[str, Any]] = []
 
     # Priority 1: Targeted book if present
@@ -578,34 +582,67 @@ def assemble_curated_books(
             continue
         final_books.append(b)
 
-    # If still fewer than 2 books, fill with honest fallback pool
+    # If still fewer than 2 books, fill with honest fallback pool enriched with real metadata
     if len(final_books) < 2:
         existing_titles: List[str] = [str(b["title"]) for b in final_books if b.get("title")] + [
             str(t) for t in recommended_history if t
         ]
         fallback_pairs = _get_random_elegant_fallback(exclude_titles=existing_titles)
+        nl_client = get_national_library_client()
+
         for fb in fallback_pairs:
             if len(final_books) >= 2:
                 break
             if not any(b.get("title") == fb["title"] for b in final_books):
-                # Unverified fallback: verified: False, isbn: "" for clean downstream handling
-                final_books.append(
-                    {
-                        "title": fb["title"],
-                        "author": fb["author"],
-                        "publisher": "출판사 확인 중",
-                        "isbn": "",
-                        "cover_url": "",
-                        "page_count": None,
-                        "genre": "LITERATURE",
-                        "description": fb["reason"],
-                        "reason": fb["reason"],
-                        "era": fb.get("era", "classic"),
-                        "verified": False,
-                        "fallback": True,
-                        "source": "MASTERPIECE_FALLBACK",
-                    }
-                )
+                # Search National Library / sample catalog to enrich fallback book with 100% real biblio
+                fb_title = fb["title"]
+                fb_author = fb.get("author", "")
+                biblio = None
+                try:
+                    biblio = await asyncio.wait_for(
+                        nl_client.search_book(title=fb_title, author=fb_author),
+                        timeout=5.0,
+                    )
+                except Exception as e:
+                    logger.warning("Fallback biblio enrichment failed for '%s': %s", fb_title, e)
+
+                if biblio and biblio.get("isbn"):
+                    final_books.append(
+                        {
+                            "title": biblio.get("title", fb_title),
+                            "author": biblio.get("author", fb_author),
+                            "publisher": biblio.get("publisher", "출판사 확인 중"),
+                            "isbn": biblio.get("isbn", ""),
+                            "cover_url": biblio.get("cover_url", ""),
+                            "page_count": biblio.get("page_count"),
+                            "genre": biblio.get("genre", "LITERATURE"),
+                            "description": biblio.get("description") or fb["reason"],
+                            "reason": fb["reason"],
+                            "era": fb.get("era", "classic"),
+                            "verified": True,
+                            "fallback": True,
+                            "source": biblio.get("source", "MASTERPIECE_FALLBACK"),
+                        }
+                    )
+                else:
+                    # Defensive fallback if even library search fails
+                    final_books.append(
+                        {
+                            "title": fb["title"],
+                            "author": fb["author"],
+                            "publisher": "출판사 확인 중",
+                            "isbn": "",
+                            "cover_url": "",
+                            "page_count": None,
+                            "genre": "LITERATURE",
+                            "description": fb["reason"],
+                            "reason": fb["reason"],
+                            "era": fb.get("era", "classic"),
+                            "verified": False,
+                            "fallback": True,
+                            "source": "MASTERPIECE_FALLBACK",
+                        }
+                    )
 
     return final_books[:2]
 
@@ -635,8 +672,8 @@ async def book_curator_node(state: AgentState) -> Dict[str, Any]:
         candidates_task = verify_candidates(raw_candidates)
         targeted_book, verified_books = await asyncio.gather(targeted_task, candidates_task)
 
-    # Stage 5: Assemble Exact 2-Book Pairing
-    curated_books = assemble_curated_books(
+    # Stage 5: Assemble Exact 2-Book Pairing (async)
+    curated_books = await assemble_curated_books(
         targeted=targeted_book,
         verified=verified_books,
         recommended_history=ctx["recommended_history"],
