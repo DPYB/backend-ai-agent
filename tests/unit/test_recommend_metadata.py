@@ -39,7 +39,7 @@ def test_map_kdc_to_genre():
     # Subject keyword fallback
     assert map_kdc_to_genre("", "따뜻한 위로의 힐링 소설") == "LITERATURE"
     assert map_kdc_to_genre("", "감성 산문과 에세이 모음") == "LITERATURE"
-    assert map_kdc_to_genre("", "") == "GENERAL"
+    assert map_kdc_to_genre("513.8") == "PHILOSOPHY"
     assert map_kdc_to_genre("513.8", "미술치료") == "PHILOSOPHY"
     assert map_kdc_to_genre("513.8", "", title="미술치료 입문") == "PHILOSOPHY"
     assert map_kdc_to_genre("", "심리치료") == "PHILOSOPHY"

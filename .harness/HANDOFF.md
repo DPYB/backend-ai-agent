@@ -1928,7 +1928,7 @@
    - `.harness/STATE.md`, `HANDOFF.md`에 Phase 56 기록 완료.
 
 ### 다음 세션에서 할 일
-- **Phase 56 구현 착수 (`feat/curator-timeout-and-biblio-enrichment` 분기)**:
+- **Phase 58 구현 착수 (`feat/curator-timeout-and-biblio-enrichment` 분기)**:
   1. `app/domain/graph/curator_node.py`:
      - 큐레이터 LLM 타임아웃 상향 (7.0초 ➔ 15.0초), 전체 wait_for 25초 ➔ 35초, 서지 검증 3.5초 ➔ 5.0초 상향
      - `assemble_curated_books`를 비동기(`async`)로 개선하여, 비상 폴백 도서 조립 시 `national_library_client.search_book`을 호출해 정식 13자리 ISBN, 교보문고 고화질 CDN 표지, 쪽수, 출판사를 100% 채운 완성형 객체로 반환
@@ -1956,8 +1956,7 @@
    - `uv run ruff check --fix .` & `uv run ruff format --check .`: 0 errors / 102 files formatted 무결점 통과.
    - `uv run mypy app/ tests/`: 87개 소스 파일 0 errors 무결점 확인.
 5. **하네스 문서 동기화**:
-   - `.harness/STATE.md`, `PLAN.md`, `DECISIONS.md`, `HANDOFF.md`에 Phase 56 내역 완벽 반영.
+   - `.harness/STATE.md`, `PLAN.md`, `DECISIONS.md`, `HANDOFF.md`에 Phase 58 내역 완벽 반영.
 
 ### 다음 세션에서 할 일
 - 사용자의 확인 및 요청 시 `feat/curator-timeout-and-biblio-enrichment` 브랜치 커밋 및 푸시, PR 생성 (`feat[curator]: 큐레이터 타임아웃 15초 현실화 및 폴백 도서 100% 실서지 완성형 바인딩`).
-

@@ -212,6 +212,10 @@ def map_kdc_to_genre(kdc: str = "", subject: str = "", title: str = "") -> str:
     if not raw_code:
         return "GENERAL"
 
+    # [KDC 체계 모순 해결] 513.8(미술치료/심리요법/치료학) 등은 500번대(기술/의학)여도 철학/심리로 승격
+    if raw_code.startswith("513.8"):
+        return "PHILOSOPHY"
+
     first_digit = raw_code[0]
 
     # [핵심] 000번대 총류 세부분류 실무 분할

@@ -6,7 +6,7 @@
 
 ## 완료된 단계
 
-- [x] **Phase 56: 큐레이터 타임아웃 현실화(15초) 및 비상 폴백 도서 100% 실서지 메타데이터(ISBN/표지/쪽수) 완성형 바인딩**
+- [x] **Phase 58: 큐레이터 타임아웃 현실화(15초) 및 비상 폴백 도서 100% 실서지 메타데이터(ISBN/표지/쪽수) 완성형 바인딩**
   - **큐레이터 LLM 및 검증 타임아웃 넉넉하게 확장 (`app/domain/graph/curator_node.py`)**:
     - 개별 LLM 타임아웃 7.0초 ➔ 15.0초 상향, 전체 `wait_for` 타임아웃 25.0초 ➔ 35.0초 상향, 국립중앙도서관 서지 검증 타임아웃 3.5초/4.0초 ➔ 5.0초 상향으로 네트워크 레이턴시로 인한 억울한 폴백 원천 방어.
   - **폴백 도서 100% 실서지 메타데이터(ISBN, 표지, 쪽수, 출판사, 장르) 완성형 바인딩 (`curator_node.py`, `national_library_client.py`)**:
@@ -15,6 +15,14 @@
   - **단위 테스트 작성 및 AI 자가 검증 (Self-Validation)**:
     - `tests/unit/test_curator_pipeline.py`: `test_assemble_curated_books_guarantees_exact_two_books_and_enriched_fallback` 비동기 테스트 및 메타 질의 폴백 도서의 실서지(13자리 ISBN, 표지, verified=True) 완성형 검증 통과.
     - 전체 **209개 단위 테스트 100% 통과** (`209 passed in 79.79s`), `ruff` 린트/포맷 0 에러, `mypy` 정적 타입 87개 소스 파일 0 에러 무결점 달성.
+
+- [x] **Phase 57: KDC 513.8(미술치료/심리요법) 철학(PHILOSOPHY) 라우팅 SSOT 강화**
+  - **`map_kdc_to_genre` KDC 513.8 예외 룰 추가 (`app/infrastructure/national_library_client.py`)**:
+    - 국립중앙도서관 API가 `subject`를 제공하지 않아도 순수 KDC 코드 `513.8`을 감지하여 `PHILOSOPHY`(철학/심리)로 승격하는 라우팅 규칙(`if raw_code.startswith("513.8"): return "PHILOSOPHY"`) 반영.
+    - 도서명 하드코딩 없이 KDC 표준 십진분류체계 기반으로 코어 API와 100% 동일한 분류 SSOT 확립.
+  - **단위 테스트 및 AI 자가 검증 (Self-Validation)**:
+    - `tests/unit/test_recommend_metadata.py`: `assert map_kdc_to_genre("513.8") == "PHILOSOPHY"` 단위 테스트 추가 및 전체 14개 테스트 100% 그린 패스.
+    - Ruff 린트/포맷 0 에러 무결점 통과.
 
 - [x] **Phase 54: 도서 추천 포맷 하이재킹 방지 및 응답 시퀀스(공감 ➔ 사유 ➔ 헤딩) 강제화**
   - **도서 큐레이션 응답 시스템 프롬프트 순서(Sequence) 제약 추가 (`app/domain/graph/nodes.py`)**:
