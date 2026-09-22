@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     gemini_fallback_api_key: str = Field(default="", alias="GEMINI_FALLBACK_API_KEY")
     gemini_model: str = Field(default="gemini-3.5-flash-lite", alias="GEMINI_MODEL")
     gemini_light_model: str = Field(default="gemini-3.1-flash-lite", alias="GEMINI_LIGHT_MODEL")
+    gemini_stable_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_STABLE_MODEL")
     gemma_emergency_model: str = Field(default="gemma-4-31b-it", alias="GEMMA_EMERGENCY_MODEL")
     gemini_embedding_model: str = Field(
         default="models/gemini-embedding-001",

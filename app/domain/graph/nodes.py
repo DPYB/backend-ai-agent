@@ -337,22 +337,58 @@ def _get_llm(tools: Optional[List[Any]] = None) -> ResilientLLM:
         except Exception as e:
             logger.warning("Failed to initialize fallback light Gemini LLM (%s).", e)
 
-    # 5. Emergency: Gemma 4 31B (안전망)
+    # 5. Stable GA Fallback: Google Gemini 2.5 Flash (구글 최강 안정화 GA 모델 - 503 방어)
+    stable_model = getattr(settings, "gemini_stable_model", "gemini-2.5-flash")
+    if gemini_key and not gemini_key.startswith("your_") and len(gemini_key) > 10:
+        try:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+
+            llm5_primary: Any = ChatGoogleGenerativeAI(
+                model=stable_model,
+                google_api_key=gemini_key,
+                max_retries=0,
+            )
+            if tools:
+                llm5_primary = llm5_primary.bind_tools(tools)
+            candidates.append(llm5_primary)
+        except Exception as e:
+            logger.warning("Failed to initialize primary stable Gemini LLM (%s).", e)
+
+    if (
+        gemini_fallback_key
+        and not gemini_fallback_key.startswith("your_")
+        and len(gemini_fallback_key) > 10
+    ):
+        try:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+
+            llm5_fallback: Any = ChatGoogleGenerativeAI(
+                model=stable_model,
+                google_api_key=gemini_fallback_key,
+                max_retries=0,
+            )
+            if tools:
+                llm5_fallback = llm5_fallback.bind_tools(tools)
+            candidates.append(llm5_fallback)
+        except Exception as e:
+            logger.warning("Failed to initialize fallback stable Gemini LLM (%s).", e)
+
+    # 6. Emergency: Gemma 4 31B (안전망)
     emergency_model = getattr(settings, "gemma_emergency_model", "gemma-4-31b-it")
     emergency_key = gemini_key or gemini_fallback_key
     if emergency_key and not emergency_key.startswith("your_") and len(emergency_key) > 10:
         try:
             from langchain_google_genai import ChatGoogleGenerativeAI
 
-            llm5: Any = ChatGoogleGenerativeAI(
+            llm6: Any = ChatGoogleGenerativeAI(
                 model=emergency_model,
                 google_api_key=emergency_key,
                 temperature=0.7,
                 max_retries=0,
             )
             if tools:
-                llm5 = llm5.bind_tools(tools)
-            candidates.append(llm5)
+                llm6 = llm6.bind_tools(tools)
+            candidates.append(llm6)
         except Exception as e:
             logger.warning("Failed to initialize emergency Gemma LLM (%s).", e)
 
