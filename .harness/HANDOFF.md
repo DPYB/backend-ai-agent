@@ -2025,9 +2025,23 @@
 6. **하네스 문서 동기화**:
    - `STATE.md`, `PLAN.md`, `DECISIONS.md`, `HANDOFF.md` 갱신 완료.
 
-### 다음 세션에서 할 일
-- **Phase 61 [3단계] 중앙 레포 (`DPYB/.github`) PR 린터 정규식 완화 PR 준비**:
-  - `reusable-pr-lint.yml`: `- **목적**:` 다음 줄 개행 허용 및 헤더 이모지 유연화 정규식 개선.
-  - (팀 협의 사항) 필수 섹션 4개 유지 여부 및 '고려사항' 빈 텍스트 경고 처리 안건 공유.
-- **Phase 60**: 국립도서관 KDC 부재 시 EA_ADD_CODE 5자리 다중 폴백 및 분류 체계 SSOT 강화 순차 진행.
+---
 
+## 세션 61 (2026-09-29)
+
+### 진행한 작업
+1. **본 레포 PR 생성 및 CI 전수 통과 확인**:
+   - `develop` 브랜치 기준 `feat/streamline-testing-verification` 브랜치 생성 및 분할 커밋/푸시 완료 (`refactor[test]: 계층형 3단계 검증 도입 및 외부 I/O 모킹을 통한 단위 테스트 고속화`).
+   - PR [#56](https://github.com/DPYB/backend-ai-agent/pull/56) 생성 완료: DPYB 4대 필수 섹션 완벽 준수.
+   - GitHub Actions CI 필수 체크 전원 통과 확인 (`Lint PR`: 6s 통과, `CI / Lint, Type Check & Test`: 49s 통과).
+2. **중앙 레포 (`DPYB/.github`) PR 린터 정규식 완화 및 배포**:
+   - `main` 브랜치에서 `.github/workflows/reusable-pr-lint.yml` 수정 및 푸시 완료 (`fix[ci]: PR 린터 목적 및 주요 변경사항 개행 허용 및 플레이스홀더 검사 정밀화`).
+   - `- **목적**:` 및 `- **주요 변경사항**:` 뒤 동일 줄 작성뿐만 아니라 다음 줄 개행(`\n`) 후 들여쓰기 작성도 지원하도록 정규식 개선 (`get_bullet_content`).
+   - 기본 플레이스홀더(`[작업 목적 한 줄 요약]`) 미작성 방치 검사는 엄격히 유지하여 전사 PR 품질 보존.
+3. **하네스 문서 동기화**:
+   - `STATE.md`, `PLAN.md`, `HANDOFF.md`에 Phase 61 전체 완료 및 린터 배포 반영.
+
+### 다음 세션에서 할 일
+- **PR #56 머지**: 팀원이 GitHub 웹에서 PR #56 확인 후 Squash and merge 수행 (사람 직접 클릭).
+- **코어 서버 (`backend-core-api`) 적용**: 앞서 정리한 계층형 3단계 검증 및 외부 I/O 모킹 가이드를 코어 서버에 적용.
+- **Phase 60 구현 착수**: 국립도서관 KDC 부재 시 `EA_ADD_CODE` 5자리 다중 폴백 및 분류 체계 SSOT 강화 (`feat/national-library-kdc-fallback`).
