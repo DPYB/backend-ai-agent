@@ -150,6 +150,7 @@ async def test_vectorize_debate_insight_api_endpoint():
         assert "성공적으로 벡터화" in data["message"]
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_chat_conclude_auto_saves_debate_insight_in_background():
     """Verify concluding a debate automatically vectors and saves insight in background."""

@@ -1,10 +1,13 @@
 """Unit tests for Debate Persona tone isolation, anti-animal-leakage, and session partitioning."""
 
 from typing import Any, Dict
+from unittest.mock import AsyncMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from langchain_core.messages import AIMessage
 
+from app.api import router
 from app.domain.guardrails.shared_rules import DEBATE_GUARDRAILS
 from app.domain.personas import (
     DEBATE_COUNSELOR_ID,
@@ -14,6 +17,33 @@ from app.domain.personas import (
     PERSONA_REGISTRY,
 )
 from app.main import app
+
+
+@pytest.fixture(autouse=True)
+def mock_graph_for_debate(monkeypatch: pytest.MonkeyPatch):
+    """Narrow mock on LangGraph execution to isolate debate persona routing tests from external LLM I/O."""
+
+    async def _mock_ainvoke(initial_state, config=None):
+        persona = initial_state.get("active_persona", "DEBATE_CRITIC")
+        meta = PERSONA_REGISTRY.get(persona, {})
+        return {
+            **initial_state,
+            "messages": [
+                *initial_state.get("messages", []),
+                AIMessage(content="토론 격리 테스트용 모킹 응답입니다."),
+            ],
+            "active_persona": persona,
+            "display_name": meta.get("display_name", persona),
+            "switch_suggestion": None,
+            "curated_books": None,
+            "signals": initial_state.get("signals"),
+            "is_concluded": False,
+            "debate_summary": None,
+        }
+
+    mock = AsyncMock(side_effect=_mock_ainvoke)
+    monkeypatch.setattr(router._graph, "ainvoke", mock)
+    return mock
 
 
 def test_debate_personas_have_anti_animal_guardrails():

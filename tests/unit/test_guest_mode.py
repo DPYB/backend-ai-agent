@@ -13,11 +13,14 @@ Verifies:
 
 import asyncio
 from typing import Any, Dict, List
+from unittest.mock import AsyncMock
 
 import jwt
 import pytest
 from httpx import ASGITransport, AsyncClient
+from langchain_core.messages import AIMessage
 
+from app.api import router
 from app.api.router import (
     CIRCUIT_BREAKER_FALLBACK_MSG,
     GUEST_LIMIT_EXCEEDED_MSG,
@@ -26,6 +29,52 @@ from app.api.router import (
 from app.core.config import settings
 from app.infrastructure.redis_session import RedisSessionManager
 from app.main import app
+
+
+@pytest.fixture(autouse=True)
+def mock_graph_for_guest_tests(monkeypatch: pytest.MonkeyPatch):
+    """Narrow mock on LangGraph execution to isolate guest limit tests from external LLM I/O."""
+
+    async def _mock_ainvoke(initial_state, config=None):
+        return {
+            **initial_state,
+            "messages": [
+                *initial_state.get("messages", []),
+                AIMessage(content="게스트 테스트용 더미 응답입니다."),
+            ],
+            "active_persona": initial_state.get("active_persona", "CAT"),
+            "switch_suggestion": None,
+            "curated_books": None,
+            "signals": initial_state.get("signals"),
+            "is_concluded": False,
+            "debate_summary": None,
+        }
+
+    async def _mock_astream_events(initial_state, version="v2", config=None):
+        from unittest.mock import MagicMock
+
+        chunk_mock = MagicMock()
+        chunk_mock.content = "게스트 스트리밍 더미 응답입니다."
+        yield {
+            "event": "on_chat_model_stream",
+            "name": "ChatGoogleGenerativeAI",
+            "data": {"chunk": chunk_mock},
+        }
+        yield {
+            "event": "on_chain_end",
+            "name": "cat_node",
+            "data": {
+                "output": {
+                    "messages": [AIMessage(content="게스트 스트리밍 더미 응답입니다.")],
+                    "active_persona": "CAT",
+                }
+            },
+        }
+
+    mock = AsyncMock(side_effect=_mock_ainvoke)
+    monkeypatch.setattr(router._graph, "ainvoke", mock)
+    monkeypatch.setattr(router._graph, "astream_events", _mock_astream_events)
+    return mock
 
 
 def create_mock_jwt(sub: str, role: str) -> str:

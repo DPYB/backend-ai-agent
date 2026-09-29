@@ -10,19 +10,48 @@ Verifies:
 """
 
 from typing import Any, Dict
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from langchain_core.messages import AIMessage
 
+from app.api import router
 from app.core.config import settings
 from app.infrastructure.db.repository import get_agent_vector_repository
 from app.infrastructure.redis_session import get_redis_session_manager
 from app.main import app
 
 
+@pytest.fixture(autouse=True)
+def mock_graph_ainvoke(monkeypatch: pytest.MonkeyPatch):
+    """Narrow mock on LangGraph execution to isolate session security & schema tests from external LLM I/O."""
+
+    async def _mock_ainvoke(initial_state, config=None):
+        action = initial_state.get("action")
+        is_conclude = action == "conclude"
+        return {
+            **initial_state,
+            "messages": [
+                *initial_state.get("messages", []),
+                AIMessage(content="세션 격리 테스트를 위한 모킹 응답입니다."),
+            ],
+            "active_persona": initial_state.get("active_persona", "CAT"),
+            "switch_suggestion": None,
+            "curated_books": None,
+            "signals": initial_state.get("signals"),
+            "is_concluded": is_conclude,
+            "debate_summary": "요약된 토론 내용입니다." if is_conclude else None,
+        }
+
+    mock = AsyncMock(side_effect=_mock_ainvoke)
+    monkeypatch.setattr(router._graph, "ainvoke", mock)
+    return mock
+
+
 @pytest.mark.asyncio
-async def test_cross_member_same_uuid_session_isolation():
+async def test_cross_member_same_uuid_session_isolation(mock_graph_ainvoke: AsyncMock):
     """Verify two different members sending the same session UUID are partitioned by member namespace."""
     transport = ASGITransport(app=app)
     session_mgr = get_redis_session_manager()
@@ -83,6 +112,13 @@ async def test_cross_member_same_uuid_session_isolation():
         # Ensure Member B's secret does not appear in Member A's session
         assert any("회원 B의 독립된 독서 기록입니다." in m.get("content", "") for m in msgs_b)
         assert not any("회원 B의 독립된 독서 기록입니다." in m.get("content", "") for m in msgs_a)
+
+        # 4. Verify LangGraph received the correctly partitioned session IDs in thread_id config
+        assert mock_graph_ainvoke.call_count == 2
+        call_config_a = mock_graph_ainvoke.call_args_list[0].kwargs.get("config", {})
+        call_config_b = mock_graph_ainvoke.call_args_list[1].kwargs.get("config", {})
+        assert call_config_a.get("configurable", {}).get("thread_id") == expected_session_a
+        assert call_config_b.get("configurable", {}).get("thread_id") == expected_session_b
 
 
 @pytest.mark.asyncio

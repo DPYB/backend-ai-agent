@@ -1994,3 +1994,40 @@
 ### 다음 세션에서 할 일
 - 사용자 컨펌 후 `feat/curator-verified-cover-selection` 브랜치 커밋 및 푸시, PR 생성 (`fix[curator]: 국립도서관 표지 생존 판본 최우선 채택 및 디폴트 커버 방어`).
 - Phase 60 (KDC 부재 시 EA_ADD_CODE 5자리 다중 폴백 및 분류 체계 SSOT 강화) 순차 진행.
+
+---
+
+## 세션 60 (2026-09-28)
+
+### 진행한 작업
+1. **검증 병목 측정 및 실사**:
+   - `ruff check .` 실측: 0.23초 (전체 검사에도 부담 없음 확인).
+   - `mypy .` 실측: 1.96초 (캐시 활용 시 2초 내외 확인).
+   - `pytest` 병목 실측: 212개 테스트 실행 시 총 84.73초 소요되었으나, user CPU 시간은 5.74초(점유율 7%)에 불과하여 **소요 시간의 93% 이상이 CPU 연산이 아닌 외부 LLM 네트워크 타임아웃/폴백 체인 I/O 대기**임을 규명.
+   - `develop` 브랜치 프로텍션 룰 실사: `ci / Lint, Type Check & Test` 및 `lint / Validate PR & Commit Conventions`가 Required Status Check로 머지를 통제하고 있음을 GitHub API로 확인.
+2. **테스트 설정 최적화 (`pyproject.toml`)**:
+   - `addopts = "-q --tb=short"` 적용: 성공 시 진행 도트만 출력하여 컨텍스트 토큰 소모를 차단하고, 실패 시 traceback을 축약.
+   - CI에서 첫 실패 후에도 전체 실패 목록을 한 번에 볼 수 있도록 `-x`는 전역 설정에서 제외.
+   - `markers = ["integration: ..."]`를 등록하여 E2E/실제 파이프라인 테스트 분류.
+3. **하네스 AI 자가 검증 규칙 3단계 개정 (`AGENTS.md`)**:
+   - Tier 1 (작업 중): `ruff check .` + 변경 모듈 타깃 테스트만 실행 (`pytest tests/unit/test_<module>.py`).
+   - Tier 2 (커밋 & PR 직전 1회): `mypy .` + `pytest -x` (로컬 전용 `-x`로 조기 중단).
+   - Tier 3 (원격 CI): GitHub Actions 필수 체크가 전체 회귀 및 컨벤션을 최종 통제.
+   - PR 본문 템플릿(4개 필수 섹션 및 공백 없는 항목) 형식 준수 지침 명문화.
+4. **느린 테스트 좁은 Mocking 및 정합성 검증 (`tests/unit/test_session_security.py`, `test_guest_mode.py`)**:
+   - Pydantic UUID 유효성 검증 및 Redis 세션 키 네임스페이스 격리 테스트에서, 외부 LLM 호출을 건너뛰도록 `_graph.ainvoke`를 좁게 모킹.
+   - 모킹 시에도 핸들러가 세션 키(`expected_session`)를 LangGraph `thread_id`로 정확히 전달하는지 mock 인자 assertion을 완비하여 검증 정합성 보존.
+   - 실측 결과: `test_session_security.py` 실행 시간 **24.55s ➔ 8.20s**로 대폭 단축.
+   - `test_guest_mode.py` 11개 단위 테스트 7.26s에 100% 통과.
+5. **실제 파이프라인 테스트 통합 마커 분리 (`tests/unit/test_api.py`)**:
+   - 실제 사서/토론 에이전트 그래프를 거치는 테스트(`test_chat_endpoint_librarian_mode`, `test_chat_endpoint_debate_mode`, `test_chat_persona_switch_sanitizes_history_tone`)에 `@pytest.mark.integration` 마커를 부여.
+   - `pytest -m "not integration"` 실측: 209개 단위 테스트 **1분 57초(117.86s)** 통과. 전체 212개 테스트 100% 그린 유지.
+6. **하네스 문서 동기화**:
+   - `STATE.md`, `PLAN.md`, `DECISIONS.md`, `HANDOFF.md` 갱신 완료.
+
+### 다음 세션에서 할 일
+- **Phase 61 [3단계] 중앙 레포 (`DPYB/.github`) PR 린터 정규식 완화 PR 준비**:
+  - `reusable-pr-lint.yml`: `- **목적**:` 다음 줄 개행 허용 및 헤더 이모지 유연화 정규식 개선.
+  - (팀 협의 사항) 필수 섹션 4개 유지 여부 및 '고려사항' 빈 텍스트 경고 처리 안건 공유.
+- **Phase 60**: 국립도서관 KDC 부재 시 EA_ADD_CODE 5자리 다중 폴백 및 분류 체계 SSOT 강화 순차 진행.
+
