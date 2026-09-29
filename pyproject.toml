@@ -57,6 +57,10 @@ ignore = ["B008", "E501"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["."]
+addopts = "-q --tb=short"
+markers = [
+    "integration: marks tests that verify end-to-end integration or full pipeline execution",
+]
 
 [tool.mypy]
 python_version = "3.12"

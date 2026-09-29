@@ -76,6 +76,7 @@ async def test_list_personas_by_mode():
             assert p["mode"] == "DEBATE"
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_chat_endpoint_librarian_mode():
     """Verify POST /api/v1/chat works in LIBRARIAN mode with Cat persona."""
@@ -114,6 +115,7 @@ async def test_chat_endpoint_with_custom_librarian_name():
         assert data["display_name"] == "우리냥이"
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_chat_endpoint_debate_mode():
     """Verify POST /api/v1/chat works in DEBATE mode with Critic persona."""
@@ -184,6 +186,7 @@ async def test_chat_endpoint_guest_mode_success():
         assert "reply" in data
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_chat_persona_switch_sanitizes_history_tone():
     """Verify switching persona automatically partitions session_id at DB level ({session}:{persona})."""

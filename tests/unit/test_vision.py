@@ -158,12 +158,24 @@ async def test_ocr_endpoint():
         img_bytes = _create_dummy_image_bytes()
         files = {"image": ("sentence.jpg", img_bytes, "image/jpeg")}
 
-        response = await client.post("/api/v1/vision/ocr", files=files)
-        assert response.status_code == 200
-        data = response.json()
-        assert "text" in data
-        assert "lines" in data
-        assert "request_id" in data
+        dummy_result = GeminiOcrResult(
+            text="모킹된 문장입니다.",
+            lines=["모킹된 문장입니다."],
+            confidence=0.99,
+            request_id="mock-req-001",
+        )
+        with patch(
+            "app.api.v1.vision.gemini_ocr_client.extract_text",
+            new_callable=AsyncMock,
+            return_value=dummy_result,
+        ) as mock_extract:
+            response = await client.post("/api/v1/vision/ocr", files=files)
+            assert response.status_code == 200
+            data = response.json()
+            assert data["text"] == "모킹된 문장입니다."
+            assert data["lines"] == ["모킹된 문장입니다."]
+            assert data["request_id"] == "mock-req-001"
+            assert mock_extract.called
 
 
 def test_isbn_utils_checksum_and_extraction():

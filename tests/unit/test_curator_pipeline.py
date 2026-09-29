@@ -361,6 +361,7 @@ async def test_curator_node_anti_repeat_history_and_sliding_window():
         assert b["title"] in rec_history
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_two_turn_continuous_chat_persists_recommended_history_across_turns():
     """Verify that in a 2-turn conversation with the same session_id:

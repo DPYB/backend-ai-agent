@@ -23,3 +23,14 @@ def setup_test_env(monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(session, "get_session_factory", lambda: None)
     monkeypatch.setattr(repository, "get_session_factory", lambda: None)
+
+    # Bypass external live weather API calls in unit tests (0ms fast fallback)
+    from unittest.mock import AsyncMock
+
+    from app.infrastructure import weather_client
+
+    monkeypatch.setattr(
+        weather_client.WeatherClient,
+        "get_current_weather",
+        AsyncMock(return_value="맑음, 20.0°C"),
+    )

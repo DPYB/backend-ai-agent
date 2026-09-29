@@ -8,6 +8,8 @@ from httpx import ASGITransport, AsyncClient
 
 from app.main import app
 
+pytestmark = pytest.mark.integration
+
 
 def parse_sse_events(raw_text: str) -> List[Dict[str, Any]]:
     """Parse raw SSE text stream into list of event dictionaries."""

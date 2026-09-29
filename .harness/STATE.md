@@ -6,6 +6,24 @@
 
 ## 완료된 단계
 
+- [x] **Phase 61: CI/검증 프로세스 경량화 및 3단계 계층화 (Tiered Verification)**
+  - **테스트 옵션 최적화 (`pyproject.toml`)**:
+    - `addopts = "-q --tb=short"` 적용으로 성공 로그를 도트(`...`)로 축약하고 실패 추적을 간소화. CI에서 전체 실패 목록을 확인할 수 있도록 `-x`는 전역 옵션에서 안전하게 배제.
+    - `markers = ["integration: ..."]`를 등록하여 E2E/실제 파이프라인 테스트를 명시적으로 분류.
+  - **하네스 AI 자가 검증 규칙 3단계 개정 (`AGENTS.md`)**:
+    - Tier 1 (작업 중): `ruff check .` (0.2초) + 변경 모듈 타깃 단위 테스트만 실행.
+    - Tier 2 (커밋 & PR 직전 1회): `mypy .` (2초 내외) + `pytest -m "not integration" -x` (외부 LLM 네트워크/통합 테스트 제외 및 로컬 전용 조기 중단).
+    - Tier 3 (원격 CI): `develop` 브랜치의 Required Status Check(`reusable-python-ci.yml`, `reusable-pr-lint.yml`)에 최종 회귀 및 컨벤션 방어 위임.
+  - **세션 보안/게스트 모드/비전 OCR 좁은 Mocking 및 정합성 검증 (`test_session_security.py`, `test_guest_mode.py`, `test_vision.py`)**:
+    - 외부 LLM 호출 의도가 없는 스키마/세션 격리 테스트에서 LangGraph 및 OCR 호출만 좁게 모킹하여 불필요한 네트워크 타임아웃을 차단.
+    - 핸들러가 세션 키(`{member_id}:{uuid}:{persona}`)를 LangGraph `thread_id`로 정확히 전달하는지 mock 인자 assertion을 완비하여 검증 정합성 보존.
+    - 단독 실행 시간 실측: `test_session_security.py` 24.55s ➔ 8.20s, `test_ocr_endpoint` 55.69s ➔ 0.73s로 단축.
+  - **3회 반복 측정 기반 정밀 벤치마크 (동일 로컬 환경 중앙값)**:
+    - 최초 기준선 (Baseline): **84.73초** (212개 전체)
+    - 개선 후 전체 전수 검사 (`uv run pytest`, 212개): 13.23s / 13.53s / 12.53s ➔ **중앙값 13.23초** (**71.5초 단축, 약 84.4% 개선**)
+    - 개선 후 Tier 2 로컬 단위 회귀 (`uv run pytest -m "not integration" -x`, 202개): 10.41s / 9.84s / 9.92s ➔ **중앙값 9.92초** (**74.8초 단축, 약 88.3% 개선 및 10초 미만 달성**)
+    - 병목 원인 차단: `test_ocr_endpoint`(55.69초 외부 Gemini 누락) 모킹(0.73s) 및 `conftest.py`의 Open-Meteo 날씨 API 호출 바이패스(0ms)로 외부 네트워크 변동성 원천 제거.
+
 - [x] **Phase 59: 국립중앙도서관 표지 생존 판본 최우선 선별 및 디폴트 커버 방어**
   - **표지 생존 판본 최우선 선별 및 디폴트 커버 방어 (`app/infrastructure/national_library_client.py`)**:
     - 국립도서관 검색 결과(`ranked_docs`) 순회 시 표지(국립도서관 `TITLE_URL` 또는 교보문고 CDN)가 실제로 살아있는(HTTP 200 & 34,150B 회색 플레이스홀더 배제) 판본을 즉시 최우선(`best_item`)으로 채택하여 오래된 절판본/표지 미제공본이 1순위로 선정되는 결함 원천 차단.
