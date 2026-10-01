@@ -110,7 +110,7 @@ backend-ai-agent/
 
 | Method | Path | 설명 |
 | :--- | :--- | :--- |
-| `GET` | `/health` | **중앙 .github 킵얼라이브(10분 주기)** 전용 루트 헬스체크 (Render 슬립 방지 및 200 OK) |
+| `GET` | `/health` | **중앙 .github 킵얼라이브(10분 주기)** 및 Cloud Run 컨테이너 헬스체크 전용 루트 엔드포인트 (200 OK) |
 | `GET` | `/api/v1/health` | 서비스 헬스체크 및 Supabase/Redis 연결 확인 (Supabase 7일 슬립 방지 ping 포함) |
 | `GET` | `/api/v1/personas` | 사서(4종) 및 토론(4종) 페르소나 목록 조회 (모드 필터링 지원) |
 | `POST` | `/api/v1/chat` | AI 사서/토론자와의 대화 (JWT 서명 검증, 게스트 모드, 국립도서관 도서 추천 메타데이터 반환) |

@@ -4,15 +4,6 @@
 
 ---
 
-### 📌 Phase 61: CI/검증 프로세스 경량화 및 중앙 레포 PR 린터 개선
-
-#### [3단계] 중앙 레포 (`DPYB/.github`) PR 린터 정규식 완화 및 전사 템플릿 제안
-- [ ] **`reusable-pr-lint.yml` 정규식 유연화 PR 준비**:
-  - `- **목적**:` 다음 줄 개행 허용 및 이모지 유무 허용 정규식 개선
-  - (팀 협의 사항) 필수 섹션 4개 유지 여부 및 '고려사항' 빈 텍스트 경고 처리 안건 공유
-
-
-
 ### 📌 Phase 60: 국립도서관 KDC 부재 시 EA_ADD_CODE 5자리 다중 폴백 및 분류 체계 SSOT 강화
 
 - [ ] **`app/infrastructure/national_library_client.py` KDC 다중 폴백 및 5자리 부가기호 연동**:
