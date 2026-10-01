@@ -4,6 +4,20 @@
 
 ---
 
+- [x] **Phase 63: 월간 독서 리포트 가짜 목데이터 제거, 정직한 0건 반환 및 코어 API 헬스체크 연결성 진단 연동**
+  - **Core API 미연결/실패 시 가짜 목데이터(완독 3권 832쪽 《데미안》) 전면 제거 (`app/infrastructure/core_api_client.py`)**:
+    - `get_monthly_report_stats` 통신 실패 시 반환하던 하드코딩 3권/832쪽 목데이터를 `_empty_monthly_stats` 정적 메소드로 일원화하여 완독 0권, 0쪽, 0분의 구조화된 정직한 빈 스켈레톤 반환으로 교체.
+  - **활동 0건 시 억지 LLM 호출 방지 및 사서 독서 권유 멘트 반환 (`app/domain/reports/generator.py`)**:
+    - 독서 활동이 0건(`has_activity == False`)인 경우 불필요한 LLM 호출과 가짜 책 지어내기를 방지하고, 사서 페르소나 어조(~냥, ~두둥, ~누누, ~크크)가 반영된 정직한 첫 독서 권유 멘트(`reader_type: "독서 시작을 기다리는 여행자"`, `recommended_books: []`) 반환.
+  - **두 백엔드 서버 간 연결성 진단 필드 추가 (`app/infrastructure/core_api_client.py`, `app/api/schemas.py`, `app/api/router.py`)**:
+    - `CoreApiClient.ping_core_api()` 구현: `backend-core-api`의 `/health` 및 `/api/v1/health` 핑 점검.
+    - `GET /api/v1/health` 응답에 `core_api_connected: bool` 및 `core_api_url: str` 필드 제공으로 서버 간 통신 정상 여부 즉각 진단 가능.
+  - **단위 테스트 및 AI 자가 검증 통과 (Tiered Verification)**:
+    - `tests/unit/test_monthly_reports.py`: `test_build_monthly_report_empty_activity`, `test_core_api_client_fallback_returns_zero_stats` 추가.
+    - `tests/unit/test_api.py`: `test_health_check_endpoint`에 `core_api_connected`, `core_api_url` 검증 추가.
+    - 204개 단위 테스트 100% 통과 (`204 passed, 10 deselected in 11.39s`), Ruff 린트/포맷 0 에러, Mypy 타입 체크 62개 소스 파일 0 에러 무결점 달성.
+
+
 - [x] **Phase 62: Google Cloud Run 배포 마이그레이션 완료 및 Render 레거시 워크플로우 정리**
   - **Render 자동 배포 워크플로우 제거 (`.github/workflows/deploy.yml`)**:
     - Google Cloud Run의 Cloud Build 자체 GitHub 연동(`develop` 브랜치) 완료에 따라 Render Deploy Hook 워크플로우를 안전하게 삭제. Render 서비스 종료 시 발생할 404 빌드 실패 및 불필요한 GitHub Actions 러너 낭비 원천 차단.

@@ -36,6 +36,7 @@ from app.domain.personas import (
     CAT_ID,
     PERSONA_REGISTRY,
 )
+from app.infrastructure.core_api_client import get_core_api_client
 from app.infrastructure.redis_session import (
     RedisSessionManager,
     get_redis_session_manager,
@@ -119,12 +120,17 @@ async def health_check() -> HealthResponse:
     if supabase_client.is_connected:
         await supabase_client.ping_db()
 
+    core_client = get_core_api_client()
+    core_api_connected = await core_client.ping_core_api()
+
     return HealthResponse(
         status="healthy",
         environment=settings.app_env,
         version="0.1.0",
         redis_connected=redis_mgr._is_redis_available,
         supabase_connected=supabase_client.is_connected,
+        core_api_connected=core_api_connected,
+        core_api_url=settings.core_api_base_url,
     )
 
 

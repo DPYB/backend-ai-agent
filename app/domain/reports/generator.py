@@ -171,6 +171,40 @@ async def generate_ai_analysis_and_prescription(
     debate_keywords: List[str],
 ) -> Tuple[AiAnalysis, Prescription]:
     """Execute LLM call to synthesize 06. AiAnalysis and 07. Prescription with National Library verified books."""
+    # Check if there is any reading activity in this month
+    ov = stats_data.get("overview", {})
+    hb = stats_data.get("habits", {})
+    tr = stats_data.get("traces", {})
+    has_activity = (
+        ov.get("completedBooksCount", ov.get("completed_books_count", 0)) > 0
+        or ov.get("totalPagesRead", ov.get("total_pages_read", 0)) > 0
+        or ov.get("totalDurationMinutes", ov.get("total_duration_minutes", 0)) > 0
+        or hb.get("totalSessionCount", hb.get("total_session_count", 0)) > 0
+        or len(tr.get("mostScrappedBooks", tr.get("most_scrapped_books", []))) > 0
+    )
+
+    norm_type = str(librarian_type).upper()
+    ending = "~냥"
+    if "SHOEBILL" in norm_type or "STORK" in norm_type:
+        ending = "~두둥"
+    elif "SEA_SLUG" in norm_type or "NUDI" in norm_type:
+        ending = "~누누"
+    elif "GECKO" in norm_type:
+        ending = "~크크"
+
+    # Honest empty state if user has no activity yet (skip wasteful LLM calls and avoid hallucinations)
+    if not has_activity:
+        return AiAnalysis(
+            reader_type="독서 시작을 기다리는 여행자",
+            summary=f"{librarian_name} 사서다{ending}. 이번 달에는 독서 기록이 아직 등록되지 않았습니다{ending}. 서재에서 책을 읽거나 타이머를 시작해보면 나만의 맞춤 리포트를 멋지게 완성해 줄게{ending}.",
+            key_traits=["첫 독서 대기", "호기심 가득"],
+        ), Prescription(
+            recommended_genre="교양",
+            suggested_goal_books=3,
+            advice=f"마음이 끌리는 책 1권을 골라 하루 10분씩 가볍게 시작해보는 건 어떨까요{ending}.",
+            recommended_books=[],
+        )
+
     system_prompt, human_prompt = _build_llm_report_prompt(
         librarian_type, librarian_name, stats_data, debate_keywords
     )

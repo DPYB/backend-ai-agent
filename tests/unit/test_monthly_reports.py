@@ -270,3 +270,39 @@ async def test_get_monthly_report_shoebill_persona():
     assert report.librarian.name == "슈빌"
     assert report.prescription.suggested_goal_books >= 1
     assert len(report.prescription.recommended_books) >= 1
+
+
+@pytest.mark.asyncio
+async def test_build_monthly_report_empty_activity():
+    """Verify build_monthly_report returns honest empty state without LLM hallucinations."""
+    from app.infrastructure.core_api_client import CoreApiClient
+
+    empty_stats = CoreApiClient._empty_monthly_stats(2026, 9, "00000000-0000-0000-0000-000000000003")
+    report = await build_monthly_report(
+        raw_stats=empty_stats,
+        member_id="00000000-0000-0000-0000-000000000003",
+    )
+
+    assert report.overview.completed_books_count == 0
+    assert report.overview.total_pages_read == 0
+    assert report.ai_analysis.reader_type == "독서 시작을 기다리는 여행자"
+    assert "독서 기록이 아직 등록되지 않았습니다" in report.ai_analysis.summary
+    assert report.prescription.recommended_books == []
+    assert "시작해보는 건 어떨까요" in report.prescription.advice
+
+
+@pytest.mark.asyncio
+async def test_core_api_client_fallback_returns_zero_stats():
+    """Verify CoreApiClient fallback returns 0 completed books and 0 pages, not fake 3 books."""
+    from app.infrastructure.core_api_client import CoreApiClient
+
+    client = CoreApiClient(base_url="http://invalid-nonexistent-url:9999")
+    # Will fail and return fallback
+    stats = await client.get_monthly_report_stats(year=2026, month=9)
+
+    assert stats["overview"]["completedBooksCount"] == 0
+    assert stats["overview"]["totalPagesRead"] == 0
+    assert stats["overview"]["totalDurationMinutes"] == 0
+    assert stats["traces"]["completedBooks"] == []
+    assert stats["traces"]["mostScrappedBooks"] == []
+

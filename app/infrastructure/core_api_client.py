@@ -181,13 +181,21 @@ class CoreApiClient:
             )
         except Exception as e:
             logger.info(
-                "core-api monthly-stats request failed (%s), using structured fallback for year=%d month=%d",
+                "core-api monthly-stats request failed (%s), using structured empty fallback for year=%d month=%d",
                 e,
                 year,
                 month,
             )
 
-        # Realistic fallback data matching backend-core-api MonthlyReportStatsResponse
+        return self._empty_monthly_stats(year=year, month=month, member_id=member_id)
+
+    @staticmethod
+    def _empty_monthly_stats(
+        year: int,
+        month: int,
+        member_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Construct structured honest empty monthly stats matching backend-core-api MonthlyReportStatsResponse schema."""
         mid = member_id or "00000000-0000-0000-0000-000000000001"
         return {
             "year": year,
@@ -200,141 +208,71 @@ class CoreApiClient:
                 "reportTitle": f"블루 사서의 {month}월 독서 리포트",
             },
             "overview": {
-                "completedBooksCount": 3,
-                "totalPagesRead": 832,
-                "totalDurationMinutes": 960,
-                "goalBooksCount": 4,
-                "goalAchievementRate": 75.0,
+                "completedBooksCount": 0,
+                "totalPagesRead": 0,
+                "totalDurationMinutes": 0,
+                "goalBooksCount": 3,
+                "goalAchievementRate": 0.0,
             },
             "habits": {
                 "weekdayDistribution": {
-                    "MON": 2,
-                    "TUE": 3,
-                    "WED": 1,
-                    "THU": 4,
-                    "FRI": 5,
-                    "SAT": 8,
-                    "SUN": 6,
+                    "MON": 0,
+                    "TUE": 0,
+                    "WED": 0,
+                    "THU": 0,
+                    "FRI": 0,
+                    "SAT": 0,
+                    "SUN": 0,
                 },
                 "timeDistribution": {
-                    "dawn": 2,
-                    "day": 5,
-                    "evening": 12,
-                    "night": 10,
+                    "dawn": 0,
+                    "day": 0,
+                    "evening": 0,
+                    "night": 0,
                 },
                 "weatherDistribution": {
-                    "clear": 15,
-                    "rainy": 8,
-                    "cloudy": 6,
+                    "clear": 0,
+                    "rainy": 0,
+                    "cloudy": 0,
                 },
-                "avgCompletionDays": 6.5,
-                "longestStreakDays": 5,
-                "totalSessionCount": 34,
-                "avgSessionDurationMinutes": 28.2,
+                "avgCompletionDays": 0.0,
+                "longestStreakDays": 0,
+                "totalSessionCount": 0,
+                "avgSessionDurationMinutes": 0.0,
             },
             "preferences": {
-                "topGenres": [
-                    {
-                        "genre": "LITERATURE",
-                        "genreName": "문학",
-                        "count": 4,
-                        "percentage": 50.0,
-                    },
-                    {
-                        "genre": "PHILOSOPHY",
-                        "genreName": "철학",
-                        "count": 2,
-                        "percentage": 25.0,
-                    },
-                    {
-                        "genre": "SOCIAL_SCIENCE",
-                        "genreName": "사회과학",
-                        "count": 2,
-                        "percentage": 25.0,
-                    },
-                ],
-                "topSubjects": ["자아성찰", "실존주의", "성장소설", "심리학"],
-                "weatherPreferences": [
-                    {
-                        "weather": "rainy",
-                        "sessionCount": 8,
-                        "topGenre": "LITERATURE",
-                        "topGenreName": "문학",
-                        "preferredBookTitle": "데미안",
-                    },
-                    {
-                        "weather": "clear",
-                        "sessionCount": 15,
-                        "topGenre": "PHILOSOPHY",
-                        "topGenreName": "철학",
-                        "preferredBookTitle": "니체의 말",
-                    },
-                ],
+                "topGenres": [],
+                "topSubjects": [],
+                "weatherPreferences": [],
             },
             "balance": {
-                "genreBreakdown": [
-                    {"genre": "LITERATURE", "genreName": "문학", "count": 4, "percentage": 50.0},
-                    {"genre": "PHILOSOPHY", "genreName": "철학", "count": 2, "percentage": 25.0},
-                    {
-                        "genre": "SOCIAL_SCIENCE",
-                        "genreName": "사회과학",
-                        "count": 2,
-                        "percentage": 25.0,
-                    },
-                ],
-                "dominantGenre": "문학",
+                "genreBreakdown": [],
+                "dominantGenre": None,
                 "isBiased": False,
-                "diversityScore": 65,
-                "unreadGenres": ["자연과학", "기술과학", "예술", "역사", "종교"],
+                "diversityScore": 0,
+                "unreadGenres": [],
             },
             "traces": {
-                "mostScrappedBooks": [
-                    {
-                        "bookId": 1,
-                        "title": "데미안",
-                        "author": "헤르만 헤세",
-                        "coverUrl": "https://contents.kyobobook.co.kr/sih/fit-in/458x0/pdt/9788937460449.jpg",
-                        "displayGenre": "문학",
-                        "scrapCount": 5,
-                    }
-                ],
-                "featuredRecords": [
-                    {
-                        "recordId": 101,
-                        "bookId": 1,
-                        "title": "알을 깨고 나오는 순간의 고통과 희열",
-                        "contentSnippet": "새는 알에서 나오려고 투쟁한다. 알은 세계이다. 태어나려는 자는 하나의 세계를 깨뜨려야 한다.",
-                        "rating": 5,
-                        "weather": "rainy",
-                        "createdAt": "2026-09-10T21:30:00Z",
-                    }
-                ],
-                "completedBooks": [
-                    {
-                        "bookId": 1,
-                        "title": "데미안",
-                        "author": "헤르만 헤세",
-                        "coverUrl": "https://contents.kyobobook.co.kr/sih/fit-in/458x0/pdt/9788937460449.jpg",
-                        "displayGenre": "문학",
-                        "currentPage": 240,
-                        "totalPages": 240,
-                        "completedAt": "2026-09-12T18:00:00Z",
-                    }
-                ],
-                "readingBooks": [
-                    {
-                        "bookId": 2,
-                        "title": "코스모스",
-                        "author": "칼 세이건",
-                        "coverUrl": "https://contents.kyobobook.co.kr/sih/fit-in/458x0/pdt/9788983711892.jpg",
-                        "displayGenre": "자연과학",
-                        "currentPage": 150,
-                        "totalPages": 700,
-                        "completedAt": None,
-                    }
-                ],
+                "mostScrappedBooks": [],
+                "featuredRecords": [],
+                "completedBooks": [],
+                "readingBooks": [],
             },
         }
+
+    async def ping_core_api(self) -> bool:
+        """Ping backend-core-api health endpoint to verify inter-service connectivity."""
+        try:
+            client = await self._get_client()
+            # Try root /health then /api/v1/health
+            response = await client.get("/health")
+            if response.status_code == 200:
+                return True
+            response = await client.get("/api/v1/health")
+            return response.status_code == 200
+        except Exception as e:
+            logger.warning("core-api connectivity ping failed: %s (base_url=%s)", e, self.base_url)
+            return False
 
 
 _core_api_client: Optional[CoreApiClient] = None
