@@ -54,10 +54,10 @@
 - **Vision API**: `pyzbar`, `Pillow`, `libzbar0`를 통한 바코드(ISBN-13) 스캔 및 Naver Cloud Clova OCR General API V2 연동을 무상태(Stateless)로 제공하여 `core-api`를 무거운 C-익스텐션 의존성으로부터 보호합니다.
 
 ### 4.3 제로비용(Zero-cost) 및 인프라 정책
-- **포트 바인딩**: Render 및 Google Cloud Run 동적 환경변수 `${PORT:-8000}`를 바인딩합니다.
+- **포트 바인딩**: Google Cloud Run 및 로컬 도커 동적 환경변수 `${PORT:-8000}`를 바인딩합니다.
 - **로컬 개발**: `docker-compose.yml` 볼륨 마운트 기반 핫리로드(`--reload`)를 지원합니다.
-- **슬립 방지**: `/api/v1/health` 헬스체크 엔드포인트 호출 시 Supabase 핑(`scrap_vector` 1행 조회)을 수행하여 Render(15분) 및 Supabase(7일 미사용) 동시 활성화를 유지합니다.
-- **메모리 한도 준수**: Render 무료 티어(512MB RAM) 제약을 고려하여 불필요한 모델 로컬 적재를 피하고 API 호출 기반(Gemini Flash/Embedding)을 유지합니다.
+- **슬립 방지**: `/api/v1/health` 헬스체크 엔드포인트 호출 시 Supabase 핑(`scrap_vector` 1행 조회)을 수행하여 Supabase(7일 미사용) 동시 활성화를 유지합니다.
+- **메모리 한도 준수**: Cloud Run 1~2GiB 컨테이너 제약을 고려하여 불필요한 모델 로컬 적재를 피하고 API 호출 기반(Gemini Flash Lite / Embedding)을 유지합니다.
 
 ### 4.4 계층형 검증 체계 (Tiered Verification)
 불필요한 반복 전체 테스트로 인한 지연과 컨텍스트 토큰 낭비를 방지하기 위해 3단계로 검증한다:

@@ -4,7 +4,16 @@
 
 ---
 
-## 완료된 단계
+- [x] **Phase 62: Google Cloud Run 배포 마이그레이션 완료 및 Render 레거시 워크플로우 정리**
+  - **Render 자동 배포 워크플로우 제거 (`.github/workflows/deploy.yml`)**:
+    - Google Cloud Run의 Cloud Build 자체 GitHub 연동(`develop` 브랜치) 완료에 따라 Render Deploy Hook 워크플로우를 안전하게 삭제. Render 서비스 종료 시 발생할 404 빌드 실패 및 불필요한 GitHub Actions 러너 낭비 원천 차단.
+  - **아키텍처 및 설정 명세 최신화 (`ARCHITECTURE.md`, `README.md`, `.env.example`, `AGENTS.md`)**:
+    - `README.md` & `ARCHITECTURE.md`: 인프라 다이어그램 및 배포 런타임을 Render에서 Google Cloud Run(서울 `asia-northeast3` 리전) 및 Upstash Serverless Redis로 갱신.
+    - `.env.example`: `ALLOW_REMOTE_MIGRATION=true` 원격 DB DDL 안전 인터락 가이드 주석 추가, Upstash Redis TLS 프로토콜(`rediss://...`) 명세 보강.
+    - `AGENTS.md`: 인프라 정책에서 Render 의존 문구를 제거하고 Cloud Run 1~2GiB 컨테이너 환경으로 명세 정렬.
+  - **품질 검증 통과 (Tiered Verification)**:
+    - `uv run ruff check .` 0 에러 무결성 통과.
+    - `uv run mypy app` 62개 소스 파일 0 에러 무결성 통과.
 
 - [x] **Phase 61: CI/검증 프로세스 경량화 및 3단계 계층화 (Tiered Verification)**
   - **테스트 옵션 최적화 (`pyproject.toml`)**:

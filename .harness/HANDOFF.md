@@ -2031,3 +2031,45 @@
   - (팀 협의 사항) 필수 섹션 4개 유지 여부 및 '고려사항' 빈 텍스트 경고 처리 안건 공유.
 - **Phase 60**: 국립도서관 KDC 부재 시 EA_ADD_CODE 5자리 다중 폴백 및 분류 체계 SSOT 강화 순차 진행.
 
+---
+
+## 세션 61 (2026-10-01)
+
+### 진행한 작업
+1. **Google Cloud Run 프로덕션 마이그레이션 및 3대 서비스 연동 완료**:
+   - `backend-core-api` 및 `backend-ai-agent` 마이크로서비스의 Google Cloud Run (서울 `asia-northeast3` 리전) 이전 완료.
+   - 컨테이너 기동 시 Supabase 원격 DB DDL 안전 인터락 통과를 위한 `ALLOW_REMOTE_MIGRATION=true` 환경변수 세팅.
+   - Upstash Serverless Redis(`rediss://...`) 연동을 통한 멀티 인스턴스 세션 영속성 및 대화 히스토리 슬라이딩 윈도우 보존.
+   - 프론트엔드(`frontend-reader-web`, Cloudflare Pages)와 백엔드 간 CORS 사전 요청(Preflight) `CORS_ORIGINS` 허용 설정 및 실시간 SSE 스트리밍(`/api/v1/chat/stream`) 완벽 통신 실증.
+2. **Render 배포 의존성 완전 제거**:
+   - `.github/workflows/deploy.yml` 워크플로우 삭제 (Cloud Run의 Cloud Build 자동 배포 연동에 따라 불필요한 Render Deploy Hook 제거).
+   - Render 서비스 종료 시 발생할 수 있는 404 빌드 실패 및 GitHub Actions 러너 낭비 원천 차단.
+3. **인프라 문서 및 환경변수 템플릿 최신화**:
+   - `README.md`, `ARCHITECTURE.md`: 인프라 다이어그램 및 배포 런타임을 Render에서 Google Cloud Run 및 Upstash Redis로 갱신.
+   - `.env.example`: `ALLOW_REMOTE_MIGRATION=true`, `REDIS_URL(Upstash)` 가이드 주석 최신화.
+   - `AGENTS.md`: 인프라 정책에서 Render 제약 문구를 제거하고 Cloud Run 1~2GiB 컨테이너 환경으로 정렬.
+4. **품질 검증 (Tiered Verification)**:
+   - `uv run ruff check .`: 0 errors 무결점 통과.
+   - `uv run mypy app`: 62개 소스 파일 0 errors 무결점 통과.
+   - 하네스 문서(`STATE.md`, `PLAN.md`, `HANDOFF.md`) 동기화 완료.
+
+---
+
+## 세션 62 (2026-10-01)
+
+### 진행한 작업
+1. **중앙 레포 (`DPYB/.github`) 린터 및 컨벤션 대폭 유연화 배포**:
+   - `reusable-pr-lint.yml` 및 `02-git-conventions.md` 수정 후 `origin/main` 배포 완료 (`b9998f0`).
+   - 소괄호/대괄호 scope 둘 다 허용 (`feat(scope)`, `feat[scope]`), 제목 끝 마침표 허용, 개행 지원, 고려사항 섹션 빈칸 허용.
+2. **프론트엔드 레포 (`frontend-reader-web`) 최신화 및 검증 체계 연동**:
+   - 원격 `develop` 최신 상태 pull 완료.
+   - `AGENTS.md`에 Tier 1(작업 중 lint), Tier 2(PR 직전 typecheck+build), Tier 3(원격 CI) 체계 공식 반영.
+   - [PR #89](https://github.com/DPYB/frontend-reader-web/pull/89) 생성 및 CI 전원 통과 확인 (`Lint PR`: 7s, `CI build-and-test`: 31s).
+3. **본 레포 (`backend-ai-agent`) 상태 확인**:
+   - 로컬 브랜치 `feat/cleanup-render-deploy`에 Render 제거 및 Cloud Run 전환 변경사항 스테이징 유지 중.
+
+### 다음 세션에서 할 일
+- **1순위**: `backend-ai-agent`의 `feat/cleanup-render-deploy` 브랜치 커밋/푸시 및 PR 생성 (Cloud Run 전환 정리).
+- **2순위**: Phase 60 착수 (`feat/national-library-kdc-fallback` 브랜치 분기 ➔ `ClassifyGenreResponse` 응답에 `subject`, `display_genre` 확장 및 국립도서관 KDC 다중 폴백 단위 테스트 검증).
+
+

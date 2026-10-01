@@ -9,9 +9,9 @@
 
 ```mermaid
 flowchart LR
-    Client["frontend-reader-web<br/>(Cloudflare Pages)"] -- "SSE 스트리밍 대화 (/chat/stream)<br/>Vision OCR (/vision, /ocr)<br/>월간 AI 리포트 (/reports/monthly)" --> Agent["backend-ai-agent<br/>(FastAPI + LangGraph / Render)"]
+    Client["frontend-reader-web<br/>(Cloudflare Pages)"] -- "SSE 스트리밍 대화 (/chat/stream)<br/>Vision OCR (/vision, /ocr)<br/>월간 AI 리포트 (/reports/monthly)" --> Agent["backend-ai-agent<br/>(FastAPI + LangGraph / Google Cloud Run)"]
 
-    Agent -- "내 서재 조회 REST" --> Core["backend-core-api<br/>(Render)"]
+    Agent -- "내 서재 조회 REST" --> Core["backend-core-api<br/>(Google Cloud Run)"]
     Agent --> SupaVec[("Supabase pgvector<br/>• agent.scrap_vector<br/>• agent.debate_insights")]
     Agent --> NL["국립중앙도서관 API<br/>(SearchApi.do 실서지 검증)"]
     Agent --> Meteo["Open-Meteo API<br/>(실시간 날씨/무드)"]
@@ -62,8 +62,8 @@ LangGraph 기반의 `StateGraph` 워크플로우를 통해 단일 챗봇 안에�
 | **에이전트 오케스트레이션** | LangGraph (8-Node StateGraph, Dynamic Routing) |
 | **LLM & Vision** | Google Gemini (3.5 Flash Lite, 3.1 Flash Lite Vision), OpenAI (gpt-4o-mini 예비 폴백) |
 | **임베딩 & 벡터 DB** | Google Gemini Embedding (`text-embedding-004`, 768차원), Supabase pgvector (HNSW Index) |
-| **세션 & 캐싱** | Redis (대화 히스토리 슬라이딩 윈도우, RPD/RPM 서킷 브레이커, Yes24 신간 캐시) |
-| **인프라 & 배포** | Render Web Service (Dockerfile 동적 `$PORT` 바인딩) |
+| **세션 & 캐싱** | Redis / Upstash (대화 히스토리 슬라이딩 윈도우, RPD/RPM 서킷 브레이커, Yes24 신간 캐시) |
+| **인프라 & 배포** | Google Cloud Run (asia-northeast3 서울 리전, Dockerfile 동적 `$PORT` 바인딩) |
 | **코드 품질 & 테스트** | Ruff, Mypy, Pytest (212개 단위 테스트 100% Pass) |
 
 ---
