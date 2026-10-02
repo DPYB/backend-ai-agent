@@ -2088,10 +2088,18 @@
    - `tests/unit/test_monthly_reports.py`: `test_build_monthly_report_empty_activity`, `test_core_api_client_fallback_returns_zero_stats` 추가.
    - `tests/unit/test_api.py`: `test_health_check_endpoint` 필드 검증 추가.
    - 204개 단위 테스트 100% 통과 (`204 passed, 10 deselected in 11.39s`), Ruff 린트/포맷 0 에러, Mypy 타입 체크 62개 소스 파일 0 에러 무결점 달성.
+5. **PR #58 생성 및 Ruff/Black 포맷팅 픽스 완료**:
+   - [PR #58](https://github.com/DPYB/backend-ai-agent/pull/58) 생성 후 `tests/unit/test_monthly_reports.py` 88자 초과 줄바꿈 포맷팅 적용 (`5aae474`).
+   - 중앙 CI(`ci / Lint, Type Check & Test` 51s, `lint / Validate PR Conventions` 5s) 전원 초록불(Green) 통과 확인.
 
 ### 다음 세션에서 할 일
-- **1순위**: `backend-core-api` 게스트 모드 공용 계정(`GUEST_MEMBER_ID`) 연동 구현 (Task 1~Task 12).
-- **2순위**: Phase 60 국립도서관 KDC 부재 시 EA_ADD_CODE 5자리 다중 폴백 및 분류 체계 SSOT 강화.
+- **1순위 (핵심 도메인 태스크)**: `backend-core-api` 레포로 전환하여 **게스트 모드 공용 계정(`GUEST_MEMBER_ID`) 연동 구현** 착수:
+  - 데모 계정(`DEMO_MEMBER_ID`)과 체험 계정(`GUEST_MEMBER_ID`) 물리적 분리.
+  - 게스트 쓰기 Allowlist 개방 (도서 등록/수정/삭제, 스크랩, 타이머, 감상기록 등), 대표 사서 변경 제외(블루 고정).
+  - 감상기록 등록 시 AI 벡터화 Rate Limit (분당 5회) 및 HTML XSS sanitize 적용.
+  - `GuestLoginResponse` 상단 안내 배너 필드 추가.
+  - 새벽 4시 자동 리셋 워크플로우 및 데모 리셋 파라미터화(`?target=all|demo|guest`).
+- **2순위 (본 레포 잔여 태스크)**: `backend-ai-agent` Phase 60 국립도서관 KDC 부재 시 EA_ADD_CODE 5자리 다중 폴백 및 분류 체계 SSOT 강화.
 
 
 
