@@ -5,12 +5,13 @@
 ---
 
 ## 1. 세션 시작 시 필수 읽기 순서
-어떤 AI 도구로 세션을 시작하든 아래 순서대로 먼저 읽고 컨텍스트를 동기화한다:
-1. `.harness/HANDOFF.md` — 직전 세션이 어디서 멈췄는지
-2. `.harness/STATE.md` — 지금까지 무엇이 완료되었는지
-3. `.harness/ARCHITECTURE.md` — 기술 스택/폴더 구조/컨벤션
-4. `.harness/PLAN.md` — 현재 진행 중이거나 제안된 계획
-5. 필요 시 `.harness/DECISIONS.md`(과거 결정 이유), `.harness/BACKLOG.md`(미해결 부채)
+어떤 AI 도구로 세션을 시작하든 아래 5대 파일만 읽고 동기화한다 (`.harness/archive/`는 직접 읽지 말고, 필요 시 grep으로만 조회):
+1. `.harness/HANDOFF.md` — 직전 세션 인수인계 (최대 200줄)
+2. `.harness/STATE.md` — 지금까지 무엇이 완료되었는지 스냅샷 (최대 150줄)
+3. `.harness/ARCHITECTURE.md` — 기술 스택/폴더 구조/컨벤션 SSOT
+4. `.harness/PLAN.md` — 현재 진행 중인 본 레포 계획
+5. `.harness/DECISIONS.md` — 핵심 결정 히스토리 (3단 압축)
+(필요 시 `.harness/BACKLOG.md` 미해결 부채 참조)
 
 ---
 
@@ -18,21 +19,28 @@
 
 | 문서 | 반드시 담아야 하는 내용 (단일 소유) | 절대 담지 말아야 하는 내용 |
 | :--- | :--- | :--- |
-| **`HANDOFF.md`** | 세션마다 무엇을 했는지 (append-only 서술형 로그) | 단계별 완료 요약(`STATE` 몫), 결정 이유(`DECISIONS` 몫) |
-| **`STATE.md`** | 지금까지 끝난 것의 단계 단위 요약 스냅샷 | 세션별 서술(`HANDOFF` 몫). 사소한 커밋/이슈를 로그처럼 쌓지 않음 |
-| **`ARCHITECTURE.md`** | 지금 시점의 기술 스택/폴더 구조/컨벤션 (현재 상태) | 왜 그렇게 정했는지(`DECISIONS` 몫), 진행 중인 계획(`PLAN` 몫) |
-| **`DECISIONS.md`** | 결정 내용과 이유의 역사 (최신 결정이 맨 위로, append-only) | 단순 구현 여부나 진행 상황(`STATE` 몫) |
-| **`PLAN.md`** | 아직 안 끝난 계획과 체크리스트만 | 완료된 항목 (체크만 남겨두지 말고 `STATE`로 옮긴 뒤 제거) |
+| **`HANDOFF.md`** | **최대 5개 세션 & 최대 200줄 상한**의 작업 흐름 및 다음 세션 인수인계 로그 (초과분은 `.harness/archive/` 보관) | 단계별 완료 요약(`STATE` 몫), 결정 이유(`DECISIONS` 몫), **타 레포 내부 작업/코드** |
+| **`STATE.md`** | **최대 150줄 상한**의 마일스톤 단위 간결한 완료 스냅샷 (1~3줄 요약) | 세션별 서술(`HANDOFF` 몫), 상세 diff/PR 전문 장황한 나열, **타 레포 구현 내역** |
+| **`ARCHITECTURE.md`** | 지금 시점의 기술 스택/폴더 구조/컨벤션 (현재 상태, 항상 덮어쓰기) | 왜 그렇게 정했는지(`DECISIONS` 몫), 진행 중인 계획(`PLAN` 몫) |
+| **`DECISIONS.md`** | **최대 150줄 & 최대 20KB 상한**의 결정 내용과 이유의 역사 (최신순 append-only). [결정/이유/영향] 3단 압축 구조 준수 | 단순 구현 여부나 진행 상황(`STATE` 몫). 폐기된 결정은 삭제 대신 `[Superseded by ...]` 링크 1줄로 보존 |
+| **`PLAN.md`** | 본 레포에서 아직 안 끝난 계획과 체크리스트만 | 완료된 항목(`STATE`로 이동), **타 레포 전용 구현 태스크** |
 | **`BACKLOG.md`** | 지금 하지 않지만 나중에 할 것 (버그, 기술부채, 아이디어) | 현재 진행 중인 계획(`PLAN` 몫) |
 
 ---
 
 ## 3. 작업 워크플로우 (필수)
+- **레포지토리 경계 엄수 (Cross-Repo Isolation)**: 본 레포 하네스에는 **본 레포(`backend-ai-agent`) 코드베이스와 직접 관련된 내용만 기록**한다. 타 레포(frontend, core-api 등)와 연계된 작업은 해당 레포의 하네스에 기록하며, 본 레포에서는 "타 레포 PR 링크" 또는 "API 인터페이스 규격 1줄"로만 참조한다.
+- **`HANDOFF.md` 엄격한 롤링 (5세션 & 200줄 상한)**: `HANDOFF.md` 본문에는 **세션 수 최대 5개, 전체 라인 수 최대 200줄**만 유지한다. 기준 초과 시 가장 오래된 세션부터 `.harness/archive/HANDOFF_YYYY-MM.md`로 이동 보관한다. (동일 월에 추가 롤링 발생 시 새 파일을 만들지 않고 기존 월 파일에 이어붙인다).
+- **아카이브 파일명 표준 규격**: `archive/` 디렉토리 내 파일명은 반드시 **`^(HANDOFF|STATE|DECISIONS)_\d{4}-\d{2}\.md$`** (예: `HANDOFF_2026-09.md`, `STATE_2026-09.md`) ISO 하이픈 표준을 준수한다.
+- **Phase(기능)와 Session(작업) 번호 분리**:
+  - **`세션 N`**: `HANDOFF.md` 전용 작업자 턴/인수인계 시간축 로그 (Session 64, 65...).
+  - **`Phase N`**: `PLAN.md` 및 `STATE.md` 전용 기능 마일스톤 단위. **세션 번호와 연동하지 않으며**, 하나의 Phase가 여러 세션에 걸치거나 한 세션에 일부만 진행될 수 있다.
+- **하네스 규격 자동 검증**: 커밋/PR 전 `python3 scripts/check_harness.py`를 실행하여 라인 수 상한, 아카이브 파일명 규칙, 타 레포 오염 여부를 기계적으로 검증한다.
 - **계획 수립 우선**: 새로운 기능/변경 요청을 받으면 바로 코드를 고치지 말고 `.harness/PLAN.md`에 계획 초안을 작성해 사용자에게 제시한다. (단순 질의응답, 사소한 오탈자 수정은 계획 없이 바로 가능)
 - **사용자 승인 후 구현**: 사용자가 명시적으로 컨펌하면 구현을 시작한다.
 - **점진적 반영**: `PLAN.md`의 세부 체크리스트가 완료될 때마다 즉시 `.harness/STATE.md`에 한 줄로 반영하고 `PLAN.md`에서 제거한다.
 - **세션 종료/인수인계**: 작업을 중단하거나 세션을 종료할 때 반드시 `.harness/HANDOFF.md`에 다음 세션을 위한 인수인계 서술을 남긴다.
-- **중요 결정 기록**: 아키텍처나 정책의 중요한 결정은 `.harness/DECISIONS.md` 표 최상단에 이유와 함께 기록한다.
+- **중요 결정 기록**: 아키텍처나 정책의 중요한 결정은 `.harness/DECISIONS.md`에 기록하며, 폐기된 결정은 삭제하지 않고 `[Superseded by 새 결정]` 링크로 추적성을 보존한다.
 - **커밋 및 푸시**: 사용자가 명시적으로 요청했을 때만 수행하며, 변경된 파일만 선별해 스테이징한다 (`git add .` 지양). AI는 절대 임의로 Git 커밋/푸시를 실행하지 않는다.
 - **PR 생성 및 머지**: AI는 브랜치 작업 및 PR 생성 보조까지만 담당하며, **develop/main 브랜치 PR 머지는 에이전트가 실행하지 않고 사람이 직접 클릭**하여 머지한다. AI가 자의적으로 PR을 머지하는 행위는 엄격히 금지된다.
 
@@ -66,6 +74,7 @@
   - 타깃 테스트: 변경된 모듈의 관련 단위 테스트만 실행 (예: `uv run pytest tests/unit/test_<module>.py`)
 - **Tier 2 (커밋 & PR 직전 1회 - Pre-PR Sanity Check)**:
   - 타입 검사: `uv run mypy .` (캐시 히트 시 2초 내외)
+  - 하네스 규격 검증: `python3 scripts/check_harness.py` (라인 수 상한 및 타 레포 오염 방지)
   - 로컬 단위 회귀: `uv run pytest -m "not integration" -x` (외부 LLM 네트워크/통합 테스트를 제외하고 빠른 검증을 수행하며, 첫 실패 시 `-x`로 즉시 중단. pyproject의 addopts `-q --tb=short` 자동 적용)
 - **Tier 3 (원격 CI - Remote Safety Net)**:
   - PR 푸시 시 GitHub Actions `reusable-python-ci.yml`이 전체 회귀 검사(통합 테스트 포함 전수 실행)를 수행하며, `develop` 브랜치의 Required Status Check(`ci / Lint, Type Check & Test`, `lint / Validate PR & Commit Conventions`)가 머지를 최종 통제.
@@ -123,13 +132,7 @@ DPYB 최신 공통 개발 표준([02-git-conventions.md](https://github.com/DPYB
 - [x] 하네스 문서 갱신 완료 (STATE.md, PLAN.md, HANDOFF.md, DECISIONS.md)
 ```
 
-
-
 ---
 
 ## 6. 배포
-[DPYB `.github` 레포의 04-deployment-policy.md](https://github.com/DPYB/.github/blob/main/docs/04-deployment-policy.md)를 따른다.
-- 1단계: 로컬 도커 개발 (`docker-compose.yml`)
-- 2단계: Render 무료 티어 우선 배포
-- 3단계: GCP Cloud Run 무료 크레딧 폴백
-
+[DPYB `.github` 레포의 04-deployment-policy.md](https://github.com/DPYB/.github/blob/main/docs/04-deployment-policy.md)를 따른다: 로컬 도커 개발 (`docker-compose.yml`) ➔ GCP Cloud Run 배포.
