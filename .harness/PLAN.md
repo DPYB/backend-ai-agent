@@ -5,6 +5,35 @@
 
 ---
 
+### 📌 Phase 64: 게스트 비용 방어 체계 및 서킷브레이커 구현 (LLM / Clova OCR)
+
+- [ ] **Task 1: 환경설정 및 킬스위치 정의 (`app/core/config.py`)**:
+  - `ENABLE_GUEST_AI: bool = False` (기본값 False로 선배포 후 인프라에서 수동 활성화)
+  - 게스트 페이로드 상한: `GUEST_MAX_INPUT_LENGTH: int = 300`, `GUEST_MAX_OUTPUT_TOKENS: int = 512`, `GUEST_MAX_IMAGE_MB: int = 2`
+  - 게스트 일일 서킷브레이커 상한: `GUEST_DAILY_LIMIT_LLM: int = 500`, `GUEST_DAILY_LIMIT_OCR: int = 100`
+  - 분당 소프트 리밋: `GUEST_RATE_LIMIT_LLM: int = 5`, `GUEST_RATE_LIMIT_OCR: int = 2`
+- [ ] **Task 2: Upstash Redis 기반 서킷브레이커 서비스 구현 (`app/infrastructure/circuit_breaker.py`)**:
+  - KST 자정(00:00:00) 기준 TTL 자동 계산 및 `INCR` + `EXPIRE` 원자적 카운팅
+  - `circuit:daily:guest:llm:YYYY-MM-DD` 및 `circuit:daily:guest:ocr:YYYY-MM-DD` 분리 집계
+  - Redis 장애 시 게스트는 **Fail-Closed** (`503 Service Unavailable`), 회원은 **Fail-Open** (통과)
+- [ ] **Task 3: 게스트 입력 및 페이로드 캡 검증 가드 (`app/domain/guardrails/guest_guard.py`)**:
+  - `role == "guest"`인 경우 텍스트 길이 300자 초과 시 422 반환
+  - 대화 생성기(`ChatGoogleGenerativeAI`, `ChatOpenAI`) 호출 시 게스트 max_tokens를 512로 동적 제한
+  - 동일 세션 동시 스트리밍(SSE) 요청 잠금/제한 (1개 초과 시 429)
+  - Clova OCR 업로드 파일 크기 2MB 초과 시 413 반환
+- [ ] **Task 4: API 엔드포인트 연동 (`app/api/router.py`, `app/api/ocr.py`)**:
+  - `/api/v1/chat`, `/api/v1/chat/stream`, `/api/v1/vision/ocr` 진입점에 `ENABLE_GUEST_AI` 킬스위치 가드 (False 시 403)
+  - 소프트 리밋(분당) 및 하드 리밋(일일 전체 상한) 평가 후 초과 시 지정된 거부 메시지와 함께 429 반환
+- [ ] **Task 5: 단위 및 격리 테스트 작성 (`tests/unit/test_guest_circuit_breaker.py`)**:
+  - 킬스위치 False 시 403 차단 및 True 시 동작 검증
+  - Redis 장애 발생 시 게스트 Fail-Closed 및 회원 Fail-Open 검증
+  - 일일 상한 500회(LLM) / 100회(OCR) 도달 시 게스트 차단 및 회원 미영향 검증
+  - 페이로드 상한(300자, 2MB) 초과 시 검증
+- [ ] **Task 6: 3-Tier 검증 실행**:
+  - `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy app`, `uv run pytest tests/unit/test_guest_circuit_breaker.py -v`
+
+---
+
 ### 📌 Phase 60: 국립도서관 KDC 부재 시 EA_ADD_CODE 5자리 다중 폴백 및 분류 체계 SSOT 강화
 
 - [ ] **`app/infrastructure/national_library_client.py` KDC 다중 폴백 및 5자리 부가기호 연동**:
