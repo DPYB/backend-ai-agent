@@ -43,14 +43,11 @@ ARCHIVE_FILE_PATTERN = re.compile(r"^(HANDOFF|STATE|DECISIONS)_\d{4}-\d{2}\.md$"
 def get_current_repo_name() -> str:
     """Git 최상위 디렉토리명 또는 현재 작업 폴더명으로 현재 레포 식별."""
     try:
-        git_root = (
-            subprocess.check_output(
-                ["git", "rev-parse", "--show-toplevel"],
-                text=True,
-                stderr=subprocess.DEVNULL,
-            )
-            .strip()
-        )
+        git_root = subprocess.check_output(
+            ["git", "rev-parse", "--show-toplevel"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
         return Path(git_root).name
     except Exception:
         return Path.cwd().name
@@ -189,7 +186,9 @@ def main() -> int:
         print("\n".join(all_errors), file=sys.stderr)
         return 1
 
-    print(f"✅ [{current_repo}] 하네스 규격 검증 통과 (HANDOFF, PLAN, STATE, DECISIONS, archive 정상)")
+    print(
+        f"✅ [{current_repo}] 하네스 규격 검증 통과 (HANDOFF, PLAN, STATE, DECISIONS, archive 정상)"
+    )
     return 0
 
 
