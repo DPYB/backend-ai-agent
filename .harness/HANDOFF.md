@@ -62,12 +62,17 @@
 
 ### 진행한 작업
 1. **하네스 문서 비대화 및 도메인 오염 정밀 진단**:
-   - `HANDOFF.md`(2,100줄), `STATE.md`(648줄)의 비대화 원인이 타 레포(frontend, core-api) 작업 몰아쓰기와 GC(아카이빙) 정책 부재임을 규명.
-    - DPYB 서비스 전 레포지토리 하네스 실측 및 비교 분석 완료.
-2. **`backend-ai-agent` 하네스 슬림화 및 경계 복원**:
-   - 세션 1~59 과거 로그를 `.harness/archive/HANDOFF_2026-09.md`로 분리 아카이빙 (2,100줄 ➔ 110줄로 95% 슬림화).
-   - `PLAN.md`에서 프론트엔드 작업(Phase 50 2단계)을 제거하고 본 레포 실제 미완료 태스크(Phase 60 국립도서관 KDC 부가기호 폴백)로 정돈.
-   - `AGENTS.md`에 "타 레포 내부 작업 기록 금지 원칙" 및 "HANDOFF 롤링/아카이빙 지침" 명문화.
+   - `HANDOFF.md`(2,100줄), `STATE.md`(648줄), `DECISIONS.md`(51KB) 비대화 원인 규명 및 전 레포 실측.
+2. **하네스 문서 슬림화 및 롤링 아카이빙**:
+   - `HANDOFF.md`: 과거 세션 1~59를 `archive/HANDOFF_2026-09.md`로 분리 보관 (2,100줄 ➔ 76줄).
+   - `STATE.md`: 과거 세부 diff를 `archive/STATE_2026-09.md`로 보관하고 마일스톤 스냅샷으로 정돈 (648줄 ➔ 52줄).
+   - `DECISIONS.md`: [결정/이유/영향] 3단 압축 및 Superseded 링크 보존, 구체값 전량 유지 (51KB ➔ 17KB).
+   - `PLAN.md`: 타 레포 태스크(Phase 50 2단계) 및 미착수 태스크(Phase 64) 제거, Phase 60으로 정돈.
+3. **토큰 보호 및 전사 자동 검증 체계 구축**:
+   - `scripts/check_harness.py`: 전 레포 공통 검증 도구 신설 (레포 자동 감지, 상한 검증, archive 파일명 정규식).
+   - 중앙 CI(`reusable-python-ci.yml`)에 `Validate Harness Specifications` 스텝 추가 및 영구 안착.
+   - `.agyignore`, `.claude/settings.json` 등록으로 archive/ 디렉토리 에이전트 읽기 차단.
+   - `AGENTS.md` 규격 단일화 (최대 5세션/200줄, Phase/Session 분리, 타 레포 격리).
 
 ### 다음 세션에서 할 일
 - **Phase 60 구현 착수 (`feat/national-library-kdc-fallback`)**:
