@@ -298,6 +298,8 @@ class HealthResponse(BaseModel):
     version: str
     redis_connected: bool
     supabase_connected: bool
+    core_api_connected: bool = Field(default=False, description="backend-core-api reachability")
+    core_api_url: str = Field(default="", description="Configured backend-core-api base URL")
 
 
 class ScrapVectorizeRequest(BaseModel):

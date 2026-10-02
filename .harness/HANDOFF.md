@@ -2072,4 +2072,26 @@
 - **1순위**: `backend-ai-agent`의 `feat/cleanup-render-deploy` 브랜치 커밋/푸시 및 PR 생성 (Cloud Run 전환 정리).
 - **2순위**: Phase 60 착수 (`feat/national-library-kdc-fallback` 브랜치 분기 ➔ `ClassifyGenreResponse` 응답에 `subject`, `display_genre` 확장 및 국립도서관 KDC 다중 폴백 단위 테스트 검증).
 
+---
+
+## 세션 63 (2026-10-02)
+
+### 진행한 작업
+1. **월간 독서 리포트 가짜 목데이터(데미안, 완독 3권 832쪽) 제거 (`app/infrastructure/core_api_client.py`)**:
+   - `get_monthly_report_stats` 통신 실패 시 반환하던 3권 832쪽 하드코딩 응답을 `_empty_monthly_stats` 정적 메소드로 일원화하여 완독 0권, 0쪽의 정직한 스켈레톤 반환으로 교체.
+2. **독서 활동 0건 시 정직한 Empty State 반환 (`app/domain/reports/generator.py`)**:
+   - `has_activity == False`일 때 억지 LLM 호출 및 가짜 추천 도서 지어내기를 방지하고, 사서 페르소나 어조가 적용된 따뜻한 독서 시작 권유 멘트(`reader_type: "독서 시작을 기다리는 여행자"`, `recommended_books: []`) 반환.
+3. **두 백엔드 서버 간 연결성 진단 헬스체크 연동 (`app/infrastructure/core_api_client.py`, `app/api/schemas.py`, `app/api/router.py`)**:
+   - `CoreApiClient.ping_core_api()` 구현 및 `/api/v1/health` 응답에 `core_api_connected`, `core_api_url` 필드 추가.
+   - Cloud Run 또는 개발 환경에서 백엔드 간 통신 불능 상태를 헬스체크 API 한 번으로 즉시 판별 가능하도록 지원.
+4. **단위 테스트 및 AI 자가 검증 (Tiered Verification)**:
+   - `tests/unit/test_monthly_reports.py`: `test_build_monthly_report_empty_activity`, `test_core_api_client_fallback_returns_zero_stats` 추가.
+   - `tests/unit/test_api.py`: `test_health_check_endpoint` 필드 검증 추가.
+   - 204개 단위 테스트 100% 통과 (`204 passed, 10 deselected in 11.39s`), Ruff 린트/포맷 0 에러, Mypy 타입 체크 62개 소스 파일 0 에러 무결점 달성.
+
+### 다음 세션에서 할 일
+- **1순위**: `backend-core-api` 게스트 모드 공용 계정(`GUEST_MEMBER_ID`) 연동 구현 (Task 1~Task 12).
+- **2순위**: Phase 60 국립도서관 KDC 부재 시 EA_ADD_CODE 5자리 다중 폴백 및 분류 체계 SSOT 강화.
+
+
 
