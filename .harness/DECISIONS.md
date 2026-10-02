@@ -87,7 +87,7 @@
 - **결정**: 8개 페르소나 전체에 세션 파티셔닝 적용, `librarian_name` 토론자 주입 차단, `DEBATE_GUARDRAILS` 신설하여 동물 종결어미(`~냥`, `~두둥`, `~누누`, `~크크`), 사서 사칭, 반말 엄격 금지.
 - **이유**: 탭 전환 시 동일 `session_id` 유지로 인해 사서 종결어미가 토론 파트너로 유입되는 현상 차단.
 - **영향**: 페르소나 전환 시 어조 전이 0% 물리적 격리 달성.
-- ~~2026-09-18 독서 세션 도구 check_user_reading_streak 비동기 정정(pending_correction)~~ → [Superseded by 2026-09-20 도서 큐레이터 4단계 실존 서지 검증 체인]
+- ~~2026-09-18 독서 세션 도구 check_user_reading_streak 및 비동기 정정(pending_correction)~~ → [미구현 가상 설계안으로 아카이브 보존(DECISIONS_2026-10.md)]
 
 ### 2026-09-17: Yes24 실시간 SSR 베스트셀러 웹 스크래퍼(`beautifulsoup4`) 채택
 - **결정**: 폐기된 Yes24 RSS 대신 실시간 종합 베스트셀러 웹페이지(`pageSize=40`)를 `httpx` + `beautifulsoup4`(0.8초 소요)로 파싱하여 Redis에 24시간 TTL(`daily_trending_books`) 캐싱.

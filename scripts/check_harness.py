@@ -5,7 +5,7 @@ DPYB 전 레포 공통 하네스 규칙 검증:
 1. HANDOFF.md: 세션 수 <= 5개, 전체 라인 수 <= 200줄, 타 레포 침범 방지 (PR 번호/링크 참조는 허용)
 2. PLAN.md: 타 레포 전용 구현 태스크 미포함 (자동 감지)
 3. STATE.md: 전체 라인 수 <= 150줄 (마일스톤 스냅샷 원칙)
-4. DECISIONS.md: 전체 라인 수 <= 150줄, 크기 <= 25KB (3단 압축 원칙)
+4. DECISIONS.md: 전체 라인 수 <= 150줄, 크기 <= 20KB (3단 압축 원칙)
 5. archive/ 디렉토리: 파일명 규칙 `^(HANDOFF|STATE|DECISIONS)_\\d{4}-\\d{2}\\.md$` 준수
 """
 
@@ -27,7 +27,7 @@ MAX_HANDOFF_SESSIONS = 5
 MAX_HANDOFF_LINES = 200
 MAX_STATE_LINES = 150
 MAX_DECISIONS_LINES = 150
-MAX_DECISIONS_BYTES = 25 * 1024  # 25KB 상한 (현재 17KB, 약 8KB 여유 버퍼 확보)
+MAX_DECISIONS_BYTES = 20 * 1024  # 20KB 상한 (현재 약 17.5KB, 토큰 절감 엄격 통제)
 
 # DPYB 서비스 전 레포 목록
 DPYB_REPOS = [
