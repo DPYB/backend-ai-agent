@@ -1998,3 +1998,18 @@
 
 ---
 
+## 세션 60 (2026-09-28)
+
+### 진행한 작업
+1. **검증 병목 측정 및 3단계 계층화 (Tiered Verification)**:
+   - `ruff check .`(0.2s), `mypy .`(2s 내외)와 외부 LLM 네트워크 타임아웃 병목(전체 84.7s 중 93%가 네트워크 대기) 규명.
+   - `pyproject.toml` 테스트 옵션 최적화 (`addopts = "-q --tb=short"`).
+   - `AGENTS.md`에 Tier 1(작업 중 린트/타깃 테스트), Tier 2(PR 직전 타입체크/단위회귀), Tier 3(원격 CI) 체계 확립.
+2. **느린 테스트 좁은 Mocking 및 정합성 검증 (`tests/unit/test_session_security.py`, `test_guest_mode.py`)**:
+   - 외부 LLM 호출을 건너뛰도록 `_graph.ainvoke`를 좁게 모킹하여 테스트 실행 속도 대폭 개선 (`test_session_security.py`: 24.5s ➔ 8.2s).
+3. **실제 파이프라인 테스트 통합 마커 분리 (`tests/unit/test_api.py`)**:
+   - 실제 사서/토론 에이전트 그래프를 거치는 테스트에 `@pytest.mark.integration` 마커 부여.
+   - `pytest -m "not integration"` 기준 202개 단위 테스트 10초 미만 통과 달성.
+
+---
+

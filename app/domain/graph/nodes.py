@@ -10,7 +10,7 @@ from langchain_core.runnables import RunnableConfig
 
 from app.core.config import settings
 from app.domain.graph.state import AgentState
-from app.domain.graph.tools import GENERIC_TOOLS
+from app.domain.graph.tools import DEBATE_TOOLS, LIBRARIAN_TOOLS
 from app.domain.personas import (
     CAT_ID,
     DEBATE_COUNSELOR_ID,
@@ -707,8 +707,6 @@ async def _run_persona_node(
             "- [절대 준수]: 이번 발화로 토론이 완전히 마무리되므로, 사용자에게 새로운 질문이나 다음 화두를 던져 대화를 연장하지 말고 감사의 작별 인사로 마침표를 찍으십시오."
         )
 
-    system_prompt += f"\n\n[현재 사용자 식별자: member_id={state.get('member_id')}]"
-
     # Sanitize messages to avoid dangling tool_calls without tool response messages
     sanitized_messages: List[BaseMessage] = []
     raw_messages = list(state.get("messages", []))
@@ -726,12 +724,13 @@ async def _run_persona_node(
 
     prompt_messages = [SystemMessage(content=system_prompt)] + sanitized_messages
 
-    # If books have already been curated, exclude recommendation tools to prevent duplicate LLM/API calls
-    active_tools = GENERIC_TOOLS
+    # Mode-isolated tool binding: Librarian vs Debate tools
+    base_tools = DEBATE_TOOLS if is_debate else LIBRARIAN_TOOLS
+    active_tools = base_tools
     if curated_books:
         active_tools = [
             t
-            for t in GENERIC_TOOLS
+            for t in base_tools
             if getattr(t, "name", "") not in ("search_recent_books", "request_book_curation")
         ]
 

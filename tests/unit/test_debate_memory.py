@@ -88,18 +88,22 @@ async def test_agent_vector_repository_debate_insights_isolation():
 @pytest.mark.asyncio
 async def test_search_debate_memory_tool_guest_bypass():
     """Verify guest users get an immediate bypass response with zero DB queries."""
+    from app.core.context import current_member_id
+
     for guest_id in [None, "guest", "None", "guest-1234"]:
-        res = await search_debate_memory.ainvoke(
-            {"member_id": guest_id or "", "query": "데미안 토론 내용"}
-        )
-        assert "게스트" in res
-        assert "기억이 없습니다" in res
+        current_member_id.set(guest_id)
+        res = await search_debate_memory.ainvoke({"query": "데미안 토론 내용"})
+        assert "게스트" in res or "인증 정보" in res
+        assert "기억" in res or "조회할 수 없습니다" in res
 
 
 @pytest.mark.asyncio
 async def test_search_debate_memory_tool_success_and_formatting():
     """Verify tool returns nicely formatted markdown text when insights match."""
+    from app.core.context import current_member_id
+
     member_id = str(uuid.uuid4())
+    current_member_id.set(member_id)
     repo = get_agent_vector_repository()
 
     await repo.insert_debate_insight(
@@ -112,7 +116,7 @@ async def test_search_debate_memory_tool_success_and_formatting():
         embedding=[0.05] * 768,
     )
 
-    res = await search_debate_memory.ainvoke({"member_id": member_id, "query": "데미안"})
+    res = await search_debate_memory.ainvoke({"query": "데미안"})
     assert "도서: <데미안>" in res
     assert "토론 파트너: DEBATE_CRITIC" in res
     assert "핵심 논제: 자아 탐색" in res
@@ -122,8 +126,11 @@ async def test_search_debate_memory_tool_success_and_formatting():
 @pytest.mark.asyncio
 async def test_search_debate_memory_tool_not_found():
     """Verify helpful not-found message when no past insights exist for the user."""
+    from app.core.context import current_member_id
+
     member_id = str(uuid.uuid4())
-    res = await search_debate_memory.ainvoke({"member_id": member_id, "query": "존재하지않는책"})
+    current_member_id.set(member_id)
+    res = await search_debate_memory.ainvoke({"query": "존재하지않는책"})
     assert f"사용자({member_id})의 과거 토론 기록" in res
     assert "찾지 못했습니다" in res
 

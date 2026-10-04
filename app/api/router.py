@@ -25,7 +25,7 @@ from app.api.schemas import (
     WeatherSignal,
 )
 from app.core.config import settings
-from app.core.context import current_auth_token
+from app.core.context import current_auth_token, current_member_id
 from app.domain.graph.nodes import (
     extract_debate_book_title,
     extract_message_text,
@@ -357,6 +357,16 @@ async def _prepare_chat_context(
 
     # Set request-scoped token for downstream tool Token Relay
     current_auth_token.set(raw_token)
+
+    # Security IDOR protection: In non-test environments, personal memory tools only access
+    # member data when authenticated via verified JWT token. Unauthenticated requests fail-closed.
+    is_testing_env = getattr(settings, "app_env", "").lower() in ("test", "development")
+    if authenticated_member_id:
+        current_member_id.set(authenticated_member_id)
+    elif is_testing_env and effective_member_id:
+        current_member_id.set(effective_member_id)
+    else:
+        current_member_id.set(None)
 
     # Normalize persona using comprehensive matcher
     from app.domain.personas import normalize_persona
@@ -753,19 +763,19 @@ async def chat_with_persona(
         debate_summary = result_state.get("debate_summary")
 
         # Auto-persist debate insight to agent.debate_insights in background if concluded
-        # NOTE: Skip background DB write if user is guest (guest write lock)
-        effective_mid = initial_state.get("member_id")
+        # Security: strictly require verified authenticated member (prevent forged background DB writes)
+        verified_mid = current_member_id.get()
         if (
             is_concluded
             and debate_summary
-            and effective_mid
+            and verified_mid
             and user_role != "guest"
-            and not str(effective_mid).startswith("guest-")
+            and not str(verified_mid).startswith("guest-")
         ):
             book_title = extract_debate_book_title(final_messages)
             background_tasks.add_task(
                 save_debate_insight_task,
-                member_id=str(effective_mid),
+                member_id=str(verified_mid),
                 session_id=session_id,
                 book_title=book_title,
                 persona_id=current_active_persona,
@@ -1121,19 +1131,19 @@ async def chat_stream_with_persona(
                 await session_mgr.incr_guest_usage(guest_id)
 
             # Auto-persist debate insight to agent.debate_insights in background if concluded
-            # NOTE: Skip background DB write if user is guest (guest write lock)
-            effective_mid = initial_state.get("member_id")
+            # Security: strictly require verified authenticated member (prevent forged background DB writes)
+            verified_mid = current_member_id.get()
             if (
                 is_concluded
                 and debate_summary
-                and effective_mid
+                and verified_mid
                 and user_role != "guest"
-                and not str(effective_mid).startswith("guest-")
+                and not str(verified_mid).startswith("guest-")
             ):
                 book_title = extract_debate_book_title(final_messages)
                 background_tasks.add_task(
                     save_debate_insight_task,
-                    member_id=str(effective_mid),
+                    member_id=str(verified_mid),
                     session_id=session_id,
                     book_title=book_title,
                     persona_id=last_active_persona,

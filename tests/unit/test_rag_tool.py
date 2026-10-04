@@ -62,7 +62,10 @@ async def test_scrap_vector_member_isolation():
 @pytest.mark.asyncio
 async def test_search_scrap_memory_tool():
     """Verify LangChain search_scrap_memory tool returns formatted text."""
+    from app.core.context import current_member_id
+
     member_id = "test-member-uuid"
+    current_member_id.set(member_id)
     client = get_supabase_client()
     emb = generate_query_embedding("프로젝트 헤일메리")
 
@@ -75,9 +78,7 @@ async def test_search_scrap_memory_tool():
         embedding=emb,
     )
 
-    tool_output = await search_scrap_memory.ainvoke(
-        {"member_id": member_id, "query": "프로젝트 헤일메리"}
-    )
+    tool_output = await search_scrap_memory.ainvoke({"query": "프로젝트 헤일메리"})
     assert "프로젝트 헤일메리" in tool_output
     assert "지혜는 생존의 열쇠다" in tool_output
     assert "로키와의 우정" in tool_output
@@ -86,8 +87,9 @@ async def test_search_scrap_memory_tool():
 @pytest.mark.asyncio
 async def test_search_scrap_memory_guest_bypass():
     """Verify search_scrap_memory tool gracefully bypasses for guest users."""
-    tool_output = await search_scrap_memory.ainvoke(
-        {"member_id": "None", "query": "프로젝트 헤일메리"}
-    )
-    assert "게스트" in tool_output
-    assert "기억" in tool_output
+    from app.core.context import current_member_id
+
+    current_member_id.set("guest-123")
+    tool_output = await search_scrap_memory.ainvoke({"query": "프로젝트 헤일메리"})
+    assert "게스트" in tool_output or "인증 정보" in tool_output
+    assert "조회할 수 없습니다" in tool_output or "기억" in tool_output

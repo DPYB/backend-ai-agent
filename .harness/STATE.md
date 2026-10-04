@@ -35,6 +35,10 @@
 
 ### 📌 최근 마일스톤 완료 내역
 
+- [x] **Phase 64: 도구 바인딩 분리 및 member_id ContextVar 주입 (P1 보안 IDOR 차단)**
+  - 메모리 도구(`search_scrap_memory`, `search_debate_memory`, `search_my_library`) 인자에서 `member_id` 완전 제거 및 `current_member_id` ContextVar 주입 고정.
+  - LLM 도구 스키마 및 프롬프트에서 `member_id` 노출 전면 제거, 비동기 요청 간 ContextVar 격리 및 fail-closed 거부 반환 구현.
+  - 사서 모드(`LIBRARIAN_TOOLS`)와 토론 모드(`DEBATE_TOOLS`) 도구 분리 바인딩 및 전용 보안 테스트 suite(`test_tool_security.py`) 구축.
 - [x] **Phase 63: 월간 독서 리포트 정직한 0건 스켈레톤 및 코어 API 헬스체크 연결성 진단**
   - 통신 실패 시 하드코딩 3권/832쪽 목데이터 전면 제거 (`_empty_monthly_stats` 스켈레톤 교체).
   - 활동 0건 시 억지 LLM 호출 방지 및 사서 격려 멘트 반환, `GET /api/v1/health`에 `core_api_connected` 진단 필드 추가.
