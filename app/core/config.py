@@ -19,8 +19,8 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Application
-    app_env: str = Field(default="development", alias="APP_ENV")
+    # Application (Defaults to production for fail-safe security)
+    app_env: str = Field(default="production", alias="APP_ENV")
     app_host: str = Field(default="0.0.0.0", alias="APP_HOST")
     app_port: int = Field(default=8000, alias="APP_PORT")
     cors_origins: str = Field(

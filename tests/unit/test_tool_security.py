@@ -128,3 +128,86 @@ def test_tool_partitioning_between_librarian_and_debate_modes():
     assert "search_my_library" in lib_tool_names
     assert "search_recent_books" in lib_tool_names
     assert "request_book_curation" in lib_tool_names
+
+
+@pytest.mark.asyncio
+async def test_unauthenticated_conclude_skips_debate_insight_write(monkeypatch: pytest.MonkeyPatch):
+    """Verify that unauthenticated conclude requests with forged member_id NEVER trigger DB write tasks."""
+    from unittest.mock import AsyncMock, patch
+    from uuid import uuid4
+
+    from httpx import ASGITransport, AsyncClient
+    from langchain_core.messages import AIMessage
+
+    from app.api import router
+    from app.core.config import settings
+    from app.main import app
+
+    monkeypatch.setattr(settings, "app_env", "production")
+
+    # Mock graph to return concluded state with summary
+    async def _mock_ainvoke(initial_state, config=None):
+        return {
+            **initial_state,
+            "messages": [
+                *initial_state.get("messages", []),
+                AIMessage(content="토론 마무리 총평입니다."),
+            ],
+            "is_concluded": True,
+            "debate_summary": "위조 공격자가 삽입하려는 악의적 토론 요약입니다.",
+        }
+
+    monkeypatch.setattr(router._graph, "ainvoke", AsyncMock(side_effect=_mock_ainvoke))
+
+    transport = ASGITransport(app=app)
+    victim_id = str(uuid4())
+
+    with patch("app.api.router.save_debate_insight_task") as mock_save_task:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            res = await client.post(
+                "/api/v1/chat",
+                json={
+                    "session_id": str(uuid4()),
+                    "member_id": victim_id,  # Forged member_id without Authorization header
+                    "message": "토론 끝내자",
+                    "mode": "DEBATE",
+                    "persona": "DEBATE_CRITIC",
+                    "action": "conclude",
+                },
+            )
+            assert res.status_code == 200
+            # Crucial: Background DB write must NOT be scheduled for unauthenticated requests
+            mock_save_task.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_refresh_token_rejected_with_401():
+    """Verify that tokens with type='refresh' are strictly rejected with 401 Unauthorized."""
+    from uuid import uuid4
+
+    import jwt
+    from httpx import ASGITransport, AsyncClient
+
+    from app.core.config import settings
+    from app.main import app
+
+    payload = {
+        "sub": str(uuid4()),
+        "role": "member",
+        "type": "refresh",  # Explicit refresh token
+    }
+    refresh_token = jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.post(
+            "/api/v1/chat",
+            headers={"Authorization": f"Bearer {refresh_token}"},
+            json={
+                "message": "안녕",
+                "mode": "LIBRARIAN",
+                "persona": "CAT",
+            },
+        )
+        assert res.status_code == 401
+        assert "Refresh 토큰" in res.json().get("detail", "")

@@ -214,6 +214,13 @@ def extract_auth_info_from_auth(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="토큰에 사용자 식별자(sub)가 존재하지 않습니다.",
             )
+        token_type = payload.get("type") or payload.get("token_type")
+        if token_type and str(token_type).lower() == "refresh":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Refresh 토큰은 API 인증에 사용할 수 없습니다. Access 토큰을 사용해 주세요.",
+            )
+
         raw_role = payload.get("role")
         sub_str = str(sub).strip()
         if raw_role == "guest" or sub_str.startswith("guest-"):
@@ -222,6 +229,8 @@ def extract_auth_info_from_auth(
             role = "member"
 
         return sub_str, token, role
+    except HTTPException:
+        raise
     except jwt.ExpiredSignatureError as e:
         logger.warning("Expired JWT token received: %s", e)
         raise HTTPException(
