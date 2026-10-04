@@ -77,12 +77,12 @@
    - 메모리 도구 3종(`search_scrap_memory`, `search_debate_memory`, `search_my_library`) 시그니처에서 `member_id` 인자 완전 제거 및 ContextVar에서 직접 조회. 미인증 시 fail-closed 거부 반환.
    - `nodes.py:710`의 `system_prompt` 내 `member_id` UUID 노출 영구 제거.
    - 사서 모드(`LIBRARIAN_TOOLS`)와 토론 모드(`DEBATE_TOOLS`) 도구 분리 바인딩 (`nodes.py`, `tools.py`).
-3. **보안 전용 단위 테스트 suite 신설 및 100% 그린 패스 (`tests/unit/test_tool_security.py`)**:
-   - 모든 도구 스키마 및 `llm.bind_tools` JSON Schema에서 `member_id` 배제 기계적 검증 (파라미터화 테스트).
-   - `current_member_id` None 시 fail-closed 거부 반환 검증.
-   - `asyncio.gather` 동시 비동기 요청 간 ContextVar 완벽 격리 검증.
-   - 사서 vs 토론 모드 도구 분리 단언 검증.
-   - 전체 213개 비통합 단위 테스트 100% 그린 (`213 passed in 10.94s`), mypy/ruff 린트 무결점 통과.
+3. **게스트 `GUEST_MEMBER_ID` 매핑 및 요청 바디 ID 완전 무시 (보안 테스트 보강)**:
+   - `app/core/config.py`에 `guest_member_id`(`00000000-0000-0000-0000-000000000003`) 정의하여 코어 API 공용 방 규격과 일치.
+   - `router.py`에서 서명 검증된 JWT의 `sub/role`이 게스트일 때 `current_member_id`에 `settings.guest_member_id` 주입, 인증 요청 시 바디의 `request.member_id` 완전 무시.
+   - 도구 3종(`rag_tool`, `my_library_tool`, `debate_memory_tool`)의 `startswith("guest-")` 거부 제거, `None`일 때 fail-closed 유지.
+   - 게스트는 conclude 시 토론 인사이트 DB 저장을 건너뛰도록 가드 보강.
+   - 보안 테스트 4종 추가(`test_request_body_member_id_is_strictly_ignored_when_authenticated`, `test_guest_token_maps_to_guest_member_id_and_tools_succeed`, `test_guest_session_key_enforces_guest_prefix_from_jwt`, `test_guest_conclude_skips_debate_insight_save`), 전체 219개 단위 테스트 100% 그린 (`219 passed in 9.97s`).
 
 ### 다음 세션에서 할 일
 - **Phase 65 착수 (`feat/curator-reentry-loop`)**:

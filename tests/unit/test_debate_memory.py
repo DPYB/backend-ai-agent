@@ -86,15 +86,15 @@ async def test_agent_vector_repository_debate_insights_isolation():
 
 
 @pytest.mark.asyncio
-async def test_search_debate_memory_tool_guest_bypass():
-    """Verify guest users get an immediate bypass response with zero DB queries."""
+async def test_search_debate_memory_tool_unauthenticated_bypass():
+    """Verify unauthenticated requests get an immediate fail-closed response."""
     from app.core.context import current_member_id
 
-    for guest_id in [None, "guest", "None", "guest-1234"]:
-        current_member_id.set(guest_id)
+    for unauth_id in [None, "None", "undefined", "guest"]:
+        current_member_id.set(unauth_id)
         res = await search_debate_memory.ainvoke({"query": "데미안 토론 내용"})
-        assert "게스트" in res or "인증 정보" in res
-        assert "기억" in res or "조회할 수 없습니다" in res
+        assert "인증 정보" in res or "게스트" in res
+        assert "조회할 수 없습니다" in res
 
 
 @pytest.mark.asyncio

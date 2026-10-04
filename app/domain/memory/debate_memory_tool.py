@@ -28,17 +28,13 @@ async def search_debate_memory(query: str) -> str:
     member_id = current_member_id.get()
     logger.info("Searching debate memory for query='%s' (context member_id=%s)", query, member_id)
 
-    # Fail-closed guard: do not query if member_id is missing or guest
-    if (
-        not member_id
-        or member_id in ("None", "guest", "undefined")
-        or member_id.startswith("guest-")
-    ):
+    # Fail-closed guard: do not query if member_id is missing or unauthenticated
+    if not member_id or member_id in ("None", "guest", "undefined"):
         logger.info(
-            "search_debate_memory fail-closed: Unauthenticated or guest user (member_id=%s).",
+            "search_debate_memory fail-closed: Unauthenticated user (member_id=%s).",
             member_id,
         )
-        return "인증 정보가 없거나 게스트 상태이므로 과거 독서 토론 기억을 조회할 수 없습니다. 이 도구를 다시 호출하지 마시고 일반 토론 대화를 이어가세요."
+        return "인증 정보가 없어 과거 독서 토론 기억을 조회할 수 없습니다. 이 도구를 다시 호출하지 마시고 일반 토론 대화를 이어가세요."
 
     try:
         embedding = generate_query_embedding(query)

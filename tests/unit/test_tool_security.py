@@ -211,3 +211,196 @@ async def test_refresh_token_rejected_with_401():
         )
         assert res.status_code == 401
         assert "Refresh 토큰" in res.json().get("detail", "")
+
+
+@pytest.mark.asyncio
+async def test_request_body_member_id_is_strictly_ignored_when_authenticated(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Verify request.member_id in JSON body is completely ignored when JWT token is present."""
+    from uuid import uuid4
+
+    import jwt
+    from httpx import ASGITransport, AsyncClient
+    from langchain_core.messages import AIMessage
+
+    from app.api import router
+    from app.core.config import settings
+    from app.core.context import current_member_id
+    from app.main import app
+
+    legit_sub = str(uuid4())
+    attacker_sub = str(uuid4())
+
+    token = jwt.encode(
+        {"sub": legit_sub, "role": "member"},
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+
+    observed_member_id_in_graph = None
+
+    async def _mock_ainvoke(initial_state, config=None):
+        nonlocal observed_member_id_in_graph
+        observed_member_id_in_graph = current_member_id.get()
+        return {
+            **initial_state,
+            "messages": [
+                *initial_state.get("messages", []),
+                AIMessage(content="답변 완료"),
+            ],
+        }
+
+    monkeypatch.setattr(router._graph, "ainvoke", _mock_ainvoke)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.post(
+            "/api/v1/chat",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "message": "내 서재 알려줘",
+                "member_id": attacker_sub,  # Forged body member_id
+                "mode": "LIBRARIAN",
+                "persona": "CAT",
+            },
+        )
+        assert res.status_code == 200
+        # Critical verification: the graph/tools see ONLY the verified JWT sub, NOT the attacker ID
+        assert observed_member_id_in_graph == legit_sub
+        assert observed_member_id_in_graph != attacker_sub
+
+
+@pytest.mark.asyncio
+async def test_guest_token_maps_to_guest_member_id_and_tools_succeed(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Verify verified guest JWT (sub='guest-...') maps current_member_id to GUEST_MEMBER_ID."""
+    import jwt
+
+    from app.api.router import _prepare_chat_context
+    from app.api.schemas import ChatRequest
+    from app.core.config import settings
+    from app.core.context import current_member_id
+
+    guest_jwt = jwt.encode(
+        {"sub": "guest-abc-1234", "role": "guest"},
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+
+    req = ChatRequest(
+        message="가이드북 봤어",
+        mode="LIBRARIAN",
+        persona="CAT",
+    )
+
+    (
+        session_id,
+        active_persona,
+        mode,
+        state,
+        weather,
+        mgr,
+        user_role,
+        guest_id,
+    ) = await _prepare_chat_context(req, authorization=f"Bearer {guest_jwt}")
+
+    assert user_role == "guest"
+    assert guest_id == "guest-abc-1234"
+    # Must map to shared GUEST_MEMBER_ID ("00000000-0000-0000-0000-000000000003")
+    assert current_member_id.get() == settings.guest_member_id
+    assert current_member_id.get() == "00000000-0000-0000-0000-000000000003"
+
+    # Memory tool should NOT fail-closed when mapped to guest_member_id
+    scrap_res = await search_scrap_memory.ainvoke({"query": "바인더 가이드"})
+    assert "인증 정보가 없어" not in scrap_res
+
+
+@pytest.mark.asyncio
+async def test_guest_session_key_enforces_guest_prefix_from_jwt():
+    """Verify guest session_id strictly incorporates 'guest:' prefix isolated by verified JWT sub."""
+    import jwt
+
+    from app.api.router import _prepare_chat_context
+    from app.api.schemas import ChatRequest
+    from app.core.config import settings
+
+    guest_jwt = jwt.encode(
+        {"sub": "guest-550e8400", "role": "guest"},
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+
+    req = ChatRequest(
+        message="대화 시작",
+        mode="LIBRARIAN",
+        persona="CAT",
+    )
+
+    (
+        session_id,
+        _,
+        _,
+        _,
+        _,
+        _,
+        user_role,
+        guest_id,
+    ) = await _prepare_chat_context(req, authorization=f"Bearer {guest_jwt}")
+
+    assert user_role == "guest"
+    # Verified guest prefix and sub in session_id
+    assert session_id.startswith(("guest:", "guest-"))
+    assert "guest-550e8400" in session_id
+    assert session_id.endswith(":CAT")
+
+
+@pytest.mark.asyncio
+async def test_guest_conclude_skips_debate_insight_save(monkeypatch: pytest.MonkeyPatch):
+    """Verify that concluding debate under guest token NEVER schedules debate insight DB persistence."""
+    from unittest.mock import AsyncMock, patch
+
+    import jwt
+    from httpx import ASGITransport, AsyncClient
+    from langchain_core.messages import AIMessage
+
+    from app.api import router
+    from app.core.config import settings
+    from app.main import app
+
+    guest_jwt = jwt.encode(
+        {"sub": "guest-test-uuid", "role": "guest"},
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+
+    async def _mock_ainvoke(initial_state, config=None):
+        return {
+            **initial_state,
+            "messages": [
+                *initial_state.get("messages", []),
+                AIMessage(content="토론이 종료되었습니다."),
+            ],
+            "is_concluded": True,
+            "debate_summary": "게스트의 토론 요약입니다.",
+        }
+
+    monkeypatch.setattr(router._graph, "ainvoke", AsyncMock(side_effect=_mock_ainvoke))
+
+    transport = ASGITransport(app=app)
+    with patch("app.api.router.save_debate_insight_task") as mock_save_task:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            res = await client.post(
+                "/api/v1/chat",
+                headers={"Authorization": f"Bearer {guest_jwt}"},
+                json={
+                    "message": "토론 끝내자",
+                    "mode": "DEBATE",
+                    "persona": "DEBATE_CRITIC",
+                    "action": "conclude",
+                },
+            )
+            assert res.status_code == 200
+            # Must NOT save debate insight for guests
+            mock_save_task.assert_not_called()

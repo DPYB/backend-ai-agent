@@ -69,17 +69,13 @@ async def search_scrap_memory(query: str) -> str:
     member_id = current_member_id.get()
     logger.info("Searching scrap memory for query='%s' (context member_id=%s)", query, member_id)
 
-    # Fail-closed guard: do not query if member_id is missing or guest
-    if (
-        not member_id
-        or member_id in ("None", "guest", "undefined")
-        or member_id.startswith("guest-")
-    ):
+    # Fail-closed guard: do not query if member_id is missing or unauthenticated
+    if not member_id or member_id in ("None", "guest", "undefined"):
         logger.info(
-            "search_scrap_memory fail-closed: Unauthenticated or guest user (member_id=%s).",
+            "search_scrap_memory fail-closed: Unauthenticated user (member_id=%s).",
             member_id,
         )
-        return "인증 정보가 없거나 게스트 상태이므로 개인 독서 스크랩을 조회할 수 없습니다. 이 도구를 다시 호출하지 마시고 일반 대화를 이어가세요."
+        return "인증 정보가 없어 개인 독서 스크랩을 조회할 수 없습니다. 이 도구를 다시 호출하지 마시고 일반 대화를 이어가세요."
 
     try:
         embedding = generate_query_embedding(query)

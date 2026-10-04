@@ -85,11 +85,12 @@ async def test_search_my_library_tool_with_books(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_search_my_library_tool_guest_bypass():
-    """Verify search_my_library tool gracefully bypasses for guest users."""
+async def test_search_my_library_tool_unauthenticated_fail_closed():
+    """Verify search_my_library tool strictly fails closed when unauthenticated."""
     from app.core.context import current_member_id
 
-    current_member_id.set("guest-test")
-    res = await search_my_library.ainvoke({})
-    assert "게스트" in res or "인증 정보" in res
-    assert "서재" in res
+    for unauth_id in [None, "None", "undefined", "guest"]:
+        current_member_id.set(unauth_id)
+        res = await search_my_library.ainvoke({})
+        assert "인증 정보" in res or "게스트" in res
+        assert "서재를 조회할 수 없습니다" in res

@@ -85,11 +85,12 @@ async def test_search_scrap_memory_tool():
 
 
 @pytest.mark.asyncio
-async def test_search_scrap_memory_guest_bypass():
-    """Verify search_scrap_memory tool gracefully bypasses for guest users."""
+async def test_search_scrap_memory_unauthenticated_fail_closed():
+    """Verify search_scrap_memory tool strictly fails closed when unauthenticated."""
     from app.core.context import current_member_id
 
-    current_member_id.set("guest-123")
-    tool_output = await search_scrap_memory.ainvoke({"query": "프로젝트 헤일메리"})
-    assert "게스트" in tool_output or "인증 정보" in tool_output
-    assert "조회할 수 없습니다" in tool_output or "기억" in tool_output
+    for unauth_id in [None, "None", "undefined", "guest"]:
+        current_member_id.set(unauth_id)
+        tool_output = await search_scrap_memory.ainvoke({"query": "프로젝트 헤일메리"})
+        assert "인증 정보" in tool_output or "게스트" in tool_output
+        assert "조회할 수 없습니다" in tool_output
