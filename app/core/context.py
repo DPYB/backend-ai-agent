@@ -5,3 +5,6 @@ from typing import Optional
 
 # Request-scoped Bearer auth token for downstream core-api token relay
 current_auth_token: ContextVar[Optional[str]] = ContextVar("current_auth_token", default=None)
+
+# Request-scoped authenticated member UUID for personal memory RAG and bookshelf isolation
+current_member_id: ContextVar[Optional[str]] = ContextVar("current_member_id", default=None)

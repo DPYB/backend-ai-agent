@@ -19,8 +19,8 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Application
-    app_env: str = Field(default="development", alias="APP_ENV")
+    # Application (Defaults to production for fail-safe security)
+    app_env: str = Field(default="production", alias="APP_ENV")
     app_host: str = Field(default="0.0.0.0", alias="APP_HOST")
     app_port: int = Field(default=8000, alias="APP_PORT")
     cors_origins: str = Field(
@@ -113,6 +113,16 @@ class Settings(BaseSettings):
     guest_chat_limit: int = Field(default=10, alias="GUEST_CHAT_LIMIT")
     circuit_guest_rpm_limit: int = Field(default=60, alias="CIRCUIT_GUEST_RPM_LIMIT")
     circuit_guest_rpd_limit: int = Field(default=1400, alias="CIRCUIT_GUEST_RPD_LIMIT")
+
+    # Guest & Demo Member UUIDs (Matching backend-core-api single shared rooms)
+    guest_member_id: str = Field(
+        default="00000000-0000-0000-0000-000000000003",
+        alias="GUEST_MEMBER_ID",
+    )
+    demo_member_id: str = Field(
+        default="00000000-0000-0000-0000-000000000002",
+        alias="DEMO_MEMBER_ID",
+    )
     circuit_member_rpm_limit: int = Field(default=120, alias="CIRCUIT_MEMBER_RPM_LIMIT")
     circuit_member_rpd_limit: int = Field(default=4000, alias="CIRCUIT_MEMBER_RPD_LIMIT")
 

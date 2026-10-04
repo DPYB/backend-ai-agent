@@ -19,16 +19,20 @@ async def test_core_api_bookshelf_fallback():
 @pytest.mark.asyncio
 async def test_search_my_library_tool_empty():
     """Verify search_my_library tool returns honest empty message without hallucinating books."""
-    res = await search_my_library.ainvoke({"member_id": "test-member-123"})
+    from app.core.context import current_member_id
+
+    current_member_id.set("test-member-123")
+    res = await search_my_library.ainvoke({})
     assert "등록된 도서가 없습니다" in res
 
 
 @pytest.mark.asyncio
 async def test_search_my_library_tool_empty_filtered():
     """Verify search_my_library tool returns honest message when filtered by status on empty shelf."""
-    res = await search_my_library.ainvoke(
-        {"member_id": "test-member-123", "status_filter": "READING"}
-    )
+    from app.core.context import current_member_id
+
+    current_member_id.set("test-member-123")
+    res = await search_my_library.ainvoke({"status_filter": "READING"})
     assert "READING" in res
     assert "등록된 도서가 없습니다" in res
 
@@ -36,6 +40,9 @@ async def test_search_my_library_tool_empty_filtered():
 @pytest.mark.asyncio
 async def test_search_my_library_tool_with_books(monkeypatch):
     """Verify search_my_library tool formats active bookshelf entries correctly."""
+    from app.core.context import current_member_id
+
+    current_member_id.set("test-member-123")
     client = get_core_api_client()
 
     async def mock_get_my_bookshelf(member_id: str, token: str | None = None):
@@ -64,7 +71,7 @@ async def test_search_my_library_tool_with_books(monkeypatch):
     monkeypatch.setattr(client, "get_my_bookshelf", mock_get_my_bookshelf)
 
     # Test all books
-    res_all = await search_my_library.ainvoke({"member_id": "test-member-123"})
+    res_all = await search_my_library.ainvoke({})
     assert "서재에 등록된 도서 목록입니다" in res_all
     assert "### 📚 클린 아키텍처" in res_all
     assert "완독함" in res_all
@@ -72,16 +79,18 @@ async def test_search_my_library_tool_with_books(monkeypatch):
     assert "읽는 중" in res_all
 
     # Test status filter
-    res_filtered = await search_my_library.ainvoke(
-        {"member_id": "test-member-123", "status_filter": "READING"}
-    )
+    res_filtered = await search_my_library.ainvoke({"status_filter": "READING"})
     assert "리팩터링 2판" in res_filtered
     assert "클린 아키텍처" not in res_filtered
 
 
 @pytest.mark.asyncio
-async def test_search_my_library_tool_guest_bypass():
-    """Verify search_my_library tool gracefully bypasses for guest users."""
-    res = await search_my_library.ainvoke({"member_id": "None"})
-    assert "게스트" in res
-    assert "서재" in res
+async def test_search_my_library_tool_unauthenticated_fail_closed():
+    """Verify search_my_library tool strictly fails closed when unauthenticated."""
+    from app.core.context import current_member_id
+
+    for unauth_id in [None, "None", "undefined", "guest"]:
+        current_member_id.set(unauth_id)
+        res = await search_my_library.ainvoke({})
+        assert "인증 정보" in res or "게스트" in res
+        assert "서재를 조회할 수 없습니다" in res

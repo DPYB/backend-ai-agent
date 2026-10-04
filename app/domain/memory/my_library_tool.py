@@ -5,39 +5,39 @@ from typing import Optional
 
 from langchain_core.tools import tool
 
-from app.core.context import current_auth_token
+from app.core.context import current_auth_token, current_member_id
 from app.infrastructure.core_api_client import get_core_api_client
 
 logger = logging.getLogger(__name__)
 
 
 @tool("search_my_library")
-async def search_my_library(member_id: str, status_filter: Optional[str] = None) -> str:
+async def search_my_library(status_filter: Optional[str] = None) -> str:
     """사용자가 서재(bookshelf)에 등록해 둔 책 목록과 독서 상태를 조회합니다.
 
     사용자가 현재 어떤 책을 읽고 있는지(READING), 어떤 책을 완독했는지(COMPLETED),
-    어떤 책을 읽고 싶어 하는지(WISH) 파악하여 맞춤형 사서 대화나 토론을 나눌 때 호출합니다.
+    어떤 책을 읽고 싶어 하는지(WISH) 파악하여 맞춤형 사서 대화를 나눌 때 호출합니다.
 
     Args:
-        member_id: 사용자의 고유 식별자 (UUID)
         status_filter: 독서 상태 필터 ('READING', 'COMPLETED', 'WISH' 또는 None=전체)
 
     Returns:
         사용자의 서재 등록 도서 목록과 상태가 포함된 설명 텍스트
     """
+    member_id = current_member_id.get()
     logger.info(
-        "Querying bookshelf for member_id=%s with status_filter=%s",
-        member_id,
+        "Querying bookshelf for status_filter=%s (context member_id=%s)",
         status_filter,
+        member_id,
     )
-    # Bypass for unauthenticated guest users
-    if (
-        not member_id
-        or member_id in ("None", "guest", "undefined")
-        or member_id.startswith("guest-")
-    ):
-        logger.info("Skipping search_my_library: Unauthenticated guest user.")
-        return "현재 로그인하지 않은 게스트 상태이므로 개인 서재가 없습니다. 도서 추천이나 일반 독서 대화를 바로 진행합니다."
+
+    # Fail-closed guard: do not query if member_id is missing or unauthenticated
+    if not member_id or member_id in ("None", "guest", "undefined"):
+        logger.info(
+            "search_my_library fail-closed: Unauthenticated user (member_id=%s).",
+            member_id,
+        )
+        return "인증 정보가 없어 개인 서재를 조회할 수 없습니다. 이 도구를 다시 호출하지 마시고 일반 독서 대화를 이어가세요."
 
     try:
         client = get_core_api_client()

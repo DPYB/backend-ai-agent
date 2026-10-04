@@ -25,7 +25,7 @@ from app.api.schemas import (
     WeatherSignal,
 )
 from app.core.config import settings
-from app.core.context import current_auth_token
+from app.core.context import current_auth_token, current_member_id
 from app.domain.graph.nodes import (
     extract_debate_book_title,
     extract_message_text,
@@ -214,6 +214,13 @@ def extract_auth_info_from_auth(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="토큰에 사용자 식별자(sub)가 존재하지 않습니다.",
             )
+        token_type = payload.get("type") or payload.get("token_type")
+        if token_type and str(token_type).lower() == "refresh":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Refresh 토큰은 API 인증에 사용할 수 없습니다. Access 토큰을 사용해 주세요.",
+            )
+
         raw_role = payload.get("role")
         sub_str = str(sub).strip()
         if raw_role == "guest" or sub_str.startswith("guest-"):
@@ -222,6 +229,8 @@ def extract_auth_info_from_auth(
             role = "member"
 
         return sub_str, token, role
+    except HTTPException:
+        raise
     except jwt.ExpiredSignatureError as e:
         logger.warning("Expired JWT token received: %s", e)
         raise HTTPException(
@@ -340,23 +349,53 @@ async def _prepare_chat_context(
     """
     session_mgr = get_redis_session_manager()
 
-    # Resolve member_id and role:
-    # 1) Verified JWT Bearer token sub and role
-    # 2) Explicit request.member_id (internal or testing)
-    # 3) None (Guest mode: unauthenticated user without random UUID generation)
+    # Resolve member_id and role strictly from verified JWT Bearer token
     authenticated_member_id, raw_token, token_role = extract_auth_info_from_auth(authorization)
-    effective_member_id = authenticated_member_id or request.member_id or None
+    is_testing_env = getattr(settings, "app_env", "").lower() in ("test", "development")
 
-    user_role = token_role or (
-        "guest" if (effective_member_id and effective_member_id.startswith("guest-")) else "member"
+    # Determine guest status strictly from verified JWT claims
+    is_jwt_guest = token_role == "guest" or (
+        bool(authenticated_member_id and authenticated_member_id.startswith("guest-"))
     )
-    if not effective_member_id and not authorization:
-        user_role = "guest"
 
-    guest_id = effective_member_id if user_role == "guest" else None
+    if authenticated_member_id:
+        user_role = "guest" if is_jwt_guest else "member"
+        guest_id = authenticated_member_id if is_jwt_guest else None
+        effective_member_id = settings.guest_member_id if is_jwt_guest else authenticated_member_id
+    elif is_testing_env and request.member_id:
+        # Isolated test environment fallback for mock member requests without JWT
+        is_mock_guest = (
+            request.member_id.startswith("guest-") or request.member_id == settings.guest_member_id
+        )
+        user_role = "guest" if is_mock_guest else "member"
+        guest_id = request.member_id if is_mock_guest else None
+        effective_member_id = settings.guest_member_id if is_mock_guest else request.member_id
+    else:
+        user_role = "guest"
+        guest_id = None
+        effective_member_id = None
 
     # Set request-scoped token for downstream tool Token Relay
     current_auth_token.set(raw_token)
+
+    # Security IDOR protection: In non-test environments, personal memory tools only access
+    # member data when authenticated via verified JWT token.
+    # Request body's request.member_id is completely ignored when authorization header is present or in production.
+    is_testing_env = getattr(settings, "app_env", "").lower() in ("test", "development")
+    if authenticated_member_id:
+        # If guest, map to settings.guest_member_id ("00000000-0000-0000-0000-000000000003")
+        # matching backend-core-api single shared room. If member, use verified sub.
+        if is_jwt_guest:
+            current_member_id.set(settings.guest_member_id)
+        else:
+            current_member_id.set(authenticated_member_id)
+    elif is_testing_env and request.member_id:
+        if request.member_id.startswith("guest-") or request.member_id == settings.guest_member_id:
+            current_member_id.set(settings.guest_member_id)
+        else:
+            current_member_id.set(request.member_id)
+    else:
+        current_member_id.set(None)
 
     # Normalize persona using comprehensive matcher
     from app.domain.personas import normalize_persona
@@ -376,10 +415,15 @@ async def _prepare_chat_context(
 
     # 1. Automatic Session Partitioning by Member and Persona ({effective_member_id}:{validated_uuid}:{persona})
     # Partition session_id at the DB level for all 8 personas.
-    # For guest users, strictly anchor the session to {guest_id}:{persona} so conversations are isolated per guest.
+    # For guest users, strictly anchor the session to guest:{guest_id}:{persona} so conversations are isolated per guest.
     # For registered members, enforce namespace prefixing f"{effective_member_id}:{validated_uuid}" to prevent cross-account eavesdropping.
     if user_role == "guest" and guest_id:
-        raw_session_id = guest_id
+        guest_key = (
+            guest_id
+            if (guest_id.startswith("guest:") or guest_id.startswith("guest-"))
+            else f"guest:{guest_id}"
+        )
+        raw_session_id = guest_key
     elif effective_member_id and user_role != "guest":
         base_sid = request.session_id or "default"
         if base_sid.startswith(f"{effective_member_id}:"):
@@ -753,19 +797,20 @@ async def chat_with_persona(
         debate_summary = result_state.get("debate_summary")
 
         # Auto-persist debate insight to agent.debate_insights in background if concluded
-        # NOTE: Skip background DB write if user is guest (guest write lock)
-        effective_mid = initial_state.get("member_id")
+        # Security: strictly require verified authenticated member (prevent forged background DB writes)
+        verified_mid = current_member_id.get()
         if (
             is_concluded
             and debate_summary
-            and effective_mid
+            and verified_mid
             and user_role != "guest"
-            and not str(effective_mid).startswith("guest-")
+            and not str(verified_mid).startswith("guest-")
+            and str(verified_mid) != settings.guest_member_id
         ):
             book_title = extract_debate_book_title(final_messages)
             background_tasks.add_task(
                 save_debate_insight_task,
-                member_id=str(effective_mid),
+                member_id=str(verified_mid),
                 session_id=session_id,
                 book_title=book_title,
                 persona_id=current_active_persona,
@@ -1121,19 +1166,20 @@ async def chat_stream_with_persona(
                 await session_mgr.incr_guest_usage(guest_id)
 
             # Auto-persist debate insight to agent.debate_insights in background if concluded
-            # NOTE: Skip background DB write if user is guest (guest write lock)
-            effective_mid = initial_state.get("member_id")
+            # Security: strictly require verified authenticated member (prevent forged background DB writes)
+            verified_mid = current_member_id.get()
             if (
                 is_concluded
                 and debate_summary
-                and effective_mid
+                and verified_mid
                 and user_role != "guest"
-                and not str(effective_mid).startswith("guest-")
+                and not str(verified_mid).startswith("guest-")
+                and str(verified_mid) != settings.guest_member_id
             ):
                 book_title = extract_debate_book_title(final_messages)
                 background_tasks.add_task(
                     save_debate_insight_task,
-                    member_id=str(effective_mid),
+                    member_id=str(verified_mid),
                     session_id=session_id,
                     book_title=book_title,
                     persona_id=last_active_persona,

@@ -201,10 +201,19 @@ async def test_composite_session_id_backward_compatibility(monkeypatch: pytest.M
     session_uuid = str(uuid4())
     composite_sid = f"{member_id}:{session_uuid}:CAT"
 
+    import jwt
+
+    token = jwt.encode(
+        {"sub": member_id, "role": "member"},
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         # Sending composite session_id should NOT throw 422 in production
         res = await client.post(
             "/api/v1/chat",
+            headers={"Authorization": f"Bearer {token}"},
             json={
                 "session_id": composite_sid,
                 "member_id": member_id,

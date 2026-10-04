@@ -7,6 +7,7 @@ from typing import List
 from langchain_core.tools import tool
 
 from app.core.config import settings
+from app.core.context import current_member_id
 from app.infrastructure.supabase_client import get_supabase_client
 
 logger = logging.getLogger(__name__)
@@ -53,28 +54,28 @@ def generate_query_embedding(query: str, dimension: int = 768) -> List[float]:
 
 
 @tool("search_scrap_memory")
-async def search_scrap_memory(member_id: str, query: str) -> str:
+async def search_scrap_memory(query: str) -> str:
     """사용자 본인이 과거에 책을 읽고 남긴 스크랩(인상 깊은 문장, 개인 메모) 기록을 검색합니다.
 
     이 도구는 오직 '개인화 독서 기억' 전용이며, 새로운 도서 추천에는 사용되지 않습니다.
     사용자의 독서 취향, 과거 느꼈던 감정, 인용 문장을 대화에 자연스럽게 녹여낼 때 호출합니다.
 
     Args:
-        member_id: 사용자의 고유 식별자 (UUID)
         query: 검색할 키워드, 감정, 문맥 또는 주제
 
     Returns:
         사용자의 스크랩 인용문과 개인 메모가 포함된 텍스트 결과
     """
-    logger.info("Searching scrap memory for member_id=%s, query='%s'", member_id, query)
-    # Bypass for unauthenticated guest users
-    if (
-        not member_id
-        or member_id in ("None", "guest", "undefined")
-        or member_id.startswith("guest-")
-    ):
-        logger.info("Skipping search_scrap_memory: Unauthenticated guest user.")
-        return "현재 로그인하지 않은 게스트 상태이므로 저장된 개인 독서 스크랩 및 메모 기억이 없습니다."
+    member_id = current_member_id.get()
+    logger.info("Searching scrap memory for query='%s' (context member_id=%s)", query, member_id)
+
+    # Fail-closed guard: do not query if member_id is missing or unauthenticated
+    if not member_id or member_id in ("None", "guest", "undefined"):
+        logger.info(
+            "search_scrap_memory fail-closed: Unauthenticated user (member_id=%s).",
+            member_id,
+        )
+        return "인증 정보가 없어 개인 독서 스크랩을 조회할 수 없습니다. 이 도구를 다시 호출하지 마시고 일반 대화를 이어가세요."
 
     try:
         embedding = generate_query_embedding(query)

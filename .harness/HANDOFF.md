@@ -2,22 +2,7 @@
 
 > 세션마다 무엇을 진행했고 다음 세션에서 무엇을 이어받아야 하는지 서술형으로 기록합니다.
 > **관리 규칙**: 본 문서에는 **최근 3~5개 세션만 유지**하며, 과거 세션 로그는 `.harness/archive/`에 보관합니다. 타 레포 내부 작업은 기록하지 않고 연동 링크만 참조합니다.
-> *(과거 세션 1~59 내역은 `.harness/archive/HANDOFF_2026-09.md` 참조)*
-
----
-
-## 세션 60 (2026-09-28)
-
-### 진행한 작업
-1. **검증 병목 측정 및 3단계 계층화 (Tiered Verification)**:
-   - `ruff check .`(0.2s), `mypy .`(2s 내외)와 외부 LLM 네트워크 타임아웃 병목(전체 84.7s 중 93%가 네트워크 대기) 규명.
-   - `pyproject.toml` 테스트 옵션 최적화 (`addopts = "-q --tb=short"`).
-   - `AGENTS.md`에 Tier 1(작업 중 린트/타깃 테스트), Tier 2(PR 직전 타입체크/단위회귀), Tier 3(원격 CI) 체계 확립.
-2. **느린 테스트 좁은 Mocking 및 정합성 검증 (`tests/unit/test_session_security.py`, `test_guest_mode.py`)**:
-   - 외부 LLM 호출을 건너뛰도록 `_graph.ainvoke`를 좁게 모킹하여 테스트 실행 속도 대폭 개선 (`test_session_security.py`: 24.5s ➔ 8.2s).
-3. **실제 파이프라인 테스트 통합 마커 분리 (`tests/unit/test_api.py`)**:
-   - 실제 사서/토론 에이전트 그래프를 거치는 테스트에 `@pytest.mark.integration` 마커 부여.
-   - `pytest -m "not integration"` 기준 202개 단위 테스트 10초 미만 통과 달성.
+> *(과거 세션 1~60 내역은 `.harness/archive/HANDOFF_2026-09.md` 참조)*
 
 ---
 
@@ -75,7 +60,32 @@
    - `AGENTS.md` 규격 단일화 (최대 5세션/200줄, Phase/Session 분리, 타 레포 격리).
 
 ### 다음 세션에서 할 일
-- **Phase 60 구현 착수 (`feat/national-library-kdc-fallback`)**:
-  - `app/infrastructure/national_library_client.py`에서 KDC 부재 시 `EA_ADD_CODE` 5자리 부가기호(뒤 3자리) 다중 폴백 및 `513.8` 심리치료 철학 승격 연동.
-  - `ClassifyGenreResponse`에 `subject`, `display_genre` 응답 필드 확장.
-  - `tests/unit/test_recommend_metadata.py` 회귀 테스트 추가 및 자가 검증.
+- **Phase 60 구현 (`feat/national-library-kdc-fallback`)**: KDC 부재 시 부가기호 다중 폴백 및 심리치료 철학 승격.
+
+---
+
+## 세션 65 (2026-10-03)
+
+### 진행한 작업
+1. **LangGraph 아키텍처 정밀 분석 및 전면 개정 (v2 리포트)**:
+   - `file:line` 전수 검증 기반 아키텍처 분석 리포트 작성 (`langgraph-architecture-analysis.md`).
+   - 무한 루프 과장 정정(LangGraph 기본 한도 10,007), State Race Condition 배제, LLM 라우터 도입 철회(순수 함수 통합 정합성).
+   - Worst-case Latency, 다중 인스턴스 서킷 브레이커, 간접 프롬프트 인젝션 취약점 규명.
+2. **도구 바인딩 분리 및 `member_id` ContextVar 주입 (P1 보안 IDOR 차단 / Phase 64)**:
+   - `app/core/context.py`에 `current_member_id` ContextVar 신설 및 `router.py`에서 인증된 JWT sub 설정 연동.
+   - 비-테스트 환경에서 토큰 없는 `request.member_id` 신뢰 차단 (fail-closed).
+   - 메모리 도구 3종(`search_scrap_memory`, `search_debate_memory`, `search_my_library`) 시그니처에서 `member_id` 인자 완전 제거 및 ContextVar에서 직접 조회. 미인증 시 fail-closed 거부 반환.
+   - `nodes.py:710`의 `system_prompt` 내 `member_id` UUID 노출 영구 제거.
+   - 사서 모드(`LIBRARIAN_TOOLS`)와 토론 모드(`DEBATE_TOOLS`) 도구 분리 바인딩 (`nodes.py`, `tools.py`).
+3. **게스트 `GUEST_MEMBER_ID` 매핑 및 요청 바디 ID 완전 무시 (보안 테스트 보강)**:
+   - `app/core/config.py`에 `guest_member_id`(`00000000-0000-0000-0000-000000000003`) 정의하여 코어 API 공용 방 규격과 일치.
+   - `router.py`에서 서명 검증된 JWT의 `sub/role`이 게스트일 때 `current_member_id`에 `settings.guest_member_id` 주입, 인증 요청 시 바디의 `request.member_id` 완전 무시.
+   - 도구 3종(`rag_tool`, `my_library_tool`, `debate_memory_tool`)의 `startswith("guest-")` 거부 제거, `None`일 때 fail-closed 유지.
+   - 게스트는 conclude 시 토론 인사이트 DB 저장을 건너뛰도록 가드 보강.
+   - 보안 테스트 4종 추가(`test_request_body_member_id_is_strictly_ignored_when_authenticated`, `test_guest_token_maps_to_guest_member_id_and_tools_succeed`, `test_guest_session_key_enforces_guest_prefix_from_jwt`, `test_guest_conclude_skips_debate_insight_save`), 전체 219개 단위 테스트 100% 그린 (`219 passed in 9.97s`).
+
+### 다음 세션에서 할 일
+- **Phase 65 착수 (`feat/curator-reentry-loop`)**:
+  - `tests/unit/test_curator_loop_prevention.py`: Curator 실패(`curated_books=None`) mock 시뮬레이션 및 1회 호출/가짜 카드 배제/정상 종료 검증.
+  - `AgentState.curator_attempted: bool` 플래그 추가 및 `route_persona_exit` 재진입 차단.
+  - `router.py`의 `ainvoke`/`astream_events` 호출 시 `config={"recursion_limit": 25}` 안전 버퍼 적용 및 `GraphRecursionError` graceful fallback/SSE 에러 처리.

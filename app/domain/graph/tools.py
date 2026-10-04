@@ -39,7 +39,23 @@ def request_book_curation(query: str) -> str:
     return f"[도서 큐레이션 요청 접수]: '{query}'에 어울리는 최적의 도서를 국립중앙도서관 정식 서지 검증 체인으로 엄선합니다."
 
 
-# Universal tools accessible to librarian and debate persona agents
+# 📚 Tools specific to Librarian mode (CAT, SHOEBILL, SEA_SLUG, GECKO)
+LIBRARIAN_TOOLS: List[BaseTool] = [
+    search_scrap_memory,
+    search_my_library,
+    search_recent_books,
+    request_book_curation,
+]
+
+# 🎙️ Tools specific to Debate mode (CRITIC, STORYTELLER, COUNSELOR, OBSERVER)
+# search_scrap_memory is retained so debaters can ground topics in user's saved quotes/reflections
+DEBATE_TOOLS: List[BaseTool] = [
+    search_scrap_memory,
+    search_debate_memory,
+    trigger_debate_conclude,
+]
+
+# Universal tool list for ToolNode registration in workflow graph
 GENERIC_TOOLS: List[BaseTool] = [
     search_scrap_memory,
     search_debate_memory,
@@ -50,6 +66,8 @@ GENERIC_TOOLS: List[BaseTool] = [
 ]
 
 __all__ = [
+    "LIBRARIAN_TOOLS",
+    "DEBATE_TOOLS",
     "GENERIC_TOOLS",
     "search_scrap_memory",
     "search_debate_memory",

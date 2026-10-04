@@ -5,6 +5,7 @@ from typing import Any, Dict, List
 
 from langchain_core.tools import tool
 
+from app.core.context import current_member_id
 from app.domain.memory.rag_tool import generate_query_embedding
 from app.infrastructure.db.repository import get_agent_vector_repository
 
@@ -12,29 +13,28 @@ logger = logging.getLogger(__name__)
 
 
 @tool("search_debate_memory")
-async def search_debate_memory(member_id: str, query: str) -> str:
+async def search_debate_memory(query: str) -> str:
     """사용자가 과거에 AI 토론 파트너(평론가, 이야기꾼, 상담사, 관찰가)와 나누었던 토론 기록과 통찰 요약을 검색합니다.
 
     이 도구는 오직 '과거 독서 토론 기억 회상' 전용입니다.
     사용자가 과거에 읽고 토론했던 책의 주제, 나누었던 생각, 철학적/심리적 화두, 총평을 대화에 반영할 때 호출합니다.
 
     Args:
-        member_id: 사용자의 고유 식별자 (UUID)
         query: 검색할 주제, 책 제목, 화두, 질문 또는 키워드
 
     Returns:
         사용자의 과거 토론 도서, 토론 파트너, 핵심 논제, 나눈 생각 및 총평 요약 텍스트
     """
-    logger.info("Searching debate memory for member_id=%s, query='%s'", member_id, query)
+    member_id = current_member_id.get()
+    logger.info("Searching debate memory for query='%s' (context member_id=%s)", query, member_id)
 
-    # Bypass for unauthenticated guest users
-    if (
-        not member_id
-        or member_id in ("None", "guest", "undefined")
-        or member_id.startswith("guest-")
-    ):
-        logger.info("Skipping search_debate_memory: Unauthenticated guest user.")
-        return "현재 로그인하지 않은 게스트 상태이므로 과거 독서 토론 통찰 기억이 없습니다."
+    # Fail-closed guard: do not query if member_id is missing or unauthenticated
+    if not member_id or member_id in ("None", "guest", "undefined"):
+        logger.info(
+            "search_debate_memory fail-closed: Unauthenticated user (member_id=%s).",
+            member_id,
+        )
+        return "인증 정보가 없어 과거 독서 토론 기억을 조회할 수 없습니다. 이 도구를 다시 호출하지 마시고 일반 토론 대화를 이어가세요."
 
     try:
         embedding = generate_query_embedding(query)

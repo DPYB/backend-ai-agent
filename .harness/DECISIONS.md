@@ -5,6 +5,11 @@
 
 ---
 
+### 2026-10-03: 메모리 도구 member_id ContextVar 주입 및 게스트 공용방 매핑 (IDOR 차단)
+- **결정**: `search_scrap_memory`, `search_debate_memory`, `search_my_library` 시그니처에서 `member_id` 인자를 완전 제거하고 `app/core/context.py`의 `current_member_id` ContextVar에서 읽도록 고정. 게스트 JWT 수신 시 `core-api` 단일 방과 일치하는 `settings.guest_member_id`(`00000000-0000-0000-0000-000000000003`)로 안전 매핑하고 요청 바디의 `member_id`는 완전 무시.
+- **이유**: LLM의 도구 인자 조작 및 프롬프트 인젝션을 통한 비공개 데이터 탈취(IDOR) 원천 차단. 게스트마다 UUID로 분할 시 발생하는 코어 서재와의 정합성 분열 및 크론 청소 불가 좀비 데이터 축적 방지.
+- **영향**: LLM 도구 스키마에서 `member_id` 100% 은닉, 인증 누락 시 fail-closed 거부, 게스트의 안전한 서재 조회 허용 및 토론 인사이트 쓰기 차단 확립.
+
 ### 2026-10-01: Google Cloud Run 프로덕션 마이그레이션 및 Render 레거시 정리
 - **결정**: 서울 리전(`asia-northeast3`) Cloud Run 및 Upstash Serverless Redis(`rediss://...`)로 완전 이전하고 Render 배포 워크플로우(`.github/workflows/deploy.yml`) 삭제.
 - **이유**: Render 무료 티어(512MB RAM) 제약, 슬립 지연, 404 빌드 실패 리스크를 제거하고 Cloud Build GitHub 자체 연동(`develop` 브랜치) 활용.
