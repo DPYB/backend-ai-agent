@@ -6,6 +6,7 @@ import re
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
+from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -225,6 +226,16 @@ def extract_auth_info_from_auth(
         sub_str = str(sub).strip()
         if raw_role == "guest" or sub_str.startswith("guest-"):
             role = "guest"
+            clean_uuid = sub_str.removeprefix("guest-").removeprefix("guest:")
+            try:
+                UUID(clean_uuid)
+            except (ValueError, TypeError, AttributeError) as err:
+                if not (is_testing_env and (sub_str.startswith("guest-") or sub_str == "guest")):
+                    logger.warning("Invalid guest sub UUID in JWT: %s", sub_str)
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="게스트 토큰의 식별자(sub)가 올바른 UUID 형식이 아닙니다.",
+                    ) from err
         else:
             role = "member"
 
@@ -415,15 +426,12 @@ async def _prepare_chat_context(
 
     # 1. Automatic Session Partitioning by Member and Persona ({effective_member_id}:{validated_uuid}:{persona})
     # Partition session_id at the DB level for all 8 personas.
-    # For guest users, strictly anchor the session to guest:{guest_id}:{persona} so conversations are isolated per guest.
+    # For guest users, strictly anchor the session to guest:{clean_guest_uuid}:{persona} ignoring body session_id
+    # so conversations are isolated per verified guest token and cross-guest snooping is prevented.
     # For registered members, enforce namespace prefixing f"{effective_member_id}:{validated_uuid}" to prevent cross-account eavesdropping.
     if user_role == "guest" and guest_id:
-        guest_key = (
-            guest_id
-            if (guest_id.startswith("guest:") or guest_id.startswith("guest-"))
-            else f"guest:{guest_id}"
-        )
-        raw_session_id = guest_key
+        clean_guest_uuid = guest_id.removeprefix("guest-").removeprefix("guest:")
+        raw_session_id = f"guest:{clean_guest_uuid}"
     elif effective_member_id and user_role != "guest":
         base_sid = request.session_id or "default"
         if base_sid.startswith(f"{effective_member_id}:"):
@@ -431,7 +439,13 @@ async def _prepare_chat_context(
         else:
             raw_session_id = f"{effective_member_id}:{base_sid}"
     else:
-        raw_session_id = request.session_id or "default"
+        # Unauthenticated / anonymous:
+        # Strip 'guest:' or 'guest-' prefixes to strictly prevent unauthenticated callers from collision with authenticated guest sessions
+        raw_sid = request.session_id or "default"
+        if raw_sid.startswith(("guest:", "guest-")):
+            raw_session_id = raw_sid.removeprefix("guest:").removeprefix("guest-")
+        else:
+            raw_session_id = raw_sid
 
     if not raw_session_id.endswith(f":{target_persona}"):
         partitioned_session_id = f"{raw_session_id}:{target_persona}"

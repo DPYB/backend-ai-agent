@@ -322,7 +322,7 @@ async def test_guest_chat_limit_fallback_non_streaming(monkeypatch):
         assert r3.status_code == 200
         data3 = r3.json()
         assert data3["reply"] == GUEST_LIMIT_EXCEEDED_MSG
-        assert data3["session_id"].startswith("guest-exceeded-1:")
+        assert data3["session_id"].startswith(("guest-exceeded-1:", "guest:exceeded-1:"))
 
 
 @pytest.mark.asyncio

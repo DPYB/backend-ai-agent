@@ -1,9 +1,12 @@
 """Pydantic request and response schemas for FastAPI endpoints."""
 
+import re
 from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, model_validator
+
+SESSION_ID_REGEX = re.compile(r"^[A-Za-z0-9:_-]{1,128}$")
 
 
 class LocationPayload(BaseModel):
@@ -110,32 +113,39 @@ class ChatRequest(BaseModel):
             self.session_id = str(uuid4())
         else:
             raw_sid = str(self.session_id).strip()
-            # If client passed composite session_id (e.g. "{member_id}:{uuid}:{persona}" or "{uuid}:{persona}"),
-            # extract the pure UUID segment for backward compatibility and clean client-side token storage.
+
+            # 4-1. Format and length validation: allow only safe alphanumeric, colon, hyphen, underscore (1-128 chars)
+            # Unified across all environments (test, development, production)
+            if not SESSION_ID_REGEX.match(raw_sid):
+                raise ValueError(
+                    "session_id는 영문, 숫자, 콜론(:), 하이픈(-), 언더스코어(_)로 구성된 1~128자여야 합니다."
+                )
+
+            # 4-2. If client passed composite session_id (e.g. "{member_id}:{uuid}:{persona}" or "guest-{uuid}:{persona}"),
+            # extract the pure session UUID segment for backward compatibility and clean token storage.
+            # Iterates without break to strictly keep the LAST matching UUID segment (session_uuid > member_id).
             extracted_uuid: Optional[str] = None
             if ":" in raw_sid:
                 segments = raw_sid.split(":")
-                # Search segments for a valid UUID
-                # If there are multiple (e.g. member_id:uuid:persona), the second segment is usually session UUID
                 for seg in segments:
+                    clean_seg = seg.removeprefix("guest-").removeprefix("guest:")
                     try:
-                        UUID(seg)
-                        extracted_uuid = seg
+                        UUID(clean_seg)
+                        extracted_uuid = clean_seg
                     except (ValueError, TypeError, AttributeError):
                         continue
                 if extracted_uuid:
                     self.session_id = extracted_uuid
                     return self
 
+            # 4-3. Single session_id with guest prefix (e.g. "guest-{uuid}") normalize to pure UUID
+            clean_single_sid = raw_sid.removeprefix("guest-").removeprefix("guest:")
             try:
-                UUID(str(self.session_id))
-            except (ValueError, TypeError, AttributeError) as err:
-                from app.core.config import settings
-
-                if getattr(settings, "app_env", "").lower() in ("test", "development"):
-                    pass
-                else:
-                    raise ValueError("session_id는 올바른 UUID 형식이어야 합니다.") from err
+                UUID(clean_single_sid)
+                self.session_id = clean_single_sid
+                return self
+            except (ValueError, TypeError, AttributeError):
+                self.session_id = raw_sid
 
         return self
 

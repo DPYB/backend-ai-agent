@@ -351,8 +351,8 @@ async def test_guest_session_key_enforces_guest_prefix_from_jwt():
 
     assert user_role == "guest"
     # Verified guest prefix and sub in session_id
-    assert session_id.startswith(("guest:", "guest-"))
-    assert "guest-550e8400" in session_id
+    assert session_id.startswith("guest:")
+    assert "550e8400" in session_id
     assert session_id.endswith(":CAT")
 
 

@@ -141,11 +141,11 @@ async def test_uuid_validation_in_production(monkeypatch: pytest.MonkeyPatch):
         )
         assert res_valid.status_code == 200
 
-        # Non-UUID string should be rejected with 422
+        # Non-permitted characters should be rejected with 422 in all environments
         res_invalid = await client.post(
             "/api/v1/chat",
             json={
-                "session_id": "malicious-injection-key-1234",
+                "session_id": "malicious<script>alert(1)</script>",
                 "message": "안녕",
                 "mode": "LIBRARIAN",
                 "persona": "CAT",
@@ -153,7 +153,7 @@ async def test_uuid_validation_in_production(monkeypatch: pytest.MonkeyPatch):
         )
         assert res_invalid.status_code == 422
         err_detail = res_invalid.json().get("detail", [])
-        assert any("UUID 형식" in str(e) for e in err_detail)
+        assert any("session_id는 영문, 숫자, 콜론" in str(e) for e in err_detail)
 
 
 @pytest.mark.asyncio
@@ -225,3 +225,123 @@ async def test_composite_session_id_backward_compatibility(monkeypatch: pytest.M
         assert res.status_code == 200
         data = res.json()
         assert data["session_id"] == f"{member_id}:{session_uuid}:CAT"
+
+
+@pytest.mark.asyncio
+async def test_guest_composite_session_id_in_production(monkeypatch: pytest.MonkeyPatch):
+    """Verify that guest composite session_id (e.g. guest-{uuid}:CAT) succeeds with 200 in production."""
+    import jwt
+
+    monkeypatch.setattr(settings, "app_env", "production")
+
+    guest_sub = "guest-f965cb61-2d7f-4c91-94e3-f71999ca0fb7"
+    guest_jwt = jwt.encode(
+        {"sub": guest_sub, "role": "guest"},
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.post(
+            "/api/v1/chat/stream",
+            headers={"Authorization": f"Bearer {guest_jwt}"},
+            json={
+                "message": "날이 좀 추워지는데 따듯한 커피 한잔 타서 읽을만한 책?",
+                "stream": True,
+                "latitude": 37.7517,
+                "longitude": 127.1147,
+                "librarian_id": "CAT",
+                "session_id": "guest-f965cb61-2d7f-4c91-94e3-f71999ca0fb7:CAT",
+            },
+        )
+        assert res.status_code == 200
+        # Stream response starts with SSE content
+        assert "text/event-stream" in res.headers.get("content-type", "")
+
+
+@pytest.mark.asyncio
+async def test_guest_a_cannot_impersonate_guest_b_session_id(monkeypatch: pytest.MonkeyPatch):
+    """Verify guest A's token strictly determines session key, ignoring guest B's UUID in request body."""
+    import jwt
+
+    monkeypatch.setattr(settings, "app_env", "production")
+
+    guest_uuid_a = "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa"
+    guest_uuid_b = "bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb"
+
+    token_a = jwt.encode(
+        {"sub": f"guest-{guest_uuid_a}", "role": "guest"},
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.post(
+            "/api/v1/chat",
+            headers={"Authorization": f"Bearer {token_a}"},
+            json={
+                "message": "안녕하세요",
+                "mode": "LIBRARIAN",
+                "persona": "CAT",
+                "session_id": f"guest-{guest_uuid_b}:CAT",  # Attacker attempts to snoop Guest B
+            },
+        )
+        assert res.status_code == 200
+        data = res.json()
+        # Session ID must strictly use Guest A's UUID from JWT sub
+        assert data["session_id"] == f"guest:{guest_uuid_a}:CAT"
+        assert guest_uuid_b not in data["session_id"]
+
+
+@pytest.mark.asyncio
+async def test_invalid_guest_sub_rejected_with_401(monkeypatch: pytest.MonkeyPatch):
+    """Verify guest token with non-UUID sub is rejected with 401 Unauthorized in production."""
+    import jwt
+
+    monkeypatch.setattr(settings, "app_env", "production")
+
+    bad_guest_token = jwt.encode(
+        {"sub": "guest-not-a-valid-uuid", "role": "guest"},
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.post(
+            "/api/v1/chat",
+            headers={"Authorization": f"Bearer {bad_guest_token}"},
+            json={
+                "message": "안녕",
+                "mode": "LIBRARIAN",
+                "persona": "CAT",
+            },
+        )
+        assert res.status_code == 401
+        assert "올바른 UUID 형식" in res.json().get("detail", "")
+
+
+@pytest.mark.parametrize("env_mode", ["production", "development", "test"])
+@pytest.mark.asyncio
+async def test_invalid_session_id_characters_rejected_with_422_in_all_envs(
+    monkeypatch: pytest.MonkeyPatch,
+    env_mode: str,
+):
+    """Verify session_id with invalid characters (<script>, special chars) is rejected with 422 in all environments."""
+    monkeypatch.setattr(settings, "app_env", env_mode)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.post(
+            "/api/v1/chat",
+            json={
+                "message": "안녕",
+                "session_id": "malicious<script>alert(1)</script>",
+                "mode": "LIBRARIAN",
+                "persona": "CAT",
+            },
+        )
+        assert res.status_code == 422
+        assert "session_id는 영문, 숫자, 콜론" in str(res.json())
