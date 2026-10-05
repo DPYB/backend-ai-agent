@@ -117,7 +117,9 @@ class ChatRequest(BaseModel):
             # 4-1. Format and length validation: allow only safe alphanumeric, colon, hyphen, underscore (1-128 chars)
             # Unified across all environments (test, development, production)
             if not SESSION_ID_REGEX.match(raw_sid):
-                raise ValueError("session_id는 영문, 숫자, 콜론(:), 하이픈(-), 언더스코어(_)로 구성된 1~128자여야 합니다.")
+                raise ValueError(
+                    "session_id는 영문, 숫자, 콜론(:), 하이픈(-), 언더스코어(_)로 구성된 1~128자여야 합니다."
+                )
 
             # 4-2. If client passed composite session_id (e.g. "{member_id}:{uuid}:{persona}" or "guest-{uuid}:{persona}"),
             # extract the pure session UUID segment for backward compatibility and clean token storage.
