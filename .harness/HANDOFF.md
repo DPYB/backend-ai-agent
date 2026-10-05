@@ -92,9 +92,9 @@
    - 225개 전체 단위 테스트 100% 그린 (`225 passed in 18.29s`), ruff 및 mypy 통과.
 
 ### 다음 세션에서 할 일
-- **PR 머지(사람 직접 클릭) 확인 및 배포 검증**:
-  - `feat/guest-session-id-validation` PR 머지 후 프로덕션 환경에서 게스트 복합 세션 스트리밍 최종 확인.
-- **Phase 65 착수 (`feat/curator-reentry-loop`)**:
+- **Phase 65 착수: Curator 실패 재현 테스트 및 헛도는 루프 방어 (`feat/curator-reentry-loop`)**:
+  - PR #61 머지(`080b4fc`) 완료 확인 후 최신 `develop` 브랜치에서 새 브랜치 `feat/curator-reentry-loop` 생성.
   - `tests/unit/test_curator_loop_prevention.py`: Curator 실패(`curated_books=None`) mock 시뮬레이션 및 1회 호출/가짜 카드 배제/정상 종료 검증.
   - `AgentState.curator_attempted: bool` 플래그 추가 및 `route_persona_exit` 재진입 차단.
   - `router.py`의 `ainvoke`/`astream_events` 호출 시 `config={"recursion_limit": 25}` 안전 버퍼 적용 및 `GraphRecursionError` graceful fallback/SSE 에러 처리.
+  - Tier 1 & Tier 2 검증 통과 후 PR 생성.
