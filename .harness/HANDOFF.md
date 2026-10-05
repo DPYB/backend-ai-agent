@@ -85,7 +85,11 @@
    - 보안 테스트 4종 추가(`test_request_body_member_id_is_strictly_ignored_when_authenticated`, `test_guest_token_maps_to_guest_member_id_and_tools_succeed`, `test_guest_session_key_enforces_guest_prefix_from_jwt`, `test_guest_conclude_skips_debate_insight_save`), 전체 219개 단위 테스트 100% 그린 (`219 passed in 9.97s`).
 
 ### 다음 세션에서 할 일
-- **Phase 65 착수 (`feat/curator-reentry-loop`)**:
-  - `tests/unit/test_curator_loop_prevention.py`: Curator 실패(`curated_books=None`) mock 시뮬레이션 및 1회 호출/가짜 카드 배제/정상 종료 검증.
-  - `AgentState.curator_attempted: bool` 플래그 추가 및 `route_persona_exit` 재진입 차단.
-  - `router.py`의 `ainvoke`/`astream_events` 호출 시 `config={"recursion_limit": 25}` 안전 버퍼 적용 및 `GraphRecursionError` graceful fallback/SSE 에러 처리.
+- **🚨 Hotfix 착수 (`feat/guest-session-id-validation`)**:
+  - `app/api/schemas.py`: 세그먼트 순회 시 `break` 없이 마지막 세그먼트(session_uuid) 우선 추출 및 `removeprefix("guest-")` 지원, 환경 무관 `^[A-Za-z0-9:_-]{1,128}$` 패턴 검증 단일화 (test/dev pass 분기 제거).
+  - `app/api/router.py`: 게스트는 바디 session_id 무시하고 서명 검증된 JWT sub에서 `guest:{uuid}` 세션 키 생성.
+  - `tests/unit/test_session_security.py`: `test_guest_composite_session_id_in_production` 및 `test_member_composite_session_preserves_session_uuid` 2대 회귀 방지 테스트 추가.
+  - Tier 1 & Tier 2 통과 후 PR 생성 및 신속 배포.
+- **후속 작업**:
+  - Cloud Run 콘솔에 `APP_ENV=production` 환경변수 명시적 등록 확인.
+  - Phase 65 착수 (`feat/curator-reentry-loop`): Curator 실패 시 루프 차단 및 recursion_limit=25 적용.

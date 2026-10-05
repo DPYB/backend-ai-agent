@@ -3,6 +3,20 @@
 > 현재 진행 중이거나 사용자 컨펌 후 바로 착수할 본 레포(`backend-ai-agent`) 작업 체크리스트만 유지합니다.
 > 타 레포 작업은 해당 레포의 `PLAN.md`에서 관리하며, 완료된 작업은 `STATE.md`로 이동 후 본 문서에서 삭제합니다.
 
+### 🚨 Hotfix: 프로덕션 게스트 복합 세션 ID 422 에러 해결 (`feat/guest-session-id-validation`)
+
+- [ ] **`app/api/schemas.py` 복합 세션 ID 파싱 및 환경 무관 정규식 단일화**:
+  - `break` 없이 세그먼트 순회하여 마지막 세그먼트(`session_uuid`) 우선 보존 (회원 세션 ID 완벽 보존)
+  - `clean_seg = seg.removeprefix("guest-").removeprefix("guest:")`로 게스트 접두사 지원
+  - `app_env` 환경 분기(test/dev pass) 전면 제거 및 `^[A-Za-z0-9:_-]{1,128}$` 패턴 검증 단일화
+- [ ] **`app/api/router.py` 게스트 세션 키 JWT 단일 소유화**:
+  - 게스트는 요청 바디 `session_id`를 무시하고 검증된 JWT `sub`로부터 `f"guest:{clean_guest_uuid}"` 생성 (도청/위조 차단)
+- [ ] **2대 핵심 회귀 방지 테스트 추가 (`tests/unit/test_session_security.py`)**:
+  - `test_guest_composite_session_id_in_production`: `app_env="production"`에서 `session_id="guest-{uuid}:CAT"` 200 OK 통과 및 `guest:{uuid}:CAT` 키 검증
+  - `test_member_composite_session_preserves_session_uuid`: 회원 복합 세션이 `member_id`로 뭉개지지 않고 원래의 `session_uuid`로 해석되는지 검증
+- [ ] **Tier 1 & Tier 2 검증 및 배포 준비**:
+  - `uv run ruff check .`, `uv run mypy .`, `uv run pytest -m "not integration" -x` 통과 확인 후 PR 생성
+
 ---
 
 ### 📌 Phase 65: Curator 실패 재현 테스트 및 헛도는 루프 방어 (P2 안정성 패치)
