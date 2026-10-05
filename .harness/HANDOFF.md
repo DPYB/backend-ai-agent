@@ -6,19 +6,6 @@
 
 ---
 
-## 세션 61 (2026-10-01)
-
-### 진행한 작업
-1. **Google Cloud Run 프로덕션 마이그레이션**:
-   - 서울 `asia-northeast3` 리전 Cloud Run 배포 완료.
-   - 컨테이너 기동 시 Supabase 원격 DB DDL 안전 인터락(`ALLOW_REMOTE_MIGRATION=true`) 및 Upstash Serverless Redis(`rediss://...`) 세션 스토리지 연동.
-2. **Render 배포 레거시 완전 제거**:
-   - `.github/workflows/deploy.yml` 워크플로우 삭제. 불필요한 배포 훅 및 러너 낭비 차단.
-3. **인프라 문서 및 환경변수 템플릿 최신화**:
-   - `README.md`, `ARCHITECTURE.md`, `.env.example`, `AGENTS.md`의 배포 환경 명세를 Render에서 Cloud Run으로 정렬.
-
----
-
 ## 세션 62 (2026-10-01)
 
 ### 진행한 작업
@@ -82,9 +69,31 @@
    - `router.py`에서 서명 검증된 JWT의 `sub/role`이 게스트일 때 `current_member_id`에 `settings.guest_member_id` 주입, 인증 요청 시 바디의 `request.member_id` 완전 무시.
    - 도구 3종(`rag_tool`, `my_library_tool`, `debate_memory_tool`)의 `startswith("guest-")` 거부 제거, `None`일 때 fail-closed 유지.
    - 게스트는 conclude 시 토론 인사이트 DB 저장을 건너뛰도록 가드 보강.
-   - 보안 테스트 4종 추가(`test_request_body_member_id_is_strictly_ignored_when_authenticated`, `test_guest_token_maps_to_guest_member_id_and_tools_succeed`, `test_guest_session_key_enforces_guest_prefix_from_jwt`, `test_guest_conclude_skips_debate_insight_save`), 전체 219개 단위 테스트 100% 그린 (`219 passed in 9.97s`).
+   - 보안 테스트 4종 추가, 전체 219개 단위 테스트 100% 그린 (`219 passed in 9.97s`).
+
+---
+
+## 세션 66 (2026-10-05)
+
+### 진행한 작업
+1. **게스트 복합 세션 ID 422 Unprocessable Entity 긴급 해결 (`app/api/schemas.py`)**:
+   - `SESSION_ID_REGEX = re.compile(r"^[A-Za-z0-9:_-]{1,128}$")` 정규식 검증을 최상단에 배치하여 특수문자 및 인젝션 차단 (전 환경 일원화).
+   - 콜론 복합 세션 ID 순회 시 `clean_seg = seg.removeprefix("guest-").removeprefix("guest:")` 지원 및 `break` 없이 끝까지 순회하여 회원 세션 UUID 보존 (`session_uuid` > `member_id`).
+   - 환경별 분기(`app_env in ('test', 'development')`) 제거로 프로덕션 환경에서도 안정적 검증 보장.
+2. **게스트 세션 키 JWT 단일 소유화 및 사칭 방지 (`app/api/router.py`)**:
+   - `extract_auth_info_from_auth`: 게스트 JWT의 `sub`에 대해 UUID 유효성을 검증하고, 유효하지 않으면 401 Unauthorized 즉시 거절.
+   - `_prepare_chat_context`: 게스트는 바디 `session_id`를 무시하고 JWT `sub`로부터 `guest:{clean_guest_uuid}:{persona}` 키 강제 생성(타 게스트 도청 차단).
+   - 미인증(익명) 요청 시 `raw_sid.startswith(("guest:", "guest-"))` 사칭 방지(`removeprefix`).
+3. **단위 테스트 보강 및 회귀 검증 (`tests/unit/test_session_security.py`)**:
+   - `test_guest_composite_session_id_in_production` (200 OK & SSE 스트리밍 정상 검증)
+   - `test_guest_a_cannot_impersonate_guest_b_session_id` (바디 UUID 무시, JWT A 키 생성 검증)
+   - `test_invalid_guest_sub_rejected_with_401` (401 반환 검증)
+   - `test_invalid_session_id_characters_rejected_with_422_in_all_envs` (전 환경 특수문자 422 거절 검증)
+   - 225개 전체 단위 테스트 100% 그린 (`225 passed in 18.29s`), ruff 및 mypy 통과.
 
 ### 다음 세션에서 할 일
+- **PR 머지(사람 직접 클릭) 확인 및 배포 검증**:
+  - `feat/guest-session-id-validation` PR 머지 후 프로덕션 환경에서 게스트 복합 세션 스트리밍 최종 확인.
 - **Phase 65 착수 (`feat/curator-reentry-loop`)**:
   - `tests/unit/test_curator_loop_prevention.py`: Curator 실패(`curated_books=None`) mock 시뮬레이션 및 1회 호출/가짜 카드 배제/정상 종료 검증.
   - `AgentState.curator_attempted: bool` 플래그 추가 및 `route_persona_exit` 재진입 차단.

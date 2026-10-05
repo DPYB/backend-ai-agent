@@ -35,6 +35,10 @@
 
 ### 📌 최근 마일스톤 완료 내역
 
+- [x] **Phase 64-1: 게스트 복합 세션 ID 422 해결 및 세션 키 JWT 단일 소유화 (핫픽스)**
+  - `ChatRequest.session_id` 정규식(`^[A-Za-z0-9:_-]{1,128}$`) 검증 일원화 및 콜론 세그먼트 순회 시 회원 세션 UUID 보존 (`session_uuid` > `member_id`).
+  - `router.py` 게스트 JWT `sub` 유효성 검증(비정상 시 401) 및 바디 `session_id` 무시 후 JWT `sub` 기반 `guest:{uuid}:{persona}` 키 강제 생성(타 게스트 도청 차단).
+  - 미인증 요청 `guest:` 접두사 사칭 방지 및 신규 보안/회귀 테스트 4종 포함 225개 단위 테스트 100% 그린 검증.
 - [x] **Phase 64: 도구 바인딩 분리 및 member_id ContextVar 주입 (P1 보안 IDOR 차단 & 게스트 매핑)**
   - 메모리 도구(`search_scrap_memory`, `search_debate_memory`, `search_my_library`) 인자에서 `member_id` 완전 제거 및 `current_member_id` ContextVar 주입 고정.
   - LLM 도구 스키마 및 프롬프트에서 `member_id` 노출 전면 제거, 비동기 요청 간 ContextVar 격리 및 fail-closed 거부 반환 구현.

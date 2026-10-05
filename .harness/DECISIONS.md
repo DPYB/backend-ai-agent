@@ -5,6 +5,11 @@
 
 ---
 
+### 2026-10-05: 게스트 복합 세션 ID 422 해결 및 세션 키 JWT 단일 소유화
+- **결정**: `ChatRequest.session_id` 검증 시 정규식(`^[A-Za-z0-9:_-]{1,128}$`)을 최상단에 배치하여 특수문자 및 인젝션을 차단하고, `guest-` 접두사 제거 후 UUID를 추출하되 루프 break 없이 마지막 세그먼트를 우선 보존. `router.py`에서 게스트 요청은 바디 `session_id`를 무시하고 JWT `sub`로부터 `guest:{clean_guest_uuid}:{persona}` 키를 강제 생성하고, 미인증 요청의 `guest:` 접두사 사칭을 차단.
+- **이유**: 프로덕션 배포 시 게스트 복합 세션(`guest-{uuid}:{persona}`)이 `UUID()` 파싱 실패로 422 Unprocessable Entity 에러를 유발하던 결함 해결 및 타 게스트 세션 UUID 도청 시도 원천 차단.
+- **영향**: 회원/게스트 전 환경 일관된 200 OK 처리, 회원 복합 세션 키 하위 호환 완벽 보존, 세션 키 위변조 원천 방어 및 225개 회귀 전수 통과.
+
 ### 2026-10-03: 메모리 도구 member_id ContextVar 주입 및 게스트 공용방 매핑 (IDOR 차단)
 - **결정**: `search_scrap_memory`, `search_debate_memory`, `search_my_library` 시그니처에서 `member_id` 인자를 완전 제거하고 `app/core/context.py`의 `current_member_id` ContextVar에서 읽도록 고정. 게스트 JWT 수신 시 `core-api` 단일 방과 일치하는 `settings.guest_member_id`(`00000000-0000-0000-0000-000000000003`)로 안전 매핑하고 요청 바디의 `member_id`는 완전 무시.
 - **이유**: LLM의 도구 인자 조작 및 프롬프트 인젝션을 통한 비공개 데이터 탈취(IDOR) 원천 차단. 게스트마다 UUID로 분할 시 발생하는 코어 서재와의 정합성 분열 및 크론 청소 불가 좀비 데이터 축적 방지.
@@ -141,8 +146,3 @@
 - **결정**: 단일 Supabase Postgres 인스턴스 내 `agent` 독점 스키마 운용, 타 스키마(`core`/`record`) 직접 쿼리 금지(REST API 원칙), Transaction Pooler(포트 6543) `statement_cache_size: 0` 설정.
 - **이유**: 전사 $0 단일 DB 공유 정책 준수 및 멀티 테넌트 충돌 방지.
 - **영향**: pgvector 코사인 유사도 검색 최적화 및 커넥션 풀 안정성 확보.
-
-### 2026-09-11: LangGraph 기반 8-Node 멀티 페르소나 및 `summarizer_node` 어조 정제
-- **결정**: 사서 4종(`CAT`, `SHOEBILL`, `SEA_SLUG`, `GECKO` — `core.librarian_type` 1:1) + 토론 4종을 LangGraph 상태 전이 그래프로 구축하고, 모드 전환 시 `summarizer_node`로 어조 소거.
-- **이유**: 단일 프롬프트 대비 결정론적 상태 전이 제어 및 페르소나 어조 오염 방지.
-- **영향**: 캐릭터 고유 말투 유지 및 유연한 독서 대화 제공.
