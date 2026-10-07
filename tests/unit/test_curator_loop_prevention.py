@@ -153,8 +153,29 @@ def test_replace_delayed_curation_promise_with_korean_delimiters():
     assert _replace_delayed_curation_promise(text3) == text3
 
 
+def test_replace_delayed_curation_promise_by_librarian_personas():
+    """Verify delayed promise replacement uses distinctive character tones for all 4 librarians."""
+    raw = "잠시만 기다려, 내가 꼭 맞는 책을 골라올게!"
+
+    # 1. Cat (블루: ~냥)
+    res_cat = _replace_delayed_curation_promise(raw, persona_id="CAT")
+    assert "이번에는 맞는 책을 서재에서 찾지 못했다냥." in res_cat
+
+    # 2. Shoebill (슈빌: ~두둥)
+    res_shoebill = _replace_delayed_curation_promise(raw, persona_id="SHOEBILL")
+    assert "이번에는 서재에서 조건에 맞는 책을 찾지 못했다두둥." in res_shoebill
+
+    # 3. Sea Slug (누디: ~누누...)
+    res_sea_slug = _replace_delayed_curation_promise(raw, persona_id="SEA_SLUG")
+    assert "이번에는 마음에 닿는 책을 서재에서 찾지 못했어누누..." in res_sea_slug
+
+    # 4. Gecko (게코: ~크크!)
+    res_gecko = _replace_delayed_curation_promise(raw, persona_id="GECKO")
+    assert "이번에는 딱 맞는 책을 서재에서 못 찾았어크크!" in res_gecko
+
+
 # ==============================================================================
-# 3. Adversarial Fake Card Sanitization & Empty Response Fallback
+# 3. Adversarial Fake Card Sanitization & Empty Response Fallback by 8 Personas
 # ==============================================================================
 
 
@@ -186,6 +207,50 @@ def test_adversarial_fake_card_stripping_and_empty_fallback():
     assert "### 📖" not in cleaned_mixed
     assert "등록 ➔" not in cleaned_mixed
     assert "오늘 하루 마음이 무거우셨군요" in cleaned_mixed
+
+
+def test_sanitize_persona_output_empty_fallback_for_all_8_personas():
+    """Verify that when fake card is stripped completely, each of the 8 personas
+
+    receives its distinctive, tailored fallback message matching its character tone.
+    """
+    fake_card_only = "### 📖 가짜 책\n등록 ➔\n"
+
+    # 4 Librarians
+    res_cat = _sanitize_persona_output(fake_card_only, curated_books=None, persona_id="CAT")
+    assert "찾아내지 못했다냥" in res_cat
+
+    res_shoebill = _sanitize_persona_output(
+        fake_card_only, curated_books=None, persona_id="SHOEBILL"
+    )
+    assert "찾아내지 못했다두둥" in res_shoebill
+
+    res_slug = _sanitize_persona_output(fake_card_only, curated_books=None, persona_id="SEA_SLUG")
+    assert "찾지 못했어누누..." in res_slug
+
+    res_gecko = _sanitize_persona_output(fake_card_only, curated_books=None, persona_id="GECKO")
+    assert "찾지 못했네크크!" in res_gecko
+
+    # 4 Debate Partners (Finale context)
+    res_critic = _sanitize_persona_output(
+        fake_card_only, curated_books=None, persona_id="DEBATE_CRITIC"
+    )
+    assert "마땅한 연계 텍스트를 이번에는 서재에서 찾아내지 못했습니다" in res_critic
+
+    res_storyteller = _sanitize_persona_output(
+        fake_card_only, curated_books=None, persona_id="DEBATE_STORYTELLER"
+    )
+    assert "다음 책을 이번에는 서재에서 찾아내지 못했네요!" in res_storyteller
+
+    res_counselor = _sanitize_persona_output(
+        fake_card_only, curated_books=None, persona_id="DEBATE_COUNSELOR"
+    )
+    assert "온기를 더해줄 다음 책을 이번에는 서재에서 찾지 못했어요" in res_counselor
+
+    res_observer = _sanitize_persona_output(
+        fake_card_only, curated_books=None, persona_id="DEBATE_OBSERVER"
+    )
+    assert "시그널을 이어갈 다음 책을 이번에는 서재에서 찾지 못했습니다" in res_observer
 
 
 # ==============================================================================
@@ -433,40 +498,55 @@ async def test_guest_frontend_token_chat_and_stream_e2e(monkeypatch: pytest.Monk
     )
 
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        # 1. Test POST /api/v1/chat
-        res_chat = await client.post(
-            "/api/v1/chat",
-            headers={"Authorization": f"Bearer {guest_jwt}"},
-            json={
-                "message": "안녕 고양이 사서님! 오늘 책 추천받을 수 있을까?",
-                "persona": "CAT",
-                "mode": "LIBRARIAN",
-            },
-        )
-        assert res_chat.status_code == 200, (
-            f"Expected 200 but got {res_chat.status_code}: {res_chat.text}"
-        )
-        data = res_chat.json()
-        assert data["active_persona"] == "CAT"
-        assert f"guest:{guest_uuid}:CAT" == data["session_id"]
-        assert len(data["reply"]) > 0
+    mock_llm = AsyncMock()
+    mock_llm.ainvoke.return_value = AIMessage(
+        content="독자님, 따뜻한 차와 어울리는 사색의 시간을 가져보세요냥."
+    )
+    mock_llm.astream.return_value = [
+        AIMessage(content="독자님, 따뜻한 차와 어울리는 사색의 시간을 가져보세요냥.")
+    ]
 
-        # 2. Test POST /api/v1/chat/stream
-        res_stream = await client.post(
-            "/api/v1/chat/stream",
-            headers={"Authorization": f"Bearer {guest_jwt}"},
-            json={
-                "message": "따뜻한 차와 함께 읽을 책 알려줘",
-                "persona": "CAT",
-                "mode": "LIBRARIAN",
-            },
-        )
-        assert res_stream.status_code == 200
-        stream_text = res_stream.text
-        assert "event: metadata" in stream_text
-        assert "event: done" in stream_text
-        assert "event: error" not in stream_text
+    mock_weather = AsyncMock()
+    mock_weather.get_current_weather = AsyncMock(return_value="맑음")
+
+    with (
+        patch("app.domain.graph.nodes._get_llm", return_value=mock_llm),
+        patch("app.infrastructure.weather_client.get_weather_client", return_value=mock_weather),
+    ):
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            # 1. Test POST /api/v1/chat
+            res_chat = await client.post(
+                "/api/v1/chat",
+                headers={"Authorization": f"Bearer {guest_jwt}"},
+                json={
+                    "message": "안녕 고양이 사서님! 오늘 반가워.",
+                    "persona": "CAT",
+                    "mode": "LIBRARIAN",
+                },
+            )
+            assert res_chat.status_code == 200, (
+                f"Expected 200 but got {res_chat.status_code}: {res_chat.text}"
+            )
+            data = res_chat.json()
+            assert data["active_persona"] == "CAT"
+            assert f"guest:{guest_uuid}:CAT" == data["session_id"]
+            assert len(data["reply"]) > 0
+
+            # 2. Test POST /api/v1/chat/stream
+            res_stream = await client.post(
+                "/api/v1/chat/stream",
+                headers={"Authorization": f"Bearer {guest_jwt}"},
+                json={
+                    "message": "오늘도 좋은 하루 보내자.",
+                    "persona": "CAT",
+                    "mode": "LIBRARIAN",
+                },
+            )
+            assert res_stream.status_code == 200
+            stream_text = res_stream.text
+            assert "event: metadata" in stream_text
+            assert "event: done" in stream_text
+            assert "event: error" not in stream_text
 
 
 @pytest.mark.asyncio

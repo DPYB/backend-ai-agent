@@ -8,20 +8,6 @@
 
 ---
 
-## 세션 63 (2026-10-02)
-
-### 진행한 작업
-1. **월간 독서 리포트 가짜 목데이터(데미안, 완독 3권 832쪽) 제거 (`app/infrastructure/core_api_client.py`)**:
-   - `get_monthly_report_stats` 통신 실패 시 반환하던 하드코딩 응답을 `_empty_monthly_stats` 정적 메소드로 일원화하여 완독 0권, 0쪽의 정직한 빈 스켈레톤 반환으로 교체.
-2. **독서 활동 0건 시 정직한 Empty State 반환 (`app/domain/reports/generator.py`)**:
-   - `has_activity == False`일 때 억지 LLM 호출을 방지하고 사서 페르소나 어조가 적용된 시작 권유 멘트(`reader_type: "독서 시작을 기다리는 여행자"`, `recommended_books: []`) 반환.
-3. **두 백엔드 서버 간 연결성 진단 헬스체크 연동 (`app/infrastructure/core_api_client.py`, `app/api/schemas.py`, `app/api/router.py`)**:
-   - `CoreApiClient.ping_core_api()` 구현 및 `/api/v1/health` 응답에 `core_api_connected`, `core_api_url` 필드 추가.
-4. **품질 검증 및 PR #58 반영**:
-   - [PR #58](https://github.com/DPYB/backend-ai-agent/pull/58) 생성 및 CI 통과 확인. 204개 단위 테스트 100% 그린.
-
----
-
 ## 세션 64 (2026-10-02)
 
 ### 진행한 작업
@@ -107,6 +93,24 @@
 4. **품질 검증**:
    - 신규 단위 테스트 12종 작성(`tests/unit/test_curator_loop_prevention.py`): 3중 재진입 독립 테스트, 한국어 문장 분리, 악의적 가짜 카드 후처리, 토론 모드 격리, SSE 토큰 비노출, 미드스트림 RecursionError + Redis 검증, 게스트 E2E, 일반 턴 실시간 스트리밍 전수 통과.
    - 전체 237개 단위 테스트 100% 그린 (`237 passed in 35.56s`), ruff check & format 통과, mypy 통과, check_harness 통과.
+
+### 다음 세션에서 할 일
+- **Phase 65-1 착수: 8종 페르소나 어조 분기 및 게스트 E2E 모킹 최적화 (`feat/curator-polish`)**: 완료 (세션 68).
+
+---
+
+## 세션 68 (2026-10-08)
+
+### 진행한 작업
+1. **Phase 65 develop 머지 확인 및 브랜치 정리**:
+   - PR #62(`feat/curator-reentry-loop` ➔ `develop`) 머지 완료 및 로컬/원격 브랜치 정리.
+2. **Phase 65-1: 큐레이터 폴리싱 (8종 페르소나 어조 분기 및 게스트 E2E 모킹 최적화)**:
+   - `nodes.py`: 사서 4종(`CAT`: ~냥, `SHOEBILL`: ~두둥, `SEA_SLUG`: ~누누, `GECKO`: ~크크) 및 토론자 4종(평론가, 이야기꾼, 상담사, 관찰가 피날레 맥락) 맞춤형 대체 문구 및 빈 응답 폴백 매핑 구축.
+   - `_replace_delayed_curation_promise` 및 `_sanitize_persona_output`에 `persona_id` 전달 연동.
+   - `test_curator_loop_prevention.py`: 8종 페르소나 어조 치환 및 빈 응답 폴백 단위 테스트 2종 추가.
+   - `test_guest_frontend_token_chat_and_stream_e2e`에 가벼운 AsyncMock 적용하여 외부 네트워크 의존 제거 ➔ 전체 회귀 실행 속도 **144초에서 30초대로 대폭 단축 (약 80% 가속)**.
+3. **품질 검증**:
+   - 전체 239개 단위 테스트 100% 그린 (`239 passed in 30.79s`), ruff 및 mypy 통과, check_harness 통과.
 
 ### 다음 세션에서 할 일
 - **Yes24 OpenAPI 도입 또는 Phase 60 (국립도서관 KDC 부재 시 5자리 부가기호 다중 폴백)** 착수.
