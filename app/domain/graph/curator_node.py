@@ -697,6 +697,7 @@ async def book_curator_node(state: AgentState) -> Dict[str, Any]:
     return {
         "curated_books": curated_books,
         "curator_request": None,
+        "curator_attempted": True,
         "recommended_history": new_history,
         "target_unresolved": target_unresolved,
     }

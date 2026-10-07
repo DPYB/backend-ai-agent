@@ -5,24 +5,7 @@
 
 ---
 
-### 📌 Phase 65: Curator 실패 재현 테스트 및 헛도는 루프 방어 (P2 안정성 패치)
 
-- [ ] **실패 재현 단위 테스트 작성 (`tests/unit/test_curator_loop_prevention.py`)**:
-  - `curator_node` 실패(`curated_books=None`) mock 시뮬레이션
-  - "curator 정확히 1회 호출, 그래프 정상 종료, 가짜 카드 없음" 검증
-  - 같은 세션의 두 번째 턴(새 요청)에서 curator가 다시 정상 호출되는 플래그 초기화 회귀 테스트
-- [ ] **루프 차단 상태 플래그 및 프롬프트 가이드**:
-  - `AgentState`에 `curator_attempted: Optional[bool]` 추가 (매 턴 초기화)
-  - `curator_node` 실행 완료 시 `curator_attempted: True` 반환
-  - `route_persona_exit`에서 `curator_attempted`가 True이면 curator 재진입 차단하고 최종 페르소나 발화로 전이
-  - 추천 실패 시 페르소나가 가짜 카드를 만들지 않고 대화로 위로하도록 시스템 프롬프트 지침 주입
-- [ ] **실행 재귀 한도 및 GraphRecursionError 안전 핸들링**:
-  - `router.py`의 `ainvoke` 및 `astream_events` 호출 시 `config={"recursion_limit": 25}` 적용 (버퍼 확보)
-  - `GraphRecursionError` 발생 시 500 대신 graceful fallback 및 SSE `event: error` 핸들링
-- [ ] **Tier 1 & Tier 2 검증 통과**:
-  - `uv run pytest tests/unit/test_curator_loop_prevention.py`, `uv run ruff check .`, `uv run mypy .` 무결점 검증
-
----
 
 ### 📌 Phase 60: 국립도서관 KDC 부재 시 EA_ADD_CODE 5자리 다중 폴백 및 분류 체계 SSOT 강화
 

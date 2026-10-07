@@ -5,6 +5,11 @@
 
 ---
 
+### 2026-10-07: Curator 실패 시 3중 루프 방어 및 스트리밍 토큰 버퍼링 (P2 패치)
+- **결정**: `AgentState.curator_attempted: bool` 플래그를 신설해 매 턴 초기화하고, 사서 모드에서 큐레이터 실행 후 실패 시 3중 재진입 경로(선위임 차단, `request_book_curation` 도구 배제, 지연 약속 문장 치환)를 전면 차단. 스트리밍 시 실패 복귀 턴을 버퍼링해 `on_chain_end`에서 가짜 카드 마커(`### 📖`)가 100% 제거된 최종 메시지만 단일 토큰으로 방출하고, `recursion_limit: 25` 버퍼 및 `GraphRecursionError` graceful fallback을 구축.
+- **이유**: 외부 서지 검색 실패 시 사서 LLM의 재위임/지연 약속으로 인한 500 재귀 에러 방어, LLM 댕글링 도구 호출 에러 차단, 스트리밍 중 클라이언트로 가짜 카드 토큰이 유출되는 결함 원천 차단.
+- **영향**: 큐레이터 실패 시에도 무한 루프 없이 대화형 위로 멘트로 자연스럽게 전환, 스트리밍 토큰 누출 0건, 토론 모드 피날레 기능 독립성 보존 및 236개 회귀 테스트 100% 통과.
+
 ### 2026-10-05: 게스트 복합 세션 ID 422 해결 및 세션 키 JWT 단일 소유화
 - **결정**: `ChatRequest.session_id` 검증 시 정규식(`^[A-Za-z0-9:_-]{1,128}$`)을 최상단에 배치하여 특수문자 및 인젝션을 차단하고, `guest-` 접두사 제거 후 UUID를 추출하되 루프 break 없이 마지막 세그먼트를 우선 보존. `router.py`에서 게스트 요청은 바디 `session_id`를 무시하고 JWT `sub`로부터 `guest:{clean_guest_uuid}:{persona}` 키를 강제 생성하고, 미인증 요청의 `guest:` 접두사 사칭을 차단.
 - **이유**: 프로덕션 배포 시 게스트 복합 세션(`guest-{uuid}:{persona}`)이 `UUID()` 파싱 실패로 422 Unprocessable Entity 에러를 유발하던 결함 해결 및 타 게스트 세션 UUID 도청 시도 원천 차단.
@@ -96,14 +101,10 @@
 ### 2026-09-18: 페르소나 간 어조 오염 방지: 전 모드 세션 파티셔닝(`{session_id}:{persona}`) 및 네거티브 가드
 - **결정**: 8개 페르소나 전체에 세션 파티셔닝 적용, `librarian_name` 토론자 주입 차단, `DEBATE_GUARDRAILS` 신설하여 동물 종결어미(`~냥`, `~두둥`, `~누누`, `~크크`), 사서 사칭, 반말 엄격 금지.
 - **이유**: 탭 전환 시 동일 `session_id` 유지로 인해 사서 종결어미가 토론 파트너로 유입되는 현상 차단.
-- **영향**: 페르소나 전환 시 어조 전이 0% 물리적 격리 달성.
-- ~~2026-09-18 독서 세션 도구 check_user_reading_streak 및 비동기 정정(pending_correction)~~ → [미구현 가상 설계안으로 아카이브 보존(DECISIONS_2026-10.md)]
+- **영향**: 페르소나 전환 시 어조 전이 0% 물리적 격리 달성. (참조: ~~2026-09-18 check_user_reading_streak~~ 아카이브 보존)
 
 ### 2026-09-17: Yes24 실시간 SSR 베스트셀러 웹 스크래퍼(`beautifulsoup4`) 채택
-- **결정**: 폐기된 Yes24 RSS 대신 실시간 종합 베스트셀러 웹페이지(`pageSize=40`)를 `httpx` + `beautifulsoup4`(0.8초 소요)로 파싱하여 Redis에 24시간 TTL(`daily_trending_books`) 캐싱.
-- **이유**: 404 리다이렉트되는 RSS 피드 의존성 탈피, 추가 API 키 발급 없이 $0 제로코스트로 실시간 단행본 수집.
-- **영향**: 최신 화제작 오픈북 주입을 통한 LLM 추천 신선도 확보 및 신간 환각 차단.
-- ~~2026-09-17 Yes24 RSS 종합 베스트셀러 신간 오픈북 주입~~ → [Superseded by 2026-09-17 Yes24 실시간 SSR 베스트셀러 웹 스크래퍼]
+- **결정**: 폐기된 Yes24 RSS 대신 실시간 종합 베스트셀러 웹페이지(`pageSize=40`)를 `httpx` + `beautifulsoup4`(0.8초 소요)로 파싱하여 Redis에 24시간 TTL(`daily_trending_books`) 캐싱. (참조: ~~2026-09-17 Yes24 RSS~~ 대체)
 
 ### 2026-09-16: 도서 표지/뒷표지 Vision OCR 기반 지능형 ISBN 및 계층형 서지 인식
 - **결정**: 도서 뒷표지 서지 전용 프롬프트(`GEMINI_COVER_SYSTEM_PROMPT`) 신설, 공식 ISBN-13 모듈로-10 체크섬(`isbn_utils.py`) 검증, 4단계 계층형 파이프라인(1차 pyzbar ➔ 2차 Gemini Vision OCR ➔ 3차 국립도서관 ISBN ➔ 4차 제목/저자 검색) 구축.
@@ -124,25 +125,24 @@
 - **결정**: 감성 대화/리포트에는 `gemini-3.5-flash-lite`(1.5s), 단순 OCR/큐레이터에는 `gemini-3.1-flash-lite`를 배정하고, 팀원 키(`GEMINI_FALLBACK_API_KEY`) 연동 및 전체 429 시 `gemma-4-31b-it`(RPD 14,400) ➔ `gpt-4o-mini` ➔ Mock 다중 안전망 구축. Clova OCR은 Gemini Vision으로 전면 교체.
 - **이유**: Google Flash 계열 무료 RPD 축소(20회) 대응, Flash-Lite(RPD 500) 활용 극대화, Clova 유료 과금 위험 제거.
 - **영향**: 하루 무료 호출량 2,000회 확보, $0 제로코스트 무중단 서비스 달성.
-- ~~2026-09-12 Clova OCR을 통한 문장 스크랩 전담~~ → [Superseded by 2026-09-16 Google Gemini Flash Vision 전면 전환]
-- ~~2026-09-16 E2E 5대 연동 이슈(signals, 서재 0권 Token Relay 등) 해결~~ → [버그 해결 이력으로 아카이브 보존(DECISIONS_2026-10.md)]
+- ~~2026-09-12 Clova OCR 전담~~ / ~~2026-09-16 E2E 5대 연동 이슈~~ → [아카이브 보존(DECISIONS_2026-10.md)]
 
 ### 2026-09-15: 사서 월간 독서 리포트 단일 서빙 엔드포인트(`GET /api/v1/reports/monthly`)
-- **결정**: Core API 통계(01~05, Token Relay)와 AI Agent 토론 인사이트(03), 사서 4종 페르소나 어조 LLM 처방(06~07)을 결합하여 단일 응답으로 서빙.
-- **이유**: 프론트엔드가 여러 마이크로서비스를 개별 호출/조합하는 복잡성 해소.
-- **영향**: 단일 진입점 호출로 풍성한 성향 분석 및 처방 제공.
+- **결정**: Core API 통계(Token Relay)와 AI Agent 토론 통찰, 사서 페르소나 어조 처방을 결합하여 단일 응답 서빙.
+- **이유**: 프론트엔드가 다수 마이크로서비스를 각각 조합하는 복잡성 해소.
+- **영향**: 단일 진입점 호출로 성향 분석 및 처방 제공.
 
 ### 2026-09-15: 토론 기억 전용 테이블(`agent.debate_insights`) 분리 및 비동기 벡터화
-- **결정**: 스크랩 수첩(`agent.scrap_vector`)과 분리된 전용 테이블 및 HNSW 인덱스 구축, 피날레 시 FastAPI `BackgroundTasks`로 비동기 적재, `search_debate_memory` 도구를 `GENERIC_TOOLS`에 전사 바인딩.
-- **이유**: 순수 도서 발췌문과 AI 토론 사유 결실(통찰) 간 데이터 오염 방지 및 사용자 응답 지연(0ms) 차단.
-- **영향**: 8개 페르소나 모두가 과거 토론 기억을 자연스럽게 회상할 수 있는 영구 자산화 완료.
+- **결정**: `agent.scrap_vector`와 분리된 전용 테이블/HNSW 인덱스 구축, 피날레 시 `BackgroundTasks` 비동기 적재.
+- **이유**: 순수 도서 발췌문과 AI 토론 사유 통찰 간 데이터 오염 방지 및 응답 지연(0ms) 차단.
+- **영향**: 과거 토론 기억을 자연스럽게 회상할 수 있는 영구 자산화 완료.
 
 ### 2026-09-14: 전사 중앙 인증(JWT 서명 검증), 게스트 바이패스 및 MSA Token Relay
-- **결정**: `core-api`의 `JWT_SECRET_KEY`를 전사 공유받아 0ms 로컬 HS256 서명 검증, 게스트 요청 DB 쿼리 스킵, 서재 조회는 Token Relay로 `core-api`의 `GET /api/v1/library/books` 호출.
-- **이유**: `verify_signature=False` 보안 취약점(BOLA/토큰 위조) 원천 차단 및 MSA 간 일관된 인증 유지.
+- **결정**: `JWT_SECRET_KEY` 공유받아 0ms 로컬 HS256 서명 검증, 게스트 DB 쿼리 스킵, 서재 조회는 Token Relay 호출.
+- **이유**: `verify_signature=False` 취약점 원천 차단 및 MSA 간 일관된 인증 유지.
 - **영향**: 비인가 접근 차단, 불필요한 게스트 DB 쿼리 방어.
 
 ### 2026-09-14: Supabase 공용 DB MSA 스키마 격리(`agent`) 및 Transaction Pooler 연동
-- **결정**: 단일 Supabase Postgres 인스턴스 내 `agent` 독점 스키마 운용, 타 스키마(`core`/`record`) 직접 쿼리 금지(REST API 원칙), Transaction Pooler(포트 6543) `statement_cache_size: 0` 설정.
+- **결정**: Supabase Postgres 내 `agent` 독점 스키마 운용, 타 스키마 직접 쿼리 금지, Pooler `statement_cache_size: 0` 설정.
 - **이유**: 전사 $0 단일 DB 공유 정책 준수 및 멀티 테넌트 충돌 방지.
-- **영향**: pgvector 코사인 유사도 검색 최적화 및 커넥션 풀 안정성 확보.
+- **영향**: pgvector 검색 최적화 및 커넥션 풀 안정성 확보.

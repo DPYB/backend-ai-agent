@@ -4,15 +4,7 @@
 > **관리 규칙**: 본 문서에는 **최근 3~5개 세션만 유지**하며, 과거 세션 로그는 `.harness/archive/`에 보관합니다. 타 레포 내부 작업은 기록하지 않고 연동 링크만 참조합니다.
 > *(과거 세션 1~60 내역은 `.harness/archive/HANDOFF_2026-09.md` 참조)*
 
----
 
-## 세션 62 (2026-10-01)
-
-### 진행한 작업
-1. **중앙 린터 및 멀티 서비스 CI 규격 동기화**:
-   - DPYB 중앙 CI(`reusable-python-ci.yml`, `reusable-pr-lint.yml`)의 커밋/PR 컨벤션 유연화(소괄호/대괄호 scope 지원)에 맞춰 본 레포 설정 정렬.
-2. **배포 정리 브랜치 점검**:
-   - 로컬 `feat/cleanup-render-deploy` 브랜치 변경사항 최종 검증.
 
 ---
 
@@ -92,9 +84,29 @@
    - 225개 전체 단위 테스트 100% 그린 (`225 passed in 18.29s`), ruff 및 mypy 통과.
 
 ### 다음 세션에서 할 일
-- **Phase 65 착수: Curator 실패 재현 테스트 및 헛도는 루프 방어 (`feat/curator-reentry-loop`)**:
-  - PR #61 머지(`080b4fc`) 완료 확인 후 최신 `develop` 브랜치에서 새 브랜치 `feat/curator-reentry-loop` 생성.
-  - `tests/unit/test_curator_loop_prevention.py`: Curator 실패(`curated_books=None`) mock 시뮬레이션 및 1회 호출/가짜 카드 배제/정상 종료 검증.
-  - `AgentState.curator_attempted: bool` 플래그 추가 및 `route_persona_exit` 재진입 차단.
-  - `router.py`의 `ainvoke`/`astream_events` 호출 시 `config={"recursion_limit": 25}` 안전 버퍼 적용 및 `GraphRecursionError` graceful fallback/SSE 에러 처리.
-  - Tier 1 & Tier 2 검증 통과 후 PR 생성.
+- **Phase 65 착수: Curator 실패 재현 테스트 및 헛도는 루프 방어 (`feat/curator-reentry-loop`)**: 완료 (세션 67).
+
+---
+
+## 세션 67 (2026-10-07)
+
+### 진행한 작업
+1. **Curator 재현 테스트 및 실패 확인 (TDD 실패 선행 검증)**:
+   - `curator_attempted=True`일 때 사용자 추천 키워드("책 추천해줘")로 인한 무한 선위임 루프 버그 재현 및 테스트 실패(1 failed in 0.61s) 확인 후 정규 영구 테스트 suite 구축.
+2. **사서 모드 3중 재진입 루프 원천 차단 (`nodes.py`, `workflow.py`, `state.py`)**:
+   - `AgentState.curator_attempted: bool` 필드 추가 및 큐레이터 완료 시 `True` 반환.
+   - [경로 1: 선위임 차단]: `curator_attempted == True` 시 키워드 기반 재위임 스킵.
+   - [경로 2: 도구 배제]: 사서 모드에서 `curator_attempted == True` 시 `request_book_curation`을 LLM 도구 바인딩에서 제외하여 Dangling Tool Call 에러 방어 (토론 모드 `trigger_debate_conclude` 완전 보존).
+   - [경로 3: 지연 약속 치환]: "골라올게", "잠시 기다려" 감지 시 재위임 대신 문장 단위로 대체 문구 치환 (`_replace_delayed_curation_promise`).
+   - 가짜 카드 후처리(`_sanitize_persona_output`) 강제 및 15자 미만 빈 응답 시 안전한 디폴트 멘트 폴백.
+   - `route_persona_exit`에서 `curator_attempted == True` 시 큐레이터 재진입 원천 차단 (`END` 전이).
+3. **SSE 스트리밍 버퍼링 및 GraphRecursionError Graceful Fallback (`router.py`)**:
+   - 큐레이터 실패 복귀 턴(`is_curator_recovering`)에서 스트리밍 토큰을 버퍼링한 뒤 `on_chain_end`에서 후처리가 완료된 정제 메시지만 단일 토큰으로 방출 (클라이언트 가짜 카드 누출 0건).
+   - `recursion_limit: 25` 버퍼 확보 및 `GraphRecursionError` 발생 시 CRITICAL 에러 로깅, 사용자 친화적 대체 멘트 반환, Redis 세션에 사용자 질문과 깨끗한 대체 멘트 보존.
+   - `_prepare_chat_context`에서 매 턴 `curator_attempted: False` 안전 초기화.
+4. **품질 검증**:
+   - 신규 단위 테스트 12종 작성(`tests/unit/test_curator_loop_prevention.py`): 3중 재진입 독립 테스트, 한국어 문장 분리, 악의적 가짜 카드 후처리, 토론 모드 격리, SSE 토큰 비노출, 미드스트림 RecursionError + Redis 검증, 게스트 E2E, 일반 턴 실시간 스트리밍 전수 통과.
+   - 전체 237개 단위 테스트 100% 그린 (`237 passed in 35.56s`), ruff check & format 통과, mypy 통과, check_harness 통과.
+
+### 다음 세션에서 할 일
+- **Yes24 OpenAPI 도입 또는 Phase 60 (국립도서관 KDC 부재 시 5자리 부가기호 다중 폴백)** 착수.

@@ -35,6 +35,11 @@
 
 ### 📌 최근 마일스톤 완료 내역
 
+- [x] **Phase 65: Curator 실패 재현 테스트 및 헛도는 루프 방어 (P2 안정성 패치)**
+  - 3중 재진입 경로(선위임, 도구 호출, 빈 지연 약속) 차단 및 사서 모드 전용 `curator_attempted: bool` 플래그 관리 (토론 모드 격리).
+  - 큐레이터 실패 시 사서 도구에서 `request_book_curation` 배제(Dangling 방지), 지연 약속 문장 단위 치환 및 허위 카드 마커 100% 후처리/빈 응답 방어.
+  - `recursion_limit: 25` 버퍼 및 스트리밍 시 실패 복귀 턴 버퍼링(on_chain_end 정제 토큰 방출) + `GraphRecursionError` 우아한 대체 멘트/Redis 보존 핸들링.
+  - 신규 단위/재현/SSE/게스트 E2E 테스트 12종 작성 및 전체 237개 단위 회귀 100% 그린 검증.
 - [x] **Phase 64-1: 게스트 복합 세션 ID 422 해결 및 세션 키 JWT 단일 소유화 (핫픽스)**
   - `ChatRequest.session_id` 정규식(`^[A-Za-z0-9:_-]{1,128}$`) 검증 일원화 및 콜론 세그먼트 순회 시 회원 세션 UUID 보존 (`session_uuid` > `member_id`).
   - `router.py` 게스트 JWT `sub` 유효성 검증(비정상 시 401) 및 바디 `session_id` 무시 후 JWT `sub` 기반 `guest:{uuid}:{persona}` 키 강제 생성(타 게스트 도청 차단).

@@ -62,6 +62,9 @@ class AgentState(TypedDict):
     # Curation request metadata passed from Master Persona to Curator Agent
     curator_request: Optional[str]
 
+    # Whether book curation has already been attempted in this turn (prevents infinite reentry loop)
+    curator_attempted: Optional[bool]
+
     # Verified book list returned from Curator Agent back to Master Persona
     curated_books: Optional[List[dict]]
 
