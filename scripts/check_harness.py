@@ -82,10 +82,11 @@ def check_handoff(other_repos: list[str]) -> list[str]:
     for idx, line in enumerate(lines, start=1):
         for repo in other_repos:
             if repo in line:
-                # PR 링크나 이슈/PR 참조(예: repo#12, repo/pull/12, github.com/.../repo/pull/12)는 허용
+                # PR 링크나 이슈/PR 참조(예: repo#12, repo/pull/12, org/repo/pull/12, https://...)는 허용
                 is_pr_reference = bool(
-                    re.search(rf"{repo}(?:/pull/|#)\d+", line)
+                    re.search(rf"(?:[\w-]+/)?{repo}(?:/pull/|#)\d+", line)
                     or re.search(rf"github\.com/[^/\s]+/{repo}/pull/\d+", line)
+                    or re.search(rf"https?://\S*{repo}\S*", line)
                 )
                 if not is_pr_reference:
                     errors.append(

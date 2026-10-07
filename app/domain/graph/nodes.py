@@ -178,12 +178,16 @@ class ResilientLLM:
         )
 
 
+DEFAULT_EMPTY_CURATION_FALLBACK = "독자님의 마음에 꼭 맞는 책을 이번에는 서재에서 찾아내지 못했네요. 대신 어떤 이야기를 더 나누고 싶으신가요?"
+
+
 def _sanitize_persona_output(text: str, curated_books: Optional[List[Dict[str, Any]]]) -> str:
     """Sanitize persona output at code level to strictly prevent fake card fabrication.
 
     1. If curated_books is empty/absent:
        - Strip all fake card markers ('📖', '등록 ➔', '### 📖', '💡 추천 이유', etc.)
          so frontend will NEVER falsely render a book registration card.
+       - If the remaining content is too short (less than 15 chars), substitute with a gentle fallback.
     2. If curated_books exists:
        - Ensure only verified book titles in curated_books appear under '### 📖' headings.
     """
@@ -214,7 +218,11 @@ def _sanitize_persona_output(text: str, curated_books: Optional[List[Dict[str, A
         cleaned_text = "\n".join(cleaned_lines)
         # Remove leftover isolated book emojis
         cleaned_text = re.sub(r"(?<![A-Za-z0-9가-힣])📖(?![A-Za-z0-9가-힣])", "", cleaned_text)
-        return cleaned_text.strip()
+        cleaned_result = cleaned_text.strip()
+        # Fallback if stripping fake cards left the response empty or trivial
+        if len(cleaned_result) < 15:
+            return DEFAULT_EMPTY_CURATION_FALLBACK
+        return cleaned_result
 
     # When curated_books exist, clean up any fabricated book headings not in curated_books
     valid_titles = {
@@ -255,6 +263,45 @@ def _is_delayed_curation_promise(text: str) -> bool:
         "잠깐만 기다려",
     ]
     return any(marker in text for marker in promise_markers)
+
+
+def _replace_delayed_curation_promise(
+    text: str, replacement: str = "이번에는 맞는 책을 서재에서 찾지 못했어요."
+) -> str:
+    """Replace only the specific sentences containing empty curation promises without wiping prior context.
+
+    Handles punctuation variations (commas, exclamation marks, periods, newlines).
+    """
+    if not text or not _is_delayed_curation_promise(text):
+        return text
+
+    # Split into lines first to preserve markdown structure
+    lines = text.split("\n")
+    new_lines = []
+    for line in lines:
+        if not _is_delayed_curation_promise(line):
+            new_lines.append(line)
+            continue
+
+        # Split line into sentences while preserving trailing delimiters
+        sentences = re.split(r"([.!?~]+|\n)", line)
+        reconstructed = []
+        i = 0
+        while i < len(sentences):
+            part = sentences[i]
+            punct = sentences[i + 1] if i + 1 < len(sentences) else ""
+            full_clause = part + punct
+            if _is_delayed_curation_promise(full_clause):
+                reconstructed.append(replacement)
+            else:
+                reconstructed.append(full_clause)
+            i += 2
+
+        new_line = "".join(reconstructed).strip()
+        new_lines.append(new_line)
+
+    result = "\n".join(new_lines).strip()
+    return result if result else DEFAULT_EMPTY_CURATION_FALLBACK
 
 
 def _get_llm(tools: Optional[List[Any]] = None) -> ResilientLLM:
@@ -600,7 +647,9 @@ async def _run_persona_node(
     # 1-1. Book Curation Pre-Delegation (Librarian mode: explicit recommendation/registration request)
     # If user asks for book recommendation, registration, or result display and curated_books are not yet loaded,
     # immediately delegate to curator_node to guarantee 100% verified National Library metadata.
-    if not is_debate and not state.get("curated_books"):
+    # CRITICAL: If curator has already been attempted in this turn, NEVER re-delegate (prevents infinite loop).
+    curator_attempted = bool(state.get("curator_attempted"))
+    if not is_debate and not state.get("curated_books") and not curator_attempted:
         recommend_keywords = [
             "추천",
             "골라줘",
@@ -727,12 +776,14 @@ async def _run_persona_node(
     # Mode-isolated tool binding: Librarian vs Debate tools
     base_tools = DEBATE_TOOLS if is_debate else LIBRARIAN_TOOLS
     active_tools = base_tools
-    if curated_books:
-        active_tools = [
-            t
-            for t in base_tools
-            if getattr(t, "name", "") not in ("search_recent_books", "request_book_curation")
-        ]
+    if not is_debate:
+        excluded_tools = set()
+        if curated_books:
+            excluded_tools.update({"search_recent_books", "request_book_curation"})
+        if curator_attempted:
+            excluded_tools.add("request_book_curation")
+        if excluded_tools:
+            active_tools = [t for t in base_tools if getattr(t, "name", "") not in excluded_tools]
 
     llm = _get_llm(tools=active_tools)
     t_llm_start = time.perf_counter()
@@ -759,7 +810,7 @@ async def _run_persona_node(
                 "is_concluded": True,
             }
 
-        if call_name == "request_book_curation" and not curated_books:
+        if call_name == "request_book_curation" and not curated_books and not curator_attempted:
             curation_query = call_args.get("query") or last_user_msg
             logger.info(
                 "LLM invoked request_book_curation with query '%s'. Delegating to curator_node.",
@@ -771,19 +822,29 @@ async def _run_persona_node(
                 "target_unresolved": None,
             }
 
-    # Safety Net: If the LLM response contains an empty delay promise without curated books,
-    # immediately delegate to curator_node so the user receives verified book cards in turn 1.
+    # Safety Net: If the LLM response contains an empty delay promise without curated books
     response_text = str(response.content) if response.content else ""
     if not is_debate and not curated_books and _is_delayed_curation_promise(response_text):
-        logger.info(
-            "Delayed curation promise detected in LLM response for persona %s. Intercepting and delegating to curator_node.",
-            persona_id,
-        )
-        return {
-            "active_persona": persona_id,
-            "curator_request": last_user_msg,
-            "target_unresolved": None,
-        }
+        if curator_attempted:
+            logger.info(
+                "Delayed curation promise detected after curator attempt for persona %s. Replacing promise sentence.",
+                persona_id,
+            )
+            response_text = _replace_delayed_curation_promise(response_text)
+            response = AIMessage(
+                content=response_text,
+                additional_kwargs=getattr(response, "additional_kwargs", {}),
+            )
+        else:
+            logger.info(
+                "Delayed curation promise detected in LLM response for persona %s. Intercepting and delegating to curator_node.",
+                persona_id,
+            )
+            return {
+                "active_persona": persona_id,
+                "curator_request": last_user_msg,
+                "target_unresolved": None,
+            }
 
     # Sanitize persona output to strictly prevent unverified book card UI fabrication
     sanitized_content = _sanitize_persona_output(response_text, curated_books)

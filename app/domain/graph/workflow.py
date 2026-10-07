@@ -75,7 +75,12 @@ def route_persona_exit(state: AgentState) -> str:
         return "summarizer_node"
 
     # 2. Check for curation request (Handoff to book_curator_node)
-    if state.get("curator_request") and not state.get("curated_books"):
+    # Never route to curator_node if curator was already attempted in this turn
+    if (
+        state.get("curator_request")
+        and not state.get("curated_books")
+        and not state.get("curator_attempted")
+    ):
         logger.info("Routing to curator_node for emotion/weather book curation.")
         return "curator_node"
 

@@ -12,3 +12,13 @@
    - `.github/workflows/deploy.yml` 워크플로우 삭제. 불필요한 배포 훅 및 러너 낭비 차단.
 3. **인프라 문서 및 환경변수 템플릿 최신화**:
    - `README.md`, `ARCHITECTURE.md`, `.env.example`, `AGENTS.md`의 배포 환경 명세를 Render에서 Cloud Run으로 정렬.
+
+---
+
+## 세션 62 (2026-10-01)
+
+### 진행한 작업
+1. **중앙 린터 및 멀티 서비스 CI 규격 동기화**:
+   - DPYB 중앙 CI(`reusable-python-ci.yml`, `reusable-pr-lint.yml`)의 커밋/PR 컨벤션 유연화(소괄호/대괄호 scope 지원)에 맞춰 본 레포 설정 정렬.
+2. **배포 정리 브랜치 점검**:
+   - 로컬 `feat/cleanup-render-deploy` 브랜치 변경사항 최종 검증.

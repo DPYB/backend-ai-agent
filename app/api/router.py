@@ -11,6 +11,7 @@ from uuid import UUID
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langgraph.errors import GraphRecursionError
 
 from app.api.schemas import (
     ChatRequest,
@@ -159,6 +160,11 @@ async def list_personas(
     return results
 
 
+RECURSION_FALLBACK_MSG = (
+    "도서 추천 및 답변을 정리하는 과정에서 일시적인 지연이 발생했어요. 잠시 후 다시 질문해 주세요."
+)
+
+
 def extract_auth_info_from_auth(
     auth_header: Optional[str],
 ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
@@ -174,7 +180,7 @@ def extract_auth_info_from_auth(
     Raises:
         HTTPException(401): If token is expired, invalid, forged, or malformed.
     """
-    if not auth_header or not auth_header.strip():
+    if not isinstance(auth_header, str) or not auth_header.strip():
         return None, None, None
 
     if not auth_header.startswith("Bearer "):
@@ -584,6 +590,7 @@ async def _prepare_chat_context(
         "handoff_target": None,
         "curator_request": None,
         "curated_books": None,
+        "curator_attempted": False,
         "location_coords": location_coords,
         "weather_context": weather_context,
         "action": request.action or "chat",
@@ -735,7 +742,7 @@ async def chat_with_persona(
         )
 
     try:
-        run_config = {"configurable": {"thread_id": session_id}}
+        run_config = {"configurable": {"thread_id": session_id}, "recursion_limit": 25}
         result_state = await _graph.ainvoke(initial_state, config=run_config)
 
         # Increment guest usage only on successful normal LLM turn
@@ -855,6 +862,38 @@ async def chat_with_persona(
             signals=initial_state.get("signals"),
             is_concluded=is_concluded,
             debate_summary=debate_summary,
+        )
+
+    except GraphRecursionError as gre:
+        logger.error("CRITICAL: GraphRecursionError caught in chat_with_persona: %s", gre)
+        history_msgs = initial_state.get("messages", [])
+        safe_history = []
+        for msg in history_msgs[-9:]:
+            r = "user" if isinstance(msg, HumanMessage) else "assistant"
+            safe_history.append({"role": r, "content": str(msg.content)})
+        safe_history.append({"role": "assistant", "content": RECURSION_FALLBACK_MSG})
+        await session_mgr.save_session(
+            session_id=session_id,
+            data={
+                "member_id": initial_state.get("member_id"),
+                "active_persona": active_persona,
+                "librarian_name": request.librarian_name,
+                "mode": persona_mode,
+                "context_summary": initial_state.get("context_summary"),
+                "messages": safe_history,
+            },
+        )
+        return ChatResponse(
+            session_id=session_id,
+            reply=RECURSION_FALLBACK_MSG,
+            active_persona=active_persona,
+            display_name=display_name,
+            mode=persona_mode,
+            switch_suggestion=None,
+            recommended_books=[],
+            signals=initial_state.get("signals"),
+            is_concluded=False,
+            debate_summary=None,
         )
 
     except Exception as e:
@@ -1049,73 +1088,105 @@ async def chat_stream_with_persona(
             first_token_time: Optional[float] = None
             logger.info("[PROFILE] [Step 3/6] Starting _graph.astream_events...")
 
-            run_config = {"configurable": {"thread_id": session_id}}
-            async for event in _graph.astream_events(
-                initial_state, version="v2", config=run_config
-            ):
-                kind = event.get("event")
-                node = event.get("metadata", {}).get("langgraph_node")
+            run_config = {"configurable": {"thread_id": session_id}, "recursion_limit": 25}
+            is_curator_recovering = bool(
+                initial_state.get("curator_attempted") and not initial_state.get("curated_books")
+            )
+            buffered_tokens: List[str] = []
 
-                # Real-time token streaming for active master persona nodes only
-                if kind == "on_chat_model_stream" and node in ALL_PERSONA_NODES:
-                    chunk = event.get("data", {}).get("chunk")
-                    if chunk:
-                        text_delta = ""
-                        if hasattr(chunk, "content"):
-                            text_delta = extract_message_text(chunk.content)
-                        if text_delta:
-                            if first_token_time is None:
-                                first_token_time = time.perf_counter()
-                                logger.info(
-                                    "[PROFILE] [Step 4/6] First token (TTFT): %.2f ms (from stream start)",
-                                    (first_token_time - t_stream_start) * 1000,
-                                )
-                            accumulated_text += text_delta
-                            tokens_emitted += 1
-                            yield _format_sse("token", {"delta": text_delta})
+            try:
+                async for event in _graph.astream_events(
+                    initial_state, version="v2", config=run_config
+                ):
+                    kind = event.get("event")
+                    node = event.get("metadata", {}).get("langgraph_node")
 
-                elif kind == "on_chain_end":
-                    node_name = event.get("name")
-                    output = event.get("data", {}).get("output")
-                    logger.info(
-                        "[PROFILE] on_chain_end: node=%s elapsed=%.2f ms",
-                        node_name,
-                        (time.perf_counter() - t_stream_start) * 1000,
-                    )
-                    if node_name in ALL_PERSONA_NODES and isinstance(output, dict):
-                        if output.get("active_persona"):
-                            last_active_persona = output["active_persona"]
-                        if output.get("switch_suggestion"):
-                            switch_suggestion_data = output["switch_suggestion"]
-                        if output.get("curated_books"):
-                            curated_books_data = output["curated_books"]
-                        if output.get("recommended_history"):
-                            latest_recommended_history = output["recommended_history"]
-                        if "is_concluded" in output:
-                            is_concluded = bool(output["is_concluded"])
-                        if "debate_summary" in output:
-                            debate_summary = output["debate_summary"]
-                        if output.get("messages"):
-                            for m in output["messages"]:
-                                final_messages.append(m)
-                            if tokens_emitted == 0:
+                    # Real-time token streaming for active master persona nodes only
+                    if kind == "on_chat_model_stream" and node in ALL_PERSONA_NODES:
+                        chunk = event.get("data", {}).get("chunk")
+                        if chunk:
+                            text_delta = ""
+                            if hasattr(chunk, "content"):
+                                text_delta = extract_message_text(chunk.content)
+                            if text_delta:
+                                if first_token_time is None:
+                                    first_token_time = time.perf_counter()
+                                    logger.info(
+                                        "[PROFILE] [Step 4/6] First token (TTFT): %.2f ms (from stream start)",
+                                        (first_token_time - t_stream_start) * 1000,
+                                    )
+                                accumulated_text += text_delta
+                                tokens_emitted += 1
+                                if is_curator_recovering:
+                                    # Buffer raw LLM tokens during curator recovery to prevent leaking fake cards or empty delay promises
+                                    buffered_tokens.append(text_delta)
+                                else:
+                                    yield _format_sse("token", {"delta": text_delta})
+
+                    elif kind == "on_chain_end":
+                        node_name = event.get("name")
+                        output = event.get("data", {}).get("output")
+                        logger.info(
+                            "[PROFILE] on_chain_end: node=%s elapsed=%.2f ms",
+                            node_name,
+                            (time.perf_counter() - t_stream_start) * 1000,
+                        )
+                        if node_name in ALL_PERSONA_NODES and isinstance(output, dict):
+                            if output.get("active_persona"):
+                                last_active_persona = output["active_persona"]
+                            if output.get("switch_suggestion"):
+                                switch_suggestion_data = output["switch_suggestion"]
+                            if output.get("curated_books"):
+                                curated_books_data = output["curated_books"]
+                            if output.get("recommended_history"):
+                                latest_recommended_history = output["recommended_history"]
+                            if "is_concluded" in output:
+                                is_concluded = bool(output["is_concluded"])
+                            if "debate_summary" in output:
+                                debate_summary = output["debate_summary"]
+                            if output.get("messages"):
+                                for m in output["messages"]:
+                                    final_messages.append(m)
                                 ai_m = output["messages"][-1]
-                                accumulated_text = extract_message_text(
+                                final_sanitized_msg = extract_message_text(
                                     getattr(ai_m, "content", "")
                                 )
-                    elif node_name in ("curator_node", "book_curator_node") and isinstance(
-                        output, dict
-                    ):
-                        if output.get("curated_books"):
-                            curated_books_data = output["curated_books"]
-                            yield _format_sse("books", {"books": curated_books_data})
-                        if output.get("recommended_history"):
-                            latest_recommended_history = output["recommended_history"]
-                    elif node_name == "summarizer_node" and isinstance(output, dict):
-                        if output.get("active_persona"):
-                            last_active_persona = output["active_persona"]
-                        if output.get("context_summary"):
-                            context_summary = output["context_summary"]
+                                if is_curator_recovering and buffered_tokens:
+                                    # Emit the node's final sanitized message as a single token event
+                                    yield _format_sse("token", {"delta": final_sanitized_msg})
+                                    accumulated_text = final_sanitized_msg
+                                    buffered_tokens.clear()
+                                elif tokens_emitted == 0:
+                                    accumulated_text = final_sanitized_msg
+                        elif node_name in ("curator_node", "book_curator_node") and isinstance(
+                            output, dict
+                        ):
+                            curated_list = output.get("curated_books")
+                            if curated_list:
+                                curated_books_data = curated_list
+                                is_curator_recovering = False
+                                yield _format_sse("books", {"books": curated_books_data})
+                            else:
+                                # Curator returned 0 books or failed: mark recovery active for next persona node
+                                is_curator_recovering = True
+                            if output.get("recommended_history"):
+                                latest_recommended_history = output["recommended_history"]
+                        elif node_name == "summarizer_node" and isinstance(output, dict):
+                            if output.get("active_persona"):
+                                last_active_persona = output["active_persona"]
+                            if output.get("context_summary"):
+                                context_summary = output["context_summary"]
+
+            except GraphRecursionError as gre:
+                logger.error(
+                    "CRITICAL: GraphRecursionError caught in chat_stream_with_persona: %s", gre
+                )
+                accumulated_text = (
+                    accumulated_text + "\n" + RECURSION_FALLBACK_MSG
+                    if accumulated_text
+                    else RECURSION_FALLBACK_MSG
+                )
+                yield _format_sse("token", {"delta": RECURSION_FALLBACK_MSG})
 
             # Fallback for mock responses or non-streamed outputs
             if tokens_emitted == 0 and accumulated_text:
