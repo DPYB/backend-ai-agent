@@ -180,8 +180,46 @@ class ResilientLLM:
 
 DEFAULT_EMPTY_CURATION_FALLBACK = "독자님의 마음에 꼭 맞는 책을 이번에는 서재에서 찾아내지 못했네요. 대신 어떤 이야기를 더 나누고 싶으신가요?"
 
+DEFAULT_EMPTY_CURATION_FALLBACK_BY_PERSONA: Dict[str, str] = {
+    # 사서 4종 (대화 연장 및 사색)
+    "CAT": "독자님의 마음에 꼭 맞는 책을 이번에는 서재에서 찾아내지 못했다냥. 대신 어떤 사색을 더 나누고 싶으신가요?",
+    "SHOEBILL": "원하시는 조건에 맞는 책을 이번에는 서재에서 찾아내지 못했다두둥. 대신 어떤 원리나 지식을 더 살펴볼까두둥?",
+    "SEA_SLUG": "마음에 닿는 포근한 책을 이번에는 서재에서 찾지 못했어누누... 대신 어떤 이야기를 더 나누고 싶어누누?",
+    "GECKO": "딱 맞는 책을 이번에는 서재에서 찾지 못했네크크! 대신 어떤 흥미로운 이야기를 더 나눠볼까크크?",
+    # 토론 파트너 4종 (토론 마무리 피날레 및 총평)
+    "DEBATE_CRITIC": "오늘 나눈 담론의 결을 이어갈 마땅한 연계 텍스트를 이번에는 서재에서 찾아내지 못했습니다. 다만 독자님과 나눈 사유의 여백만으로도 충분히 빛나는 시간이었습니다.",
+    "DEBATE_STORYTELLER": "오늘 나눈 뜨거운 이야기의 숨결을 이어갈 다음 책을 이번에는 서재에서 찾아내지 못했네요! 하지만 오늘 나눈 시간만으로도 가슴 벅찬 순간이었습니다, 독자님!",
+    "DEBATE_COUNSELOR": "독자님의 마음에 온기를 더해줄 다음 책을 이번에는 서재에서 찾지 못했어요. 하지만 오늘 나누어주신 진솔한 생각들이 제게는 가장 큰 울림이었습니다.",
+    "DEBATE_OBSERVER": "오늘 나눈 행동과 환경의 시그널을 이어갈 다음 책을 이번에는 서재에서 찾지 못했습니다. 그렇지만 오늘 작품을 함께 들여다본 관찰의 시간은 아주 훌륭했습니다.",
+}
 
-def _sanitize_persona_output(text: str, curated_books: Optional[List[Dict[str, Any]]]) -> str:
+DEFAULT_PROMISE_REPLACEMENT_BY_PERSONA: Dict[str, str] = {
+    "CAT": "이번에는 맞는 책을 서재에서 찾지 못했다냥.",
+    "SHOEBILL": "이번에는 서재에서 조건에 맞는 책을 찾지 못했다두둥.",
+    "SEA_SLUG": "이번에는 마음에 닿는 책을 서재에서 찾지 못했어누누...",
+    "GECKO": "이번에는 딱 맞는 책을 서재에서 못 찾았어크크!",
+}
+
+
+def _get_empty_curation_fallback(persona_id: Optional[str] = None) -> str:
+    """Return persona-customized empty curation fallback text."""
+    if persona_id and persona_id in DEFAULT_EMPTY_CURATION_FALLBACK_BY_PERSONA:
+        return DEFAULT_EMPTY_CURATION_FALLBACK_BY_PERSONA[persona_id]
+    return DEFAULT_EMPTY_CURATION_FALLBACK
+
+
+def _get_promise_replacement(persona_id: Optional[str] = None) -> str:
+    """Return persona-customized delayed curation promise replacement sentence."""
+    if persona_id and persona_id in DEFAULT_PROMISE_REPLACEMENT_BY_PERSONA:
+        return DEFAULT_PROMISE_REPLACEMENT_BY_PERSONA[persona_id]
+    return "이번에는 맞는 책을 서재에서 찾지 못했어요."
+
+
+def _sanitize_persona_output(
+    text: str,
+    curated_books: Optional[List[Dict[str, Any]]],
+    persona_id: Optional[str] = None,
+) -> str:
     """Sanitize persona output at code level to strictly prevent fake card fabrication.
 
     1. If curated_books is empty/absent:
@@ -221,7 +259,7 @@ def _sanitize_persona_output(text: str, curated_books: Optional[List[Dict[str, A
         cleaned_result = cleaned_text.strip()
         # Fallback if stripping fake cards left the response empty or trivial
         if len(cleaned_result) < 15:
-            return DEFAULT_EMPTY_CURATION_FALLBACK
+            return _get_empty_curation_fallback(persona_id)
         return cleaned_result
 
     # When curated_books exist, clean up any fabricated book headings not in curated_books
@@ -266,14 +304,18 @@ def _is_delayed_curation_promise(text: str) -> bool:
 
 
 def _replace_delayed_curation_promise(
-    text: str, replacement: str = "이번에는 맞는 책을 서재에서 찾지 못했어요."
+    text: str,
+    replacement: Optional[str] = None,
+    persona_id: Optional[str] = None,
 ) -> str:
     """Replace only the specific sentences containing empty curation promises without wiping prior context.
 
-    Handles punctuation variations (commas, exclamation marks, periods, newlines).
+    Handles punctuation variations (commas, exclamation marks, periods, newlines) and persona-specific tones.
     """
     if not text or not _is_delayed_curation_promise(text):
         return text
+
+    target_replacement = replacement or _get_promise_replacement(persona_id)
 
     # Split into lines first to preserve markdown structure
     lines = text.split("\n")
@@ -292,7 +334,7 @@ def _replace_delayed_curation_promise(
             punct = sentences[i + 1] if i + 1 < len(sentences) else ""
             full_clause = part + punct
             if _is_delayed_curation_promise(full_clause):
-                reconstructed.append(replacement)
+                reconstructed.append(target_replacement)
             else:
                 reconstructed.append(full_clause)
             i += 2
@@ -301,7 +343,7 @@ def _replace_delayed_curation_promise(
         new_lines.append(new_line)
 
     result = "\n".join(new_lines).strip()
-    return result if result else DEFAULT_EMPTY_CURATION_FALLBACK
+    return result if result else _get_empty_curation_fallback(persona_id)
 
 
 def _get_llm(tools: Optional[List[Any]] = None) -> ResilientLLM:
@@ -830,7 +872,7 @@ async def _run_persona_node(
                 "Delayed curation promise detected after curator attempt for persona %s. Replacing promise sentence.",
                 persona_id,
             )
-            response_text = _replace_delayed_curation_promise(response_text)
+            response_text = _replace_delayed_curation_promise(response_text, persona_id=persona_id)
             response = AIMessage(
                 content=response_text,
                 additional_kwargs=getattr(response, "additional_kwargs", {}),
@@ -847,7 +889,9 @@ async def _run_persona_node(
             }
 
     # Sanitize persona output to strictly prevent unverified book card UI fabrication
-    sanitized_content = _sanitize_persona_output(response_text, curated_books)
+    sanitized_content = _sanitize_persona_output(
+        response_text, curated_books, persona_id=persona_id
+    )
     if sanitized_content != response_text:
         response = AIMessage(
             content=sanitized_content, additional_kwargs=getattr(response, "additional_kwargs", {})
