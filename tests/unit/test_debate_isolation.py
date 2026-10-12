@@ -70,6 +70,54 @@ def test_debate_personas_have_anti_animal_guardrails():
             assert "~크크" in prompt_text
 
 
+def test_debate_output_sanitizer_removes_accidental_animal_endings():
+    """Verify that _sanitize_persona_output strips librarian animal endings while strictly preserving legitimate words.
+
+    Must preserve:
+    - Currency/quantifiers: '열 냥', '백 냥', '열 냥이'
+    - Adverbs: '누누이', '그냥'
+    - Common nouns: '크레파스'
+    """
+    from app.domain.graph.nodes import _sanitize_persona_output, _strip_debate_animal_endings
+
+    # 1. Animal endings stripped at predicate endings
+    raw_critic_leak = "이 작품의 결말은 정말 비극적이었다냥! 독자님 생각은 어떠신가요두둥?"
+    cleaned = _sanitize_persona_output(
+        raw_critic_leak, curated_books=None, persona_id=DEBATE_CRITIC_ID
+    )
+    assert "냥" not in cleaned
+    assert "두둥" not in cleaned
+    assert cleaned == "이 작품의 결말은 정말 비극적이었다! 독자님 생각은 어떠신가요?"
+
+    raw_slug_leak = "그렇게 생각할 수도 있어요누누. 그 심정이 참 애틋하네요크크~"
+    cleaned_slug = _sanitize_persona_output(
+        raw_slug_leak, curated_books=None, persona_id=DEBATE_COUNSELOR_ID
+    )
+    assert "누누" not in cleaned_slug
+    assert "크크" not in cleaned_slug
+    assert cleaned_slug == "그렇게 생각할 수도 있어요. 그 심정이 참 애틋하네요~"
+
+    # 2. Strict False Positive Prevention:
+    # '열 냥', '백 냥', '열 냥이', '누누이', '그냥', '크레파스' must NEVER be stripped!
+    currency_text = (
+        "당시 책 한 권의 가격은 열 냥, 혹은 백 냥에 달했습니다. 열 냥이 결코 적은 돈이 아니었죠."
+    )
+    cleaned_currency = _strip_debate_animal_endings(currency_text)
+    assert cleaned_currency == currency_text
+    assert "열 냥" in cleaned_currency
+    assert "백 냥" in cleaned_currency
+    assert "열 냥이" in cleaned_currency
+
+    adverb_noun_text = (
+        "제가 누누이 강조했듯, 그냥 책을 읽은 게 아니라 크레파스로 표지를 칠하듯 깊이 사유하셨군요."
+    )
+    cleaned_adverb_noun = _strip_debate_animal_endings(adverb_noun_text)
+    assert cleaned_adverb_noun == adverb_noun_text
+    assert "누누이" in cleaned_adverb_noun
+    assert "그냥" in cleaned_adverb_noun
+    assert "크레파스" in cleaned_adverb_noun
+
+
 @pytest.mark.asyncio
 async def test_session_partitioning_for_debate_mode():
     """Verify that session_id is automatically partitioned with persona ID for DEBATE mode."""
