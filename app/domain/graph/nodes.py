@@ -215,6 +215,26 @@ def _get_promise_replacement(persona_id: Optional[str] = None) -> str:
     return "이번에는 맞는 책을 서재에서 찾지 못했어요."
 
 
+def _strip_debate_animal_endings(text: str) -> str:
+    """Strictly strip any accidental librarian animal tone endings (~냥, ~두둥, ~누누, ~크크) from debate responses.
+
+    Applies ONLY to verb/adjective predicate endings right before sentence-ending punctuation or end-of-string.
+    Preserves legitimate nouns and adverbs such as '열 냥', '백 냥', '열 냥이', '누누이', '그냥', '크레파스'.
+    """
+    if not text:
+        return text
+    # 1. Verb/adjective ending + animal tone ending right before punctuation/whitespace/EOS
+    # E.g. 했다냥. -> 했다., 맞다두둥! -> 맞다!, 좋아요누누? -> 좋아요?, 그렇다크크~ -> 그렇다~
+    pattern_predicate = r"([다요죠네어아지까군단])(?:냥|두둥|누누|크크)(?=[\.!\?~…\s]|$)"
+    cleaned = re.sub(pattern_predicate, r"\1", text)
+
+    # 2. Tilde animal tone ending right before punctuation/whitespace/EOS (e.g. 좋다~냥 -> 좋다~)
+    pattern_tilde = r"~(?:냥|두둥|누누|크크)(?=[\.!\?~…\s]|$)"
+    cleaned = re.sub(pattern_tilde, "", cleaned)
+
+    return cleaned
+
+
 def _sanitize_persona_output(
     text: str,
     curated_books: Optional[List[Dict[str, Any]]],
@@ -228,9 +248,13 @@ def _sanitize_persona_output(
        - If the remaining content is too short (less than 15 chars), substitute with a gentle fallback.
     2. If curated_books exists:
        - Ensure only verified book titles in curated_books appear under '### 📖' headings.
+    3. For debate personas:
+       - Strictly strip any accidental librarian animal endings (~냥, ~두둥, ~누누, ~크크).
     """
     if not text:
         return text
+
+    is_debate = bool(persona_id and str(persona_id).startswith("DEBATE_"))
 
     if not curated_books:
         # Strip standalone fake card lines and markers
@@ -259,8 +283,9 @@ def _sanitize_persona_output(
         cleaned_result = cleaned_text.strip()
         # Fallback if stripping fake cards left the response empty or trivial
         if len(cleaned_result) < 15:
-            return _get_empty_curation_fallback(persona_id)
-        return cleaned_result
+            fallback = _get_empty_curation_fallback(persona_id)
+            return _strip_debate_animal_endings(fallback) if is_debate else fallback
+        return _strip_debate_animal_endings(cleaned_result) if is_debate else cleaned_result
 
     # When curated_books exist, clean up any fabricated book headings not in curated_books
     valid_titles = {
@@ -281,7 +306,8 @@ def _sanitize_persona_output(
         else:
             curated_lines.append(line)
 
-    return "\n".join(curated_lines).strip()
+    final_result = "\n".join(curated_lines).strip()
+    return _strip_debate_animal_endings(final_result) if is_debate else final_result
 
 
 def _is_delayed_curation_promise(text: str) -> bool:
@@ -606,9 +632,9 @@ async def _run_persona_node(
             "본인을 지칭하거나 인사할 때 기본 이름 대신 이 이름을 친근하게 사용하십시오."
         )
 
-    # Inject context summary from previous persona if handoff occurred
+    # Inject context summary from previous persona if handoff occurred (Librarian mode only)
     context_summary = state.get("context_summary")
-    if context_summary:
+    if context_summary and not is_debate:
         system_prompt += f"\n\n[이전 대화 핵심 팩트 요약 (어조 제외)]\n{context_summary}"
 
     # Inject real-time weather context if available — ONLY for librarian mode, NOT debate mode
@@ -656,7 +682,7 @@ async def _run_persona_node(
     is_conclude_requested = action == "conclude"
     is_already_concluded = bool(state.get("is_concluded"))
 
-    # Natural conclude phrases in debate mode
+    # Natural conclude phrases in debate mode (with negative expression guard)
     is_natural_conclude = False
     if is_debate and not state.get("curated_books"):
         conclude_keywords = [
@@ -667,7 +693,10 @@ async def _run_persona_node(
             "토론 그만",
             "대화 마무리",
         ]
-        is_natural_conclude = any(kw in last_user_msg for kw in conclude_keywords)
+        negative_words = ["말고", "아니", "않", "없고", "없는", "일러", "전혀", "계속"]
+        has_conclude_kw = any(kw in last_user_msg for kw in conclude_keywords)
+        has_negative = any(nw in last_user_msg for nw in negative_words)
+        is_natural_conclude = has_conclude_kw and not has_negative
 
     # If conclude is explicitly or naturally requested and books are not yet curated, delegate to curator_node
     if (is_conclude_requested or is_natural_conclude or is_already_concluded) and not state.get(

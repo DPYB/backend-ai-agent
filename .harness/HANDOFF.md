@@ -8,49 +8,6 @@
 
 ---
 
-## 세션 64 (2026-10-02)
-
-### 진행한 작업
-1. **하네스 문서 비대화 및 도메인 오염 정밀 진단**:
-   - `HANDOFF.md`(2,100줄), `STATE.md`(648줄), `DECISIONS.md`(51KB) 비대화 원인 규명 및 전 레포 실측.
-2. **하네스 문서 슬림화 및 롤링 아카이빙**:
-   - `HANDOFF.md`: 과거 세션 1~59를 `archive/HANDOFF_2026-09.md`로 분리 보관 (2,100줄 ➔ 76줄).
-   - `STATE.md`: 과거 세부 diff를 `archive/STATE_2026-09.md`로 보관하고 마일스톤 스냅샷으로 정돈 (648줄 ➔ 52줄).
-   - `DECISIONS.md`: [결정/이유/영향] 3단 압축 및 Superseded 링크 보존, 구체값 전량 유지 (51KB ➔ 17KB).
-   - `PLAN.md`: 타 레포 태스크(Phase 50 2단계) 및 미착수 태스크(Phase 64) 제거, Phase 60으로 정돈.
-3. **토큰 보호 및 전사 자동 검증 체계 구축**:
-   - `scripts/check_harness.py`: 전 레포 공통 검증 도구 신설 (레포 자동 감지, 상한 검증, archive 파일명 정규식).
-   - 중앙 CI(`reusable-python-ci.yml`)에 `Validate Harness Specifications` 스텝 추가 및 영구 안착.
-   - `.agyignore`, `.claude/settings.json` 등록으로 archive/ 디렉토리 에이전트 읽기 차단.
-   - `AGENTS.md` 규격 단일화 (최대 5세션/200줄, Phase/Session 분리, 타 레포 격리).
-
-### 다음 세션에서 할 일
-- **Phase 60 구현 (`feat/national-library-kdc-fallback`)**: KDC 부재 시 부가기호 다중 폴백 및 심리치료 철학 승격.
-
----
-
-## 세션 65 (2026-10-03)
-
-### 진행한 작업
-1. **LangGraph 아키텍처 정밀 분석 및 전면 개정 (v2 리포트)**:
-   - `file:line` 전수 검증 기반 아키텍처 분석 리포트 작성 (`langgraph-architecture-analysis.md`).
-   - 무한 루프 과장 정정(LangGraph 기본 한도 10,007), State Race Condition 배제, LLM 라우터 도입 철회(순수 함수 통합 정합성).
-   - Worst-case Latency, 다중 인스턴스 서킷 브레이커, 간접 프롬프트 인젝션 취약점 규명.
-2. **도구 바인딩 분리 및 `member_id` ContextVar 주입 (P1 보안 IDOR 차단 / Phase 64)**:
-   - `app/core/context.py`에 `current_member_id` ContextVar 신설 및 `router.py`에서 인증된 JWT sub 설정 연동.
-   - 비-테스트 환경에서 토큰 없는 `request.member_id` 신뢰 차단 (fail-closed).
-   - 메모리 도구 3종(`search_scrap_memory`, `search_debate_memory`, `search_my_library`) 시그니처에서 `member_id` 인자 완전 제거 및 ContextVar에서 직접 조회. 미인증 시 fail-closed 거부 반환.
-   - `nodes.py:710`의 `system_prompt` 내 `member_id` UUID 노출 영구 제거.
-   - 사서 모드(`LIBRARIAN_TOOLS`)와 토론 모드(`DEBATE_TOOLS`) 도구 분리 바인딩 (`nodes.py`, `tools.py`).
-3. **게스트 `GUEST_MEMBER_ID` 매핑 및 요청 바디 ID 완전 무시 (보안 테스트 보강)**:
-   - `app/core/config.py`에 `guest_member_id`(`00000000-0000-0000-0000-000000000003`) 정의하여 코어 API 공용 방 규격과 일치.
-   - `router.py`에서 서명 검증된 JWT의 `sub/role`이 게스트일 때 `current_member_id`에 `settings.guest_member_id` 주입, 인증 요청 시 바디의 `request.member_id` 완전 무시.
-   - 도구 3종(`rag_tool`, `my_library_tool`, `debate_memory_tool`)의 `startswith("guest-")` 거부 제거, `None`일 때 fail-closed 유지.
-   - 게스트는 conclude 시 토론 인사이트 DB 저장을 건너뛰도록 가드 보강.
-   - 보안 테스트 4종 추가, 전체 219개 단위 테스트 100% 그린 (`219 passed in 9.97s`).
-
----
-
 ## 세션 66 (2026-10-05)
 
 ### 진행한 작업
@@ -113,4 +70,51 @@
    - 전체 239개 단위 테스트 100% 그린 (`239 passed in 30.79s`), ruff 및 mypy 통과, check_harness 통과.
 
 ### 다음 세션에서 할 일
-- **Yes24 OpenAPI 도입 또는 Phase 60 (국립도서관 KDC 부재 시 5자리 부가기호 다중 폴백)** 착수.
+- **Phase 65-1 PR #63 머지 및 브랜치 정리**: 완료 (세션 69).
+
+---
+
+## 세션 69 (2026-10-09)
+
+### 진행한 작업
+1. **GitHub 장애 복구 확인 및 PR #63 머지 동기화**:
+   - 10월 8일 자정 발생한 GitHub 본사 Actions/Webhooks 글로벌 장애(Major Outage) 복구 확인.
+   - PR reopen으로 웹훅 트리거 재발행 ➔ CI(Lint, Type Check & Test) 50초 만에 그린 통과 ➔ PR #63(`develop`, `8cebcc3`) 머지 완료 확인.
+   - 로컬/원격 `feat/curator-polish` 브랜치 정리 및 `develop` 최신화 완료.
+2. **프론트엔드 연동 이슈 분석 및 기술 지원**:
+   - 현상 1: 사서별 서재 도서 장르 커플링 분석 (토론 모드 시 사서 장르 의존성 분리 필요성 확인).
+   - 현상 2: 회원 토론 내용이 게스트(체험하기)에 노출되는 클라이언트 캐시 버그 원인 규명 (`sessionStorage` 키에 `memberId`/`mode` 누락) ➔ 프론트엔드 팀원 PR #141로 핫픽스 머지 완료 확인.
+   - 현상 3: 토론 논리적 핑퐁(건설적 반론 + 팩트 그라운딩 + 꼬리물기 질문) 기획 및 프롬프트 구조 설계.
+3. **Phase 66 계획 수립 및 인수인계 정비**:
+   - `PLAN.md`에 Phase 66(토론 파트너 4종 논리적 핑퐁 고도화) 신설 및 체크리스트 등록.
+   - 세션 64 아카이빙(`archive/HANDOFF_2026-10.md`) 및 하네스 규격 검증 완료.
+
+### 다음 세션에서 할 일
+- **Phase 66 구현 착수 (`feat/debate-persona-pingpong`)**: 완료 (세션 70).
+
+---
+
+## 세션 70 (2026-10-10)
+
+### 진행한 작업
+1. **브랜치 생성 및 작업 환경 정비**:
+   - `feat/debate-persona-pingpong` 브랜치 생성 및 체크아웃.
+2. **토론 공통 및 4종 페르소나 프롬프트 고도화 (Phase 66)**:
+   - `debate_common.py`에 `COMMON_DEBATE_TURN_RULES` 신설: 1) 단순 동조 탈피 및 팩트 그라운딩 기반 건설적 반론(독자 근거 인정 후 쟁점 좁히기, 없는 내용 날조 금지), 2) 완전 독립 1:1 토론 몰입(타 파트너 언급/연계 지침 원천 배제), 3) 개방형 꼬리물기 질문(Ping-Pong, 피날레/마무리 턴 질문 억제) 지침 구축.
+   - `debate_critic.py`, `debate_storyteller.py`, `debate_counselor.py`, `debate_observer.py`: 4종 페르소나 고유 어조별 팩트 기반 반론 화법, 1:1 몰입, 핑퐁 질문 및 예시 연동.
+   - `DEBATE_*_TURN_PROMPT` 조립(`compose`)에 `COMMON_DEBATE_TURN_RULES` 결합.
+3. **사서 말투 누수 코드 레벨 방어 및 격리 안전 가드 검증**:
+   - `nodes.py`에 `_strip_debate_animal_endings` 신설 및 `_sanitize_persona_output` 연동: 토론 모드 응답에서 사서 종결어미(`~냥`, `~두둥`, `~누누`, `~크크`) 코드 레벨 강제 소거 (단, `그냥`, `안녕` 등 일반 어휘 보호).
+   - `nodes.py`에서 `is_debate` 시 사서 추천 선위임(`curator_attempted`), 커스텀 사서 이름(`librarian_name`), 날씨(`weather_context`) 주입 완전 격리 검증.
+   - `DEBATE_TOOLS` 분리 바인딩 및 서재 도구 장르 간섭 부재 검증.
+4. **단위 테스트 보강 및 품질 검증**:
+   - `tests/unit/test_debate_pingpong.py` 신규 테스트 7종 작성: 공통 턴 규칙 연동, 시작 문구 다양성/도서 정보 한계 인정, 4종 고유 어조 검증, 사서 추천 위임 차단, 사서 이름/날씨/컨텍스트 요약 격리, 오프닝/턴 프롬프트 분기, 피날레 질문 억제, 자연어 마무리 오탐 방지 검증.
+   - `tests/unit/test_debate_isolation.py` 사서 어미 소거 및 명사/부사 오탐 방지 테스트 1종 추가.
+   - 전체 247개 단위 테스트 100% 그린 (`247 passed in 16.90s`), ruff check & format 통과, mypy 통과.
+5. **하네스 문서 갱신 및 롤링 아카이빙**:
+   - 세션 65 롤링 아카이빙(`archive/HANDOFF_2026-10.md`), `STATE.md`, `PLAN.md`, `DECISIONS.md` 갱신.
+
+### 다음 세션에서 할 일
+- **Phase 66 PR 생성 및 develop 머지 지원**:
+  - `feat/debate-persona-pingpong` 브랜치 변경사항 커밋 및 PR 생성.
+  - CI 통과 확인 후 사용자 컨펌/수동 머지 대기.
