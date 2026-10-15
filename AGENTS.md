@@ -49,7 +49,7 @@
 ## 4. 이 레포 고유 정책 (`backend-ai-agent`)
 
 ### 4.1 도메인 역할 & 책임 분리
-- DPYB의 **지능형 AI 페르소나, 개인화 독서 기억 RAG(LangGraph, pgvector)**와 함께 **ISBN 바코드 스캔, 문장 스크랩 Clova OCR 등 독서 수집 기능 구현**을 전담합니다.
+- DPYB의 **지능형 AI 페르소나, 개인화 독서 기억 RAG(LangGraph, pgvector)**와 함께 **ISBN 바코드 스캔, 문장 스크랩 Gemini Flash Vision OCR 등 독서 수집 기능 구현**을 전담합니다.
 - **역할 분리 원칙**: 무거운 이미지 처리 및 AI 추론은 본 마이크로서비스에서 무상태(Stateless)로 수행하며, **도서/스크랩 등 모든 정형 데이터의 순수 DB 영속화(RDBMS CRUD 및 영구 보관)는 `backend-core-api`에 위임**합니다.
 - **2-Track 모드 (8개 페르소나)**:
   - **사서 모드 (`LIBRARIAN`)**: 동물 사서 4종 (`CAT`=블루, `SHOEBILL`=슈빌, `SEA_SLUG`=바다달팽이, `GECKO`=게코) — `backend-core-api`의 DB ENUM `core.librarian_type`과 1:1 일치하며, 사용자 정의 사서 닉네임(`librarian_name`)을 지원합니다.
@@ -59,7 +59,7 @@
 ### 4.2 도구 및 스토리지 연동 규격
 - **`search_my_library`**: `backend-core-api`와 연동하여 사용자의 서재 도서 및 독서 상태(`READING`, `COMPLETED`, `WISH`)를 조회합니다.
 - **`search_recent_books`**: Tavily 경량 REST 탐색을 통해 최신 화제작 및 웹 트렌드 신간 도서를 실시간 검색합니다. (일반 도서 추천은 `curator_node`가 Yes24 RSS 오픈북 캐시 및 국립중앙도서관 4단계 검증 체인으로 신구 하이브리드 페어링을 전담합니다.)
-- **Vision API**: `pyzbar`, `Pillow`, `libzbar0`를 통한 바코드(ISBN-13) 스캔 및 Naver Cloud Clova OCR General API V2 연동을 무상태(Stateless)로 제공하여 `core-api`를 무거운 C-익스텐션 의존성으로부터 보호합니다.
+- **Vision API**: `pyzbar`, `Pillow`, `libzbar0`를 통한 바코드(ISBN-13) 스캔 및 Google Gemini Flash Vision OCR 연동을 무상태(Stateless)로 제공하여 `core-api`를 무거운 C-익스텐션 의존성으로부터 보호합니다.
 
 ### 4.3 제로비용(Zero-cost) 및 인프라 정책
 - **포트 바인딩**: Google Cloud Run 및 로컬 도커 동적 환경변수 `${PORT:-8000}`를 바인딩합니다.
@@ -98,7 +98,7 @@ DPYB 최신 공통 개발 표준([02-git-conventions.md](https://github.com/DPYB
   - `feat[agent]: 동물 사서 4종 페르소나 및 프롬프트 구현`
   - `feat[vision]: 도서 바코드 EAN13 ISBN 스캔 엔드포인트 추가`
   - `fix[rag]: Gemini 임베딩 벡터 768차원 일치 오류 수정`
-  - `test[vision]: Clova OCR 줄바꿈 복원 단위 테스트 추가`
+  - `test[vision]: Gemini Flash Vision 줄바꿈 복원 단위 테스트 추가`
   - `ci[workflow]: 중앙 Reusable CI 및 PR Lint 워크플로우 연동`
 - **주요 Type**: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `ci`
 - **주요 Scope**: `[agent]`, `[persona]`, `[chat]`, `[rag]`, `[vision]`, `[infra]`, `[harness]`, `[ci]` 등

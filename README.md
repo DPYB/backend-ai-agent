@@ -49,7 +49,7 @@ LangGraph 기반의 `StateGraph` 워크플로우를 통해 단일 챗봇 안에�
   - 3단계: 국립중앙도서관 실서지 API(`search_book`) 교차 검증을 통해 13자리 ISBN, 교보문고 고화질 CDN 표지, 실제 쪽수, 정식 출판사가 보증된 실존 도서만 프론트엔드 등록 카드로 바인딩.
 
 ### 4. 👁️ 무상태 Vision & OCR 파이프라인
-- **Gemini Flash Vision OCR**: 유료 Clova OCR 의존성을 제거하고 무과금 Google AI Studio 쿼터를 활용해 책 표지 바코드(ISBN-13), 5자리 KDC 부가기호 및 책 문장 스크랩 텍스트를 줄바꿈 손상 없이 정밀 추출.
+- **Gemini Flash Vision OCR**: 무과금 Google AI Studio 쿼터를 활용해 책 표지 바코드(ISBN-13), 5자리 KDC 부가기호 및 책 문장 스크랩 텍스트를 줄바꿈 손상 없이 정밀 추출.
 - **스마트 포커스 크롭 연동**: 프론트엔드 크롭 모달에서 전송한 선택 영역 박스(`crop_box`)를 기반으로 필요한 문장 영역만 서버 사이드 정밀 추출.
 
 ---

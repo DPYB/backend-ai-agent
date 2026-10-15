@@ -24,7 +24,7 @@
 
 - [x] **무상태 Vision API (`app/domain/vision/`)**:
   - `pyzbar` 기반 13자리 바코드(ISBN-13, EAN13) 스캔 (`POST /api/v1/vision/scan-barcode`).
-  - Gemini Flash Vision / Clova OCR 스마트 라우팅 및 5자리 부가기호(KDC) 추출.
+  - Gemini Flash Vision OCR ($0 Zero-cost, OpenAI 폴백) 및 5자리 부가기호(KDC) 추출.
 
 - [x] **프로덕션 인프라 & 제로비용 정책 (`app/core/`, Docker, CI/CD)**:
   - Google Cloud Run(서울 `asia-northeast3` 리전) 프로덕션 마이그레이션 및 Render 레거시 배포 제거.
@@ -35,6 +35,9 @@
 
 ### 📌 최근 마일스톤 완료 내역
 
+- [x] **Phase 67: Clova OCR 레거시 잔재 전면 제거 및 Gemini Vision 단일화**
+  - `app/vision/clova_ocr_client.py` 삭제, `gemini_ocr_client.py`/`__init__.py` 하위 호환 별칭 제거 및 `config.py`의 `naver_clova_*` 미사용 필드 제거.
+  - `AGENTS.md`, `.harness/ARCHITECTURE.md`, `README.md`에서 Clova 언급 전면 제거 및 단위 테스트 17종 포함 전체 회귀 100% 그린 검증.
 - [x] **Phase 66: 토론 파트너 4종 논리적 핑퐁(완전 독립 1:1 토론 + 팩트 그라운딩 반론 + 꼬리물기 질문) 고도화**
   - `COMMON_DEBATE_TURN_RULES` 신설 및 4종 토론자(`CRITIC`, `STORYTELLER`, `COUNSELOR`, `OBSERVER`) 턴 프롬프트에 논리의 대립(건설적 반론), 완전 독립 1:1 토론(타 파트너 언급/연계 지침 원천 배제), 꼬리물기 질문(Ping-Pong, 피날레 제외) 지침 연동.
   - 서지/줄거리 팩트 기반 반론 및 사서 말투(`~냥`, `~두둥` 등) 코드 레벨 소거(`_strip_debate_animal_endings`), 토론 모드 시 사서 추천 선위임 차단/사서 이름 격리 및 신규 단위 테스트 8종 포함 전체 247개 단위 회귀 100% 그린 검증.
