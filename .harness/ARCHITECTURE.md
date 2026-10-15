@@ -70,7 +70,7 @@ backend-ai-agent/
 │   │   ├── memory/             # RAG (scrap_vector) 및 내 서재 도구
 │   │   ├── tools/              # 에이전트 온디맨드 도구 (search_recent_books)
 │   │   └── graph/              # LangGraph 노드, 상태, 워크플로우
-│   ├── vision/                 # 바코드 스캐너 및 Clova OCR 클라이언트
+│   ├── vision/                 # 바코드 스캐너 및 Gemini Flash Vision OCR 클라이언트
 │   ├── infrastructure/         # Supabase, DB(SQLAlchemy asyncpg), Redis, core-api 클라이언트
 │   │   ├── db/                 # 'agent' 스키마 ORM 모델, Pooler 세션, pgvector 리포지토리
 │   │   │   ├── session.py
@@ -162,8 +162,4 @@ NL_API_SEARCH_URL=https://www.nl.go.kr/seoji/SearchApi.do
 CORE_API_BASE_URL=http://localhost:8080
 JWT_SECRET_KEY=dont-paw-get-jwt-secret-change-in-prod-2026
 JWT_ALGORITHM=HS256
-
-# Naver Cloud Clova OCR General API V2
-NAVER_CLOVA_API_URL=
-NAVER_CLOVA_SECRET_KEY=
 ```

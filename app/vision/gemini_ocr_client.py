@@ -430,8 +430,3 @@ class GeminiOcrClient:
 
 
 gemini_ocr_client = GeminiOcrClient()
-
-# Backward compatibility aliases
-ClovaOcrResult = GeminiOcrResult
-ClovaOcrClient = GeminiOcrClient
-clova_ocr_client = gemini_ocr_client

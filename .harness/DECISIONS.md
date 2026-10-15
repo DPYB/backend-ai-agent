@@ -5,6 +5,11 @@
 
 ---
 
+### 2026-10-15: Clova OCR 레거시 잔재 전면 제거 및 Gemini Vision 단일화 (Phase 67)
+- **결정**: `app/vision/clova_ocr_client.py` 하위 호환 리다이렉트 파일, `gemini_ocr_client.py` 및 `__init__.py`의 `ClovaOcrClient`/`ClovaOcrResult`/`clova_ocr_client` 별칭(Alias), `config.py`의 `naver_clova_*` 미사용 필드 및 테스트를 전면 삭제하고, `AGENTS.md`와 `ARCHITECTURE.md`에서 Clova 언급을 제거하여 Google Gemini Flash Vision 단일 체계로 일원화.
+- **이유**: 2026-09-16 Gemini Vision 전환 이후 유지되던 미사용 하위 호환 잔재 및 설정/문서 불일치로 인한 오해를 해소하고 코드베이스를 순수하게 정돈.
+- **영향**: Clova 관련 불필요한 파일/별칭/환경변수 0건 달성, 단위 테스트 17종 포함 전체 단위 회귀 100% 그린 유지, 향후 에이전트 독립 분리 시 Vision 배제 단순화.
+
 ### 2026-10-10: 토론 파트너 4종 논리적 핑퐁 프롬프트 고도화 및 1:1 세션 격리 (Phase 66)
 - **결정**: `COMMON_DEBATE_TURN_RULES`를 신설하여 1) 단순 동조/찬사 지양 및 팩트 그라운딩 기반 건설적 반론(독자 근거 인정 후 쟁점 좁히기, 사전 주입된 책 팩트에만 근거), 2) 완전 독립 1:1 토론 몰입(타 파트너 언급/연계 지침 원천 배제), 3) 개방형 꼬리물기 질문 지침(피날레/마무리 턴 질문 억제) 확립. `_strip_debate_animal_endings`를 통한 사서 종결어미(`~냥`, `~두둥` 등) 코드 레벨 강제 소거, 토론 모드 시 사서 추천 선위임(`curator_attempted`), 커스텀 사서 이름, 날씨 주입 격리.
 - **이유**: 단순 맞장구로 인한 토론 단조로움 해소, 없는 장면 날조(환각) 방지, 사서 모드와 동일한 완전 독립 세션 원칙 유지로 이전 파트너 어조/존재 환각 차단, 피날레 턴 불필요한 질문 루프 방지, 사서 말투 누수 완벽 차단.

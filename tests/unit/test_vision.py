@@ -10,8 +10,6 @@ from PIL import Image
 from app.main import app
 from app.vision.barcode_service import BarcodeService
 from app.vision.gemini_ocr_client import (
-    ClovaOcrClient,
-    ClovaOcrResult,
     GeminiOcrClient,
     GeminiOcrResult,
 )
@@ -59,7 +57,6 @@ async def test_gemini_ocr_fallback_when_unconfigured():
     result = await client.extract_text(img_bytes, "image/jpeg")
 
     assert isinstance(result, GeminiOcrResult)
-    assert isinstance(result, ClovaOcrResult)  # Backward-compatibility alias
     assert "테스트 모드" in result.text
     assert len(result.lines) > 0
 
@@ -116,12 +113,6 @@ async def test_gemini_ocr_openai_fallback_when_gemini_fails():
 
         assert isinstance(result, GeminiOcrResult)
         assert result.lines == ["오픈AI 폴백 추출 문장입니다."]
-
-
-def test_clova_alias_compatibility():
-    """Verify backward-compatibility aliases work seamlessly."""
-    assert ClovaOcrClient is GeminiOcrClient
-    assert ClovaOcrResult is GeminiOcrResult
 
 
 @pytest.mark.asyncio

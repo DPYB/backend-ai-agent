@@ -105,10 +105,6 @@ class Settings(BaseSettings):
     )
     jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
 
-    # NAVER Cloud CLOVA OCR General API V2
-    naver_clova_api_url: str = Field(default="", alias="NAVER_CLOVA_API_URL")
-    naver_clova_secret_key: str = Field(default="", alias="NAVER_CLOVA_SECRET_KEY")
-
     # Guest Mode Rate Limits & Role-based Circuit Breaker (70-80% safe buffer)
     guest_chat_limit: int = Field(default=10, alias="GUEST_CHAT_LIMIT")
     circuit_guest_rpm_limit: int = Field(default=60, alias="CIRCUIT_GUEST_RPM_LIMIT")

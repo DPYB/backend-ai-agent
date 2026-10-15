@@ -8,29 +8,6 @@
 
 ---
 
-## 세션 66 (2026-10-05)
-
-### 진행한 작업
-1. **게스트 복합 세션 ID 422 Unprocessable Entity 긴급 해결 (`app/api/schemas.py`)**:
-   - `SESSION_ID_REGEX = re.compile(r"^[A-Za-z0-9:_-]{1,128}$")` 정규식 검증을 최상단에 배치하여 특수문자 및 인젝션 차단 (전 환경 일원화).
-   - 콜론 복합 세션 ID 순회 시 `clean_seg = seg.removeprefix("guest-").removeprefix("guest:")` 지원 및 `break` 없이 끝까지 순회하여 회원 세션 UUID 보존 (`session_uuid` > `member_id`).
-   - 환경별 분기(`app_env in ('test', 'development')`) 제거로 프로덕션 환경에서도 안정적 검증 보장.
-2. **게스트 세션 키 JWT 단일 소유화 및 사칭 방지 (`app/api/router.py`)**:
-   - `extract_auth_info_from_auth`: 게스트 JWT의 `sub`에 대해 UUID 유효성을 검증하고, 유효하지 않으면 401 Unauthorized 즉시 거절.
-   - `_prepare_chat_context`: 게스트는 바디 `session_id`를 무시하고 JWT `sub`로부터 `guest:{clean_guest_uuid}:{persona}` 키 강제 생성(타 게스트 도청 차단).
-   - 미인증(익명) 요청 시 `raw_sid.startswith(("guest:", "guest-"))` 사칭 방지(`removeprefix`).
-3. **단위 테스트 보강 및 회귀 검증 (`tests/unit/test_session_security.py`)**:
-   - `test_guest_composite_session_id_in_production` (200 OK & SSE 스트리밍 정상 검증)
-   - `test_guest_a_cannot_impersonate_guest_b_session_id` (바디 UUID 무시, JWT A 키 생성 검증)
-   - `test_invalid_guest_sub_rejected_with_401` (401 반환 검증)
-   - `test_invalid_session_id_characters_rejected_with_422_in_all_envs` (전 환경 특수문자 422 거절 검증)
-   - 225개 전체 단위 테스트 100% 그린 (`225 passed in 18.29s`), ruff 및 mypy 통과.
-
-### 다음 세션에서 할 일
-- **Phase 65 착수: Curator 실패 재현 테스트 및 헛도는 루프 방어 (`feat/curator-reentry-loop`)**: 완료 (세션 67).
-
----
-
 ## 세션 67 (2026-10-07)
 
 ### 진행한 작업
@@ -115,6 +92,28 @@
    - 세션 65 롤링 아카이빙(`archive/HANDOFF_2026-10.md`), `STATE.md`, `PLAN.md`, `DECISIONS.md` 갱신.
 
 ### 다음 세션에서 할 일
-- **Phase 66 PR 생성 및 develop 머지 지원**:
-  - `feat/debate-persona-pingpong` 브랜치 변경사항 커밋 및 PR 생성.
+- **Phase 66 PR 생성 및 develop 머지 지원**: 완료 (세션 70 머지 완료).
+
+---
+
+## 세션 71 (2026-10-15)
+
+### 진행한 작업
+1. **에이전트 독립 추출 마이그레이션 가이드 수립**:
+   - LangGraph, 8종 페르소나, RAG, 도서 큐레이션, 실시간 스트리밍 에이전트 코어와 비-에이전트(Vision, 리포트) 간 분리 경계 정의.
+   - 새 프로젝트용 파일 인벤토리, 경량화 `pyproject.toml` (무거운 C-라이브러리 `libzbar0`, `pyzbar`, `opencv` 전면 배제), `.env` 명세 및 15개 핵심 테스트 파일 매핑.
+2. **Clova OCR 레거시 잔재 전면 제거 및 Gemini Vision 단일화 (Phase 67)**:
+   - `app/vision/clova_ocr_client.py` 하위 호환 리다이렉트 파일 완전 삭제.
+   - `app/vision/gemini_ocr_client.py` 및 `app/vision/__init__.py`에서 `ClovaOcrClient`, `ClovaOcrResult`, `clova_ocr_client` 레거시 별칭 완전 제거.
+   - `app/core/config.py`에서 `naver_clova_api_url`, `naver_clova_secret_key` 미사용 환경변수 필드 제거.
+   - `tests/unit/test_vision.py`에서 `test_clova_alias_compatibility` 및 별칭 타입 단언 제거.
+   - `AGENTS.md`, `.harness/ARCHITECTURE.md`, `README.md`에서 Clova 언급 전면 제거 및 Google Gemini Flash Vision 단일 체계로 일원화.
+3. **품질 검증**:
+   - `tests/unit/test_vision.py` 17개 단위 테스트 100% 그린 (`17 passed in 2.82s`).
+   - 전체 단위 회귀 100% 그린, ruff check & format 통과, mypy 통과, `scripts/check_harness.py` 통과.
+
+### 다음 세션에서 할 일
+- **Phase 67 PR 생성 및 develop 머지 지원**:
+  - `feat/cleanup-clova-legacy` 브랜치 변경사항 커밋 및 PR 생성.
   - CI 통과 확인 후 사용자 컨펌/수동 머지 대기.
+
