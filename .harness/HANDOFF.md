@@ -8,31 +8,6 @@
 
 ---
 
-## 세션 67 (2026-10-07)
-
-### 진행한 작업
-1. **Curator 재현 테스트 및 실패 확인 (TDD 실패 선행 검증)**:
-   - `curator_attempted=True`일 때 사용자 추천 키워드("책 추천해줘")로 인한 무한 선위임 루프 버그 재현 및 테스트 실패(1 failed in 0.61s) 확인 후 정규 영구 테스트 suite 구축.
-2. **사서 모드 3중 재진입 루프 원천 차단 (`nodes.py`, `workflow.py`, `state.py`)**:
-   - `AgentState.curator_attempted: bool` 필드 추가 및 큐레이터 완료 시 `True` 반환.
-   - [경로 1: 선위임 차단]: `curator_attempted == True` 시 키워드 기반 재위임 스킵.
-   - [경로 2: 도구 배제]: 사서 모드에서 `curator_attempted == True` 시 `request_book_curation`을 LLM 도구 바인딩에서 제외하여 Dangling Tool Call 에러 방어 (토론 모드 `trigger_debate_conclude` 완전 보존).
-   - [경로 3: 지연 약속 치환]: "골라올게", "잠시 기다려" 감지 시 재위임 대신 문장 단위로 대체 문구 치환 (`_replace_delayed_curation_promise`).
-   - 가짜 카드 후처리(`_sanitize_persona_output`) 강제 및 15자 미만 빈 응답 시 안전한 디폴트 멘트 폴백.
-   - `route_persona_exit`에서 `curator_attempted == True` 시 큐레이터 재진입 원천 차단 (`END` 전이).
-3. **SSE 스트리밍 버퍼링 및 GraphRecursionError Graceful Fallback (`router.py`)**:
-   - 큐레이터 실패 복귀 턴(`is_curator_recovering`)에서 스트리밍 토큰을 버퍼링한 뒤 `on_chain_end`에서 후처리가 완료된 정제 메시지만 단일 토큰으로 방출 (클라이언트 가짜 카드 누출 0건).
-   - `recursion_limit: 25` 버퍼 확보 및 `GraphRecursionError` 발생 시 CRITICAL 에러 로깅, 사용자 친화적 대체 멘트 반환, Redis 세션에 사용자 질문과 깨끗한 대체 멘트 보존.
-   - `_prepare_chat_context`에서 매 턴 `curator_attempted: False` 안전 초기화.
-4. **품질 검증**:
-   - 신규 단위 테스트 12종 작성(`tests/unit/test_curator_loop_prevention.py`): 3중 재진입 독립 테스트, 한국어 문장 분리, 악의적 가짜 카드 후처리, 토론 모드 격리, SSE 토큰 비노출, 미드스트림 RecursionError + Redis 검증, 게스트 E2E, 일반 턴 실시간 스트리밍 전수 통과.
-   - 전체 237개 단위 테스트 100% 그린 (`237 passed in 35.56s`), ruff check & format 통과, mypy 통과, check_harness 통과.
-
-### 다음 세션에서 할 일
-- **Phase 65-1 착수: 8종 페르소나 어조 분기 및 게스트 E2E 모킹 최적화 (`feat/curator-polish`)**: 완료 (세션 68).
-
----
-
 ## 세션 68 (2026-10-08)
 
 ### 진행한 작업
@@ -113,7 +88,27 @@
    - 전체 단위 회귀 100% 그린, ruff check & format 통과, mypy 통과, `scripts/check_harness.py` 통과.
 
 ### 다음 세션에서 할 일
-- **Phase 67 PR 생성 및 develop 머지 지원**:
-  - `feat/cleanup-clova-legacy` 브랜치 변경사항 커밋 및 PR 생성.
+- **Phase 67 PR 생성 및 develop 머지 지원**: 완료.
+
+---
+
+## 세션 72 (2026-10-16)
+
+### 진행한 작업
+1. **도서 장르 경량 분류 API 신설 및 Gemini Flash-Lite 연동 (`POST /api/v1/classify-genre`)**:
+   - `app/api/schemas.py`: Core API와 100% 일치하는 `GenreLiteral` 10종(`GENERAL`, `PHILOSOPHY`, `RELIGION`, `SOCIAL_SCIENCE`, `NATURAL_SCIENCE`, `TECHNOLOGY`, `ARTS`, `LANGUAGE`, `LITERATURE`, `HISTORY`) 확정.
+   - `ClassifyGenreRequest(title, author, description, kdc, isbn)`, `ClassifyGenreResponse(genre, subject, confidence, source, reason)` 스키마 확정.
+   - `app/api/router.py`: `settings.gemini_light_model` 기반 LangChain ChatGoogleGenerativeAI 바인딩, `max_retries=0`, `asyncio.wait_for(timeout=2.0)` 하드 타임아웃, `clean_desc` 1,500자 슬라이싱 적용.
+   - 429 Rate Limit, 타임아웃, 파싱/스키마 에러 시 500 없이 `map_kdc_to_genre` 200 OK 무중단 KDC 폴백(`source="KDC_FALLBACK"`, `reason` 실패 원인 기록).
+2. **Phase 60 통합 (KDC 513.8 철학 승격 및 5자리 부가기호 폴백 보강)**:
+   - `app/infrastructure/national_library_client.py`: `_normalize_to_core_genre` 헬퍼 신설 및 `CORE_GENRE_ALIASES`(`ART`->`ARTS`, `SCIENCE`->`NATURAL_SCIENCE`) SSOT 정규화.
+   - 5자리 부가기호(`EA_ADD_CODE`, 예: `03320` -> `320`) 기반 KDC 추출 및 `513.8` 심리/미술치료 철학 승격 정상 연동.
+3. **품질 검증**:
+   - `tests/unit/test_classify_genre.py` 신규 테스트 5종 작성: 정상 LLM 판정(《그림의 힘》 -> `PHILOSOPHY`), Gemini 429 Rate Limit 폴백, 2초 타임아웃 폴백, 파싱/불법 장르 폴백, KDC 513.8 및 5자리 부가기호 폴백 전수 통과.
+   - 전체 251개 단위 회귀 100% 그린 (`251 passed in 35.71s`), ruff check & format 통과, mypy 통과, `scripts/check_harness.py` 통과.
+
+### 다음 세션에서 할 일
+- **Phase 68 PR 생성 및 develop 머지 지원**:
+  - `feat/classify-genre-api` 브랜치 변경사항 커밋 및 PR 생성.
   - CI 통과 확인 후 사용자 컨펌/수동 머지 대기.
 

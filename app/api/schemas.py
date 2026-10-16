@@ -367,17 +367,48 @@ class DebateInsightVectorizeResponse(BaseModel):
     message: str = Field(..., description="Result summary message")
 
 
+GenreLiteral = Literal[
+    "GENERAL",  # 000 총류
+    "PHILOSOPHY",  # 100 철학/심리
+    "RELIGION",  # 200 종교
+    "SOCIAL_SCIENCE",  # 300 사회과학
+    "NATURAL_SCIENCE",  # 400 자연과학 (SCIENCE 아님)
+    "TECHNOLOGY",  # 500 기술과학
+    "ARTS",  # 600 예술 (ART 아님)
+    "LANGUAGE",  # 700 언어
+    "LITERATURE",  # 800 문학
+    "HISTORY",  # 900 역사
+]
+
+
 class ClassifyGenreRequest(BaseModel):
     """Request payload for book genre classification."""
 
     title: str = Field(..., description="도서 제목", min_length=1)
     author: Optional[str] = Field(default="", description="저자명")
-    isbn: Optional[str] = Field(default="", description="ISBN")
-    raw_category: Optional[str] = Field(default="", description="원본 카테고리/주제")
+    description: Optional[str] = Field(default=None, description="YES24 도서 줄거리 및 책소개글")
+    kdc: Optional[str] = Field(
+        default=None,
+        description="국립중앙도서관 KDC 분류기호 (예: 513.8, 813.7 등)",
+    )
+    isbn: Optional[str] = Field(default=None, description="13자리 또는 10자리 ISBN")
 
 
 class ClassifyGenreResponse(BaseModel):
     """Response payload for book genre classification."""
 
-    genre: str = Field(..., description="표준 KDC 장르 코드 (LITERATURE, PHILOSOPHY 등)")
-    confidence: float = Field(default=1.0, description="분류 신뢰도 (0.0 ~ 1.0)")
+    genre: GenreLiteral = Field(..., description="표준 KDC 대분류 코드 10종 중 택1")
+    subject: str = Field(
+        ...,
+        description=(
+            "독자 화면 표시용 한글 세부 주제어 (15자 이내, 예: '미술치료/심리', 'SF소설', 'IT/프로그래밍')"
+        ),
+    )
+    confidence: float = Field(
+        default=1.0, ge=0.0, le=1.0, description="판정 확신도 점수 (0.0 ~ 1.0)"
+    )
+    source: Literal["LLM", "KDC_FALLBACK"] = Field(
+        ...,
+        description="판정 출처 ('LLM': 정상 판정, 'KDC_FALLBACK': 장애/타임아웃 폴백)",
+    )
+    reason: Optional[str] = Field(default=None, description="판정 근거 또는 폴백 사유")

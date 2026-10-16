@@ -105,11 +105,25 @@ KDC_FIRST_CHAR_MAPPING: Dict[str, str] = {
 }
 
 
+CORE_GENRE_ALIASES: Dict[str, str] = {
+    "ART": "ARTS",
+    "SCIENCE": "NATURAL_SCIENCE",
+}
+
+
+def _normalize_to_core_genre(genre_str: str) -> str:
+    """Normalize any genre code or string to one of the 10 core GenreType literals."""
+    norm = normalize_genre(genre_str)
+    return CORE_GENRE_ALIASES.get(norm, norm)
+
+
 def normalize_genre(genre_str: str) -> str:
     """Normalize genre from either Korean or English representation into standard uppercase Enum."""
     if not genre_str:
         return "GENERAL"
     cleaned = genre_str.strip().upper()
+    if cleaned in CORE_GENRE_ALIASES:
+        cleaned = CORE_GENRE_ALIASES[cleaned]
     if cleaned in GENRE_EN_TO_KO:
         return cleaned
     # Direct dictionary match
@@ -125,8 +139,8 @@ def normalize_genre(genre_str: str) -> str:
 
 def genre_to_korean(genre_str: str) -> str:
     """Convert standard genre Enum to human-readable Korean name."""
-    norm = normalize_genre(genre_str)
-    return GENRE_EN_TO_KO.get(norm, "일반도서")
+    norm = _normalize_to_core_genre(genre_str)
+    return GENRE_EN_TO_KO.get(norm, "교양")
 
 
 def extract_kdc_code(kdc_str: Optional[str]) -> Optional[str]:
