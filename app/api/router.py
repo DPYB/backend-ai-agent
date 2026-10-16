@@ -1,5 +1,6 @@
 """FastAPI API routes for AI Agent services with 8 Personas and 2 Modes."""
 
+import asyncio
 import json
 import logging
 import re
@@ -1318,38 +1319,183 @@ async def chat_stream_with_persona(
     )
 
 
-@api_router.post("/classify-genre", response_model=ClassifyGenreResponse)
-async def classify_genre(req: ClassifyGenreRequest) -> ClassifyGenreResponse:
-    """Classify book genre into standard KDC 10-genre enum code."""
+ALLOWED_CORE_GENRES: set[str] = {
+    "GENERAL",
+    "PHILOSOPHY",
+    "RELIGION",
+    "SOCIAL_SCIENCE",
+    "NATURAL_SCIENCE",
+    "TECHNOLOGY",
+    "ARTS",
+    "LANGUAGE",
+    "LITERATURE",
+    "HISTORY",
+}
+
+CLASSIFY_GENRE_SYSTEM_PROMPT = """당신은 도서 서지 데이터 및 독서 감성을 분석하여 표준 장르와 세부 주제어를 분류하는 도서 분류 전문가입니다.
+주어진 도서 제목, 저자, 책소개/줄거리, KDC 힌트를 바탕으로 아래 규칙에 따라 정확하게 분류하고 JSON 객체만 반환하세요.
+
+[허용 장르 목록 (반드시 영문 대문자 10종 중 택1)]
+1. GENERAL: 총류, 일반 교양, 백과사전, 잡지
+2. PHILOSOPHY: 철학, 심리학, 윤리학, 마음치유/마음돌봄, 명상, 사색
+3. RELIGION: 종교, 신학, 불교, 기독교 등
+4. SOCIAL_SCIENCE: 사회학, 경제, 경영, 재테크/투자, 정치, 법학, 교육
+5. NATURAL_SCIENCE: 순수 자연과학, 수학, 물리학, 화학, 생물학, 지구과학, 천문학
+6. TECHNOLOGY: 기술과학, 의학/치료실무, 공학, 컴퓨터/IT, 프로그래밍, 요리, 농업
+7. ARTS: 예술, 미술, 음악, 디자인, 사진, 연극, 영화, 스포츠/체육
+8. LANGUAGE: 어학, 국어/한국어, 영어, 외국어, 문법
+9. LITERATURE: 문학, 소설, 시, 에세이, 산문, 희곡
+10. HISTORY: 역사, 지리, 세계사, 한국사, 문화사
+
+[분류 가이드라인 및 예외 보정]
+- KDC 힌트가 513.8(의학/치료학) 등으로 되어 있더라도, 줄거리나 책의 성격이 마음치유/미술에세이/심리처방인 경우(예: 《그림의 힘》 등) 기술과학(TECHNOLOGY) 대신 독서 감성에 맞게 반드시 'PHILOSOPHY' 또는 'ARTS'로 보정하세요.
+- subject(세부 주제어)는 독자 화면 및 월간 리포트에 노출할 직관적이고 깔끔한 한국어 단어(15자 이내, 예: '미술치료/심리', 'SF소설', 'IT/프로그래밍', '경제전망', '힐링에세이')로 도출하세요.
+- confidence(확신도)는 0.0 ~ 1.0 사이 실수로 평가하되, 다소 낮더라도(예: 0.6) 최선의 분류를 채택하여 점수를 부여하세요.
+
+[반환 형식]
+반드시 다음 JSON 스키마를 만족하는 단일 JSON 객체만 출력하세요 (마크다운 백틱 없이):
+{
+  "genre": "PHILOSOPHY",
+  "subject": "미술치료/심리",
+  "confidence": 0.95,
+  "reason": "마음치유 목적의 미술 심리 에세이로 독서 감성상 철학/심리로 분류"
+}"""
+
+
+@api_router.post("/classify-genre", response_model=ClassifyGenreResponse, tags=["Curator"])
+async def classify_genre(
+    req: ClassifyGenreRequest,
+    authorization: Optional[str] = Header(default=None),
+) -> ClassifyGenreResponse:
+    """Classify book genre into standard KDC 10-genre enum code using Gemini Flash-Lite with 2.0s hard timeout and KDC fallback."""
     from app.infrastructure.national_library_client import (
-        get_national_library_client,
+        _normalize_to_core_genre,
+        genre_to_korean,
         map_kdc_to_genre,
     )
 
-    client = get_national_library_client()
+    clean_desc = (req.description or "").strip()[:1500]
 
-    # 1. If ISBN is given, try fast search via National Library
-    if req.isbn and req.isbn.strip():
-        book_info = await client.search_by_isbn(req.isbn.strip())
-        if book_info and book_info.get("genre") and book_info["genre"] != "GENERAL":
-            return ClassifyGenreResponse(genre=book_info["genre"], confidence=1.0)
+    # Helper for safe KDC fallback execution
+    def _execute_kdc_fallback(fallback_reason: str) -> ClassifyGenreResponse:
+        logger.warning(
+            "Gemini classify fallback triggered: reason=%s, title=%s",
+            fallback_reason,
+            req.title,
+        )
+        # Note: Do not pass long description to subject parameter to prevent misclassification
+        genre_code = map_kdc_to_genre(kdc=req.kdc or "", subject="", title=req.title)
+        fallback_genre_raw = _normalize_to_core_genre(genre_code)
+        fallback_genre = (
+            fallback_genre_raw if fallback_genre_raw in ALLOWED_CORE_GENRES else "GENERAL"
+        )
+        default_subject = genre_to_korean(fallback_genre)
+        return ClassifyGenreResponse(
+            genre=fallback_genre,  # type: ignore[arg-type]
+            subject=default_subject,
+            confidence=0.7,
+            source="KDC_FALLBACK",
+            reason=fallback_reason,
+        )
 
-    # 2. Map via KDC rules using subject, title, raw_category
-    genre = map_kdc_to_genre(
-        kdc="",
-        subject=req.raw_category or "",
-        title=req.title,
+    # 1. Check API Key configuration
+    gemini_key = (
+        getattr(settings, "gemini_api_key", "").strip()
+        or getattr(settings, "gemini_fallback_api_key", "").strip()
     )
-    if genre and genre != "GENERAL":
-        return ClassifyGenreResponse(genre=genre, confidence=0.95)
+    if not gemini_key or gemini_key.startswith("your_") or len(gemini_key) < 10:
+        return _execute_kdc_fallback("FALLBACK_NO_API_KEY: Gemini API key not configured")
 
-    # 3. Fallback search via title
-    if req.title:
-        book_info = await client.search_book(req.title, req.author or "")
-        if book_info and book_info.get("genre"):
-            return ClassifyGenreResponse(genre=book_info["genre"], confidence=0.9)
+    # 2. Prepare lightweight LLM call
+    light_model = getattr(settings, "gemini_light_model", "gemini-3.1-flash-lite")
+    user_payload_dict: Dict[str, Any] = {
+        "title": req.title,
+        "author": req.author or "",
+        "kdc_hint": req.kdc or "",
+        "isbn": req.isbn or "",
+        "description": clean_desc,
+    }
+    user_prompt = f"다음 도서 서지 데이터를 분석하여 장르와 세부 주제어를 분류해주세요:\n{json.dumps(user_payload_dict, ensure_ascii=False)}"
+
+    async def _call_llm_once() -> str:
+        from langchain_google_genai import ChatGoogleGenerativeAI
+
+        llm = ChatGoogleGenerativeAI(
+            model=light_model,
+            google_api_key=gemini_key,
+            temperature=0.1,
+            max_retries=0,
+        )
+        response = await llm.ainvoke(
+            [
+                HumanMessage(
+                    content=f"{CLASSIFY_GENRE_SYSTEM_PROMPT}\n\n[입력 도서 정보]\n{user_prompt}"
+                )
+            ]
+        )
+        if hasattr(response, "content") and response.content:
+            return str(response.content)
+        return ""
+
+    # 3. Call LLM with 2.0s hard timeout
+    try:
+        raw_text = await asyncio.wait_for(_call_llm_once(), timeout=2.0)
+    except asyncio.TimeoutError:
+        return _execute_kdc_fallback("FALLBACK_TIMEOUT: LLM took > 2.0s")
+    except Exception as exc:
+        exc_str = str(exc)
+        if "429" in exc_str or "RESOURCE_EXHAUSTED" in exc_str:
+            return _execute_kdc_fallback(f"FALLBACK_RATE_LIMIT: {exc_str[:120]}")
+        return _execute_kdc_fallback(f"FALLBACK_LLM_ERROR: {exc_str[:120]}")
+
+    # 4. Parse LLM JSON output
+    cleaned_text = raw_text.strip()
+    if cleaned_text.startswith("```"):
+        cleaned_text = re.sub(r"^```(?:json)?\s*", "", cleaned_text)
+        cleaned_text = re.sub(r"\s*```$", "", cleaned_text)
+    cleaned_text = cleaned_text.strip()
+
+    parsed: Optional[Dict[str, Any]] = None
+    try:
+        parsed = json.loads(cleaned_text)
+    except Exception:
+        # Fallback regex search for JSON block
+        start = cleaned_text.find("{")
+        end = cleaned_text.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            try:
+                parsed = json.loads(cleaned_text[start : end + 1])
+            except Exception:
+                pass
+
+    if not parsed or not isinstance(parsed, dict):
+        return _execute_kdc_fallback(
+            f"FALLBACK_PARSE_ERROR: Invalid JSON response ({cleaned_text[:80]})"
+        )
+
+    raw_genre = str(parsed.get("genre", "")).strip().upper()
+    if raw_genre not in ALLOWED_CORE_GENRES and raw_genre not in ("ART", "SCIENCE"):
+        return _execute_kdc_fallback(
+            f"FALLBACK_INVALID_GENRE: LLM output '{raw_genre}' not in allowed genres"
+        )
+    norm_genre = _normalize_to_core_genre(raw_genre)
+
+    raw_subject = str(parsed.get("subject", "")).strip()
+    subject = raw_subject[:15] if raw_subject else genre_to_korean(norm_genre)
+
+    confidence = 1.0
+    try:
+        conf_val = float(parsed.get("confidence", 1.0))
+        confidence = max(0.0, min(1.0, conf_val))
+    except (ValueError, TypeError):
+        confidence = 0.9
+
+    reason = str(parsed.get("reason", "")).strip() or None
 
     return ClassifyGenreResponse(
-        genre="LITERATURE" if "소설" in req.title or "시집" in req.title else "GENERAL",
-        confidence=0.8,
+        genre=norm_genre,  # type: ignore[arg-type]
+        subject=subject,
+        confidence=confidence,
+        source="LLM",
+        reason=reason,
     )

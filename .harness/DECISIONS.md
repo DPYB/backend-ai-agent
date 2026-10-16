@@ -5,6 +5,11 @@
 
 ---
 
+### 2026-10-16: 도서 장르 경량 분류 API 신설 및 Gemini Flash-Lite 연동 / Phase 60 KDC 부가기호 폴백 통합 (Phase 68)
+- **결정**: `POST /api/v1/classify-genre`를 신설하여 Core API `GenreType` 10종 규격(`GenreLiteral`, `ARTS`, `NATURAL_SCIENCE`) 일치 DTO를 정의하고, `settings.gemini_light_model` 기반으로 `max_retries=0`, `asyncio.wait_for(timeout=2.0)` 하드 타임아웃, `clean_desc[:1500]`을 적용. 429 Rate Limit, 타임아웃, 파싱/스키마 에러 시 500 에러 없이 `map_kdc_to_genre` 200 OK 무중단 폴백(`source="KDC_FALLBACK"`, `reason` 기록)을 구현. `513.8` 미술치료 철학 승격 및 5자리 부가기호(`EA_ADD_CODE`, 예: `03320` -> `320`) 폴백 체계를 통합.
+- **이유**: `backend-core-api` 도서 등록 시 YES24/국립도서관 메타데이터로부터 표준 대분류와 직관적 세부 주제(`subject`)를 2초 이내 정밀 판정하고, Gemini 장애나 타임아웃 시에도 프론트/코어 통신이 중단되지 않도록 완전한 장애 격리를 보장하기 위함.
+- **영향**: 장르 오분류 및 LLM 지연 전파 차단, KDC 513.8 감성 보정, 신규 단위 테스트 5종 추가 및 251개 단위 회귀 100% 그린 검증 완료.
+
 ### 2026-10-15: Clova OCR 레거시 잔재 전면 제거 및 Gemini Vision 단일화 (Phase 67)
 - **결정**: `app/vision/clova_ocr_client.py` 하위 호환 리다이렉트 파일, `gemini_ocr_client.py` 및 `__init__.py`의 `ClovaOcrClient`/`ClovaOcrResult`/`clova_ocr_client` 별칭(Alias), `config.py`의 `naver_clova_*` 미사용 필드 및 테스트를 전면 삭제하고, `AGENTS.md`와 `ARCHITECTURE.md`에서 Clova 언급을 제거하여 Google Gemini Flash Vision 단일 체계로 일원화.
 - **이유**: 2026-09-16 Gemini Vision 전환 이후 유지되던 미사용 하위 호환 잔재 및 설정/문서 불일치로 인한 오해를 해소하고 코드베이스를 순수하게 정돈.
@@ -116,26 +121,6 @@
 ### 2026-09-17: Yes24 실시간 SSR 베스트셀러 웹 스크래퍼(`beautifulsoup4`) 채택
 - **결정**: 폐기된 Yes24 RSS 대신 실시간 종합 베스트셀러 웹페이지(`pageSize=40`)를 `httpx` + `beautifulsoup4`(0.8초 소요)로 파싱하여 Redis에 24시간 TTL(`daily_trending_books`) 캐싱. (참조: ~~2026-09-17 Yes24 RSS~~ 대체)
 
-### 2026-09-16: 도서 표지/뒷표지 Vision OCR 기반 지능형 ISBN 및 계층형 서지 인식
-- **결정**: 도서 뒷표지 서지 전용 프롬프트(`GEMINI_COVER_SYSTEM_PROMPT`) 신설, 공식 ISBN-13 모듈로-10 체크섬(`isbn_utils.py`) 검증, 4단계 계층형 파이프라인(1차 pyzbar ➔ 2차 Gemini Vision OCR ➔ 3차 국립도서관 ISBN ➔ 4차 제목/저자 검색) 구축.
-- **이유**: 바코드 하단 텍스트 간섭 및 이중 바코드로 인한 pyzbar 디코딩 실패율(90%) 극복.
-- **영향**: 실전 도서 촬영 인식률 95% 이상으로 대폭 개선.
-
-### 2026-09-16: Tavily 경량 REST 탐색(월 1,000건 무료) + 국립중앙도서관 4단계 실전 검증 체인 하이브리드 추천
-- **결정**: 무거운 SDK 없이 순수 `httpx` 비동기 REST(20줄)로 Tavily(월 1,000건 무료 티어)를 1-Track 탐색용으로 연동하고, 발굴된 도서는 국립도서관 4단계 체인([1단계: 13자리 ISBN/50쪽 필터] ➔ [2단계: 유사도/해설집 컷] ➔ [3단계: 최신일 정렬] ➔ [4단계: 교보 CDN 고화질 표지])을 필수로 거치도록 설계.
-- **이유**: Brave Search 유료 전환 리스크 방어, 실시간 웹 트렌드 탐색 및 100% 실존 도서 추천 보장.
-- **영향**: 쿼터 초과 시 0ms 국립도서관 내장 카탈로그로 무중단 자동 폴백.
-
-### 2026-09-16: 4단계 다중 방어 보안 가드레일(0차 Auth ➔ 1차 Safety ➔ 2차 Input ➔ 3차 Security) 전면 구축
-- **결정**: 유해 발화, 무의미 자모/숫자 난타, 프롬프트 탈옥, PII 노출을 LLM 호출 전 파이썬 고속 정규식 게이트(0ms)로 사전 차단하고 위기 시 ☎ 109 핫라인 공감 안내.
-- **이유**: LLM 호출 비용 $0 원천 방어, 0ms 레이턴시 달성, 위기 상황 안전 대응.
-- **영향**: 일반 대화 및 SSE 스트리밍 공통 보안 확립, 에밀 뒤르켐 《자살론》 등 정당한 인문학 도서 맥락 오탐 방어.
-
-### 2026-09-16: Gemini Flash-Lite 스마트 워크로드 라우팅 및 Google Gemini Flash Vision 전면 전환
-- **결정**: 감성 대화/리포트에는 `gemini-3.5-flash-lite`(1.5s), 단순 OCR/큐레이터에는 `gemini-3.1-flash-lite`를 배정하고, 팀원 키(`GEMINI_FALLBACK_API_KEY`) 연동 및 전체 429 시 `gemma-4-31b-it`(RPD 14,400) ➔ `gpt-4o-mini` ➔ Mock 다중 안전망 구축. Clova OCR은 Gemini Vision으로 전면 교체.
-- **이유**: Google Flash 계열 무료 RPD 축소(20회) 대응, Flash-Lite(RPD 500) 활용 극대화, Clova 유료 과금 위험 제거.
-- **영향**: 하루 무료 호출량 2,000회 확보, $0 제로코스트 무중단 서비스 달성.
-- ~~2026-09-12 Clova OCR 전담~~ / ~~2026-09-16 E2E 5대 연동 이슈~~ → [아카이브 보존(DECISIONS_2026-10.md)]
-
-- ~~2026-09-14~15 전사 중앙 인증, Supabase 스키마 격리, 사서 월간 리포트 및 토론 기억 분리~~ → [아카이브 보존(DECISIONS_2026-10.md)]
+- ~~2026-09-16 Vision OCR ISBN 인식, Tavily 경량 REST 탐색, 4단계 보안 가드레일, Gemini Flash-Lite 라우팅~~ → [아카이브 보존(DECISIONS_2026-10.md)]
+- ~~2026-09-12~15 전사 중앙 인증, Supabase 스키마 격리, 사서 월간 리포트 및 Clova OCR~~ → [아카이브 보존(DECISIONS_2026-10.md)]
 

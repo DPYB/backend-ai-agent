@@ -35,6 +35,10 @@
 
 ### 📌 최근 마일스톤 완료 내역
 
+- [x] **Phase 68: 도서 장르 경량 분류 API 신설 및 Gemini Flash-Lite 연동 (`POST /api/v1/classify-genre`) & Phase 60 통합**
+  - Core API `GenreType` 10종 규격(`ARTS`, `NATURAL_SCIENCE` 등) 일치 `GenreLiteral` 스키마 및 DTO 확정.
+  - Gemini Flash-Lite 기반 2.0s 하드 타임아웃, `max_retries=0`, 429/타임아웃/파싱 에러 시 `map_kdc_to_genre` 무중단 KDC 폴백(200 OK) 구현.
+  - KDC 513.8 철학 승격 및 5자리 부가기호(`EA_ADD_CODE`) 3자리 추출 연동, 신규 단위 테스트 5종 포함 전체 251개 단위 회귀 100% 그린 검증.
 - [x] **Phase 67: Clova OCR 레거시 잔재 전면 제거 및 Gemini Vision 단일화**
   - `app/vision/clova_ocr_client.py` 삭제, `gemini_ocr_client.py`/`__init__.py` 하위 호환 별칭 제거 및 `config.py`의 `naver_clova_*` 미사용 필드 제거.
   - `AGENTS.md`, `.harness/ARCHITECTURE.md`, `README.md`에서 Clova 언급 전면 제거 및 단위 테스트 17종 포함 전체 회귀 100% 그린 검증.
