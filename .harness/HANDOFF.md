@@ -8,24 +8,6 @@
 
 ---
 
-## 세션 68 (2026-10-08)
-
-### 진행한 작업
-1. **Phase 65 develop 머지 확인 및 브랜치 정리**:
-   - PR #62(`feat/curator-reentry-loop` ➔ `develop`) 머지 완료 및 로컬/원격 브랜치 정리.
-2. **Phase 65-1: 큐레이터 폴리싱 (8종 페르소나 어조 분기 및 게스트 E2E 모킹 최적화)**:
-   - `nodes.py`: 사서 4종(`CAT`: ~냥, `SHOEBILL`: ~두둥, `SEA_SLUG`: ~누누, `GECKO`: ~크크) 및 토론자 4종(평론가, 이야기꾼, 상담사, 관찰가 피날레 맥락) 맞춤형 대체 문구 및 빈 응답 폴백 매핑 구축.
-   - `_replace_delayed_curation_promise` 및 `_sanitize_persona_output`에 `persona_id` 전달 연동.
-   - `test_curator_loop_prevention.py`: 8종 페르소나 어조 치환 및 빈 응답 폴백 단위 테스트 2종 추가.
-   - `test_guest_frontend_token_chat_and_stream_e2e`에 가벼운 AsyncMock 적용하여 외부 네트워크 의존 제거 ➔ 전체 회귀 실행 속도 **144초에서 30초대로 대폭 단축 (약 80% 가속)**.
-3. **품질 검증**:
-   - 전체 239개 단위 테스트 100% 그린 (`239 passed in 30.79s`), ruff 및 mypy 통과, check_harness 통과.
-
-### 다음 세션에서 할 일
-- **Phase 65-1 PR #63 머지 및 브랜치 정리**: 완료 (세션 69).
-
----
-
 ## 세션 69 (2026-10-09)
 
 ### 진행한 작업
@@ -108,7 +90,30 @@
    - 전체 251개 단위 회귀 100% 그린 (`251 passed in 35.71s`), ruff check & format 통과, mypy 통과, `scripts/check_harness.py` 통과.
 
 ### 다음 세션에서 할 일
-- **Phase 68 PR 생성 및 develop 머지 지원**:
-  - `feat/classify-genre-api` 브랜치 변경사항 커밋 및 PR 생성.
-  - CI 통과 확인 후 사용자 컨펌/수동 머지 대기.
+- **Phase 68 PR 생성 및 develop 머지 지원**: 완료 (PR #66 머지 완료, 커밋 `7ae875f`).
+
+---
+
+## 세션 73 (2026-10-17)
+
+### 진행한 작업
+1. **도서 추천 권수 정책 유연화 (Phase 69 Step 1)**:
+   - `app/domain/graph/curator_node.py`: `CuratorResponse.recommendations` 제약을 `min_length=1, max_length=10`으로 완화.
+   - `parse_requested_book_count` 함수 신설: 기본 1권(원픽), 비교/탐색형("두세 권", "다양하게", "비교" 등) 2~3권, 명시적 숫자(아라비아/한글 수사) 최대 10권 파싱 지원.
+   - `CURATOR_SYSTEM_PROMPT` 유연화: "딱 2권" 하드코딩 제거 및 권수 가변 추천 지침 반영.
+2. **억지 고전 강제 주입 폴백 제거 및 정직한 서지 반환 (`assemble_curated_books`)**:
+   - `if len(final_books) < 2:` 고전 강제 주입 루프 완전 삭제.
+   - 국립중앙도서관 서지 검증(`verified=True`)을 통과한 도서만 반환하며, 10권 요청 중 4권만 성공 시 4권만 반환, 0권 성공 시 빈 리스트(`[]`) 정직하게 반환.
+3. **사서 노드 프롬프트 및 산출물 정제 개선 (`nodes.py`)**:
+   - `system_prompt` 조립 시 4권 이상 다수 추천일 경우 독자의 스크롤 압박 완화를 위해 간결한 번호 목록(`1. 《도서명》 - 저자: 핵심 이유`) 출력 지침 적용 (1~3권은 기존 `### 📖` 유지).
+   - 본문 서술 도서명과 `curated_books` 배열의 제목/개수 100% 일치 지침 강화.
+   - `_sanitize_persona_output`: `1. 《도서명》` 번호 목록 포맷 정합성 검증 추가 및 `curated_books` 부재 시 가짜 번호 목록 카드 마커 소거.
+4. **단위 테스트 작성 및 기존 테스트 갱신**:
+   - `tests/unit/test_curator_node.py` 신규 10종 작성: 기본 1권, 3권, 5권 요청, 10권 요청 중 4권 성공 시 4권 반환, 0권 성공 시 빈 리스트 반환, 본문 마크다운 제목/개수 일치 및 프론트 정규식 매칭 전수 통과.
+   - `tests/unit/test_curator_pipeline.py`: 기존 2권 고정 전제 테스트 9종을 유연한 권수 계약으로 갱신 (전체 28개 100% 통과).
+   - 전체 262개 단위 회귀 100% 그린 (`262 passed in 31.69s`), ruff check & format 통과, mypy 통과, `scripts/check_harness.py` 통과.
+
+### 다음 세션에서 할 일
+- **Phase 69 Step 2: Core API / YES24 도서 검색 1차 연동 및 후보 검증 체계 고도화**:
+  - 사용자에게 Step 1 결과 보고 후 승인 하에 Step 2 상세 설계 및 구현 착수.
 

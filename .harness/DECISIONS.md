@@ -5,6 +5,11 @@
 
 ---
 
+### 2026-10-17: 도서 추천 권수 유연화(1~10권) 및 억지 고전 주입 폴백 제거 (Phase 69 Step 1)
+- **결정**: `CuratorResponse.recommendations`를 `min_length=1, max_length=10`으로 완화하고 `parse_requested_book_count`를 도입하여 기본 1권(원픽), 탐색/비교 2~3권, 명시적 요청 시 최대 10권을 유연하게 수용. `assemble_curated_books`에서 강제 고전 주입 루프(`if len(final_books) < 2:`)를 완전히 제거하여 국립중앙도서관 서지 검증 통과 도서만 정직하게 반환(검증 부족 시 축소 반환, 0건 시 `[]`). 4권 이상 다수 추천 시 프론트엔드 파싱 정규식에 맞춰 간결한 번호 목록(`1. 《도서명》 - 저자: 이유`) 출력 지침 적용.
+- **이유**: 기존의 고정 2권 강제 및 검증 실패 시 임의 고전을 끼워넣는 비현실적 제약을 제거하여 사용자 의도를 최우선 존중하고, 없는 책이나 가짜 서지 정보를 날조하지 않는 무결성을 확보하기 위함.
+- **영향**: 추천 권수 선택권 유연화, 가짜 책 및 억지 고전 주입 0건 달성, 신규 단위 테스트 10종 추가 및 262개 단위 회귀 100% 그린 검증 완료.
+
 ### 2026-10-16: 도서 장르 경량 분류 API 신설 및 Gemini Flash-Lite 연동 / Phase 60 KDC 부가기호 폴백 통합 (Phase 68)
 - **결정**: `POST /api/v1/classify-genre`를 신설하여 Core API `GenreType` 10종 규격(`GenreLiteral`, `ARTS`, `NATURAL_SCIENCE`) 일치 DTO를 정의하고, `settings.gemini_light_model` 기반으로 `max_retries=0`, `asyncio.wait_for(timeout=2.0)` 하드 타임아웃, `clean_desc[:1500]`을 적용. 429 Rate Limit, 타임아웃, 파싱/스키마 에러 시 500 에러 없이 `map_kdc_to_genre` 200 OK 무중단 폴백(`source="KDC_FALLBACK"`, `reason` 기록)을 구현. `513.8` 미술치료 철학 승격 및 5자리 부가기호(`EA_ADD_CODE`, 예: `03320` -> `320`) 폴백 체계를 통합.
 - **이유**: `backend-core-api` 도서 등록 시 YES24/국립도서관 메타데이터로부터 표준 대분류와 직관적 세부 주제(`subject`)를 2초 이내 정밀 판정하고, Gemini 장애나 타임아웃 시에도 프론트/코어 통신이 중단되지 않도록 완전한 장애 격리를 보장하기 위함.

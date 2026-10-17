@@ -35,6 +35,10 @@
 
 ### 📌 최근 마일스톤 완료 내역
 
+- [x] **Phase 69 Step 1: 도서 추천 권수 유연화(기본 1권, 탐색 2~3권, 명시적 최대 10권) & 억지 고전 주입 폴백 제거**
+  - `CuratorResponse.recommendations(min_length=1, max_length=10)` 및 `parse_requested_book_count` 함수 신설, 4권 이상 추천 시 간결한 번호 목록(`1. 《도서명》 - 저자: 핵심 이유`) 출력 프롬프트 및 `_sanitize_persona_output` 정규식 연동.
+  - `assemble_curated_books`에서 강제 고전 주입 루프(`if len(final_books) < 2:`) 완전 삭제 및 서지 검증 통과 도서만 정직하게 반환(검증 부족 시 축소 반환, 0건 시 빈 배열).
+  - 신규 단위 테스트 10종 포함 전체 262개 단위 회귀 100% 그린 검증 완료.
 - [x] **Phase 68: 도서 장르 경량 분류 API 신설 및 Gemini Flash-Lite 연동 (`POST /api/v1/classify-genre`) & Phase 60 통합**
   - Core API `GenreType` 10종 규격(`ARTS`, `NATURAL_SCIENCE` 등) 일치 `GenreLiteral` 스키마 및 DTO 확정.
   - Gemini Flash-Lite 기반 2.0s 하드 타임아웃, `max_retries=0`, 429/타임아웃/파싱 에러 시 `map_kdc_to_genre` 무중단 KDC 폴백(200 OK) 구현.
