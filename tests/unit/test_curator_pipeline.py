@@ -678,7 +678,7 @@ async def test_target_unresolved_returned_when_targeted_book_fails_verification(
     from app.domain.graph.curator_node import book_curator_node
 
     # Mock resolve_targeted to return None for nonexistent book
-    async def mock_resolve_targeted(target_title):
+    async def mock_resolve_targeted(target_title, *args, **kwargs):
         return None
 
     monkeypatch.setattr("app.domain.graph.curator_node.resolve_targeted", mock_resolve_targeted)

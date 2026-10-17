@@ -35,6 +35,9 @@
 
 ### 📌 최근 마일스톤 완료 내역
 
+- [x] **Phase 69 Step 2: Core API(YES24) 우선 ➔ 국립중앙도서관 폴백 계층형 서지 검증 체계 구현**
+  - Core API `items` 파싱 정규화 및 통신 실패 시 가짜 목데이터 배제/빈 리스트(`[]`) 반환. ISBN-10 Modulo 11 검증 ➔ EAN-13 가중치 체크디지트 재계산 변환 및 4대 상태(`VALID_13`, `CONVERTED_10`, `INVALID`, `MISSING`) 분류.
+  - 서양식 성·이름 반전(`George Orwell` <-> `Orwell, George`) 지원 및 단순 글자 set 오탐 차단. 판본 의도(`GENERAL`, `COMICS`, `CHILDREN`, `ORIGINAL`, `PUB:*`) 캐시 키 분리/우회, 1차 Core API(2.5s) -> 2차 국립도서관(3.5s) 무중단 폴백 및 Track A/B 검증 체인 구축 (신규 단위 테스트 22종 포함 전체 284개 100% 그린).
 - [x] **Phase 69 Step 1: 도서 추천 권수 유연화(기본 1권, 탐색 2~3권, 명시적 최대 10권) & 억지 고전 주입 폴백 제거**
   - `CuratorResponse.recommendations(min_length=1, max_length=10)` 및 `parse_requested_book_count` 함수 신설, 4권 이상 추천 시 간결한 번호 목록(`1. 《도서명》 - 저자: 핵심 이유`) 출력 프롬프트 및 `_sanitize_persona_output` 정규식 연동.
   - `assemble_curated_books`에서 강제 고전 주입 루프(`if len(final_books) < 2:`) 완전 삭제 및 서지 검증 통과 도서만 정직하게 반환(검증 부족 시 축소 반환, 0건 시 빈 배열).

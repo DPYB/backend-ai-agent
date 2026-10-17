@@ -8,26 +8,6 @@
 
 ---
 
-## 세션 69 (2026-10-09)
-
-### 진행한 작업
-1. **GitHub 장애 복구 확인 및 PR #63 머지 동기화**:
-   - 10월 8일 자정 발생한 GitHub 본사 Actions/Webhooks 글로벌 장애(Major Outage) 복구 확인.
-   - PR reopen으로 웹훅 트리거 재발행 ➔ CI(Lint, Type Check & Test) 50초 만에 그린 통과 ➔ PR #63(`develop`, `8cebcc3`) 머지 완료 확인.
-   - 로컬/원격 `feat/curator-polish` 브랜치 정리 및 `develop` 최신화 완료.
-2. **프론트엔드 연동 이슈 분석 및 기술 지원**:
-   - 현상 1: 사서별 서재 도서 장르 커플링 분석 (토론 모드 시 사서 장르 의존성 분리 필요성 확인).
-   - 현상 2: 회원 토론 내용이 게스트(체험하기)에 노출되는 클라이언트 캐시 버그 원인 규명 (`sessionStorage` 키에 `memberId`/`mode` 누락) ➔ 프론트엔드 팀원 PR #141로 핫픽스 머지 완료 확인.
-   - 현상 3: 토론 논리적 핑퐁(건설적 반론 + 팩트 그라운딩 + 꼬리물기 질문) 기획 및 프롬프트 구조 설계.
-3. **Phase 66 계획 수립 및 인수인계 정비**:
-   - `PLAN.md`에 Phase 66(토론 파트너 4종 논리적 핑퐁 고도화) 신설 및 체크리스트 등록.
-   - 세션 64 아카이빙(`archive/HANDOFF_2026-10.md`) 및 하네스 규격 검증 완료.
-
-### 다음 세션에서 할 일
-- **Phase 66 구현 착수 (`feat/debate-persona-pingpong`)**: 완료 (세션 70).
-
----
-
 ## 세션 70 (2026-10-10)
 
 ### 진행한 작업
@@ -114,6 +94,36 @@
    - 전체 262개 단위 회귀 100% 그린 (`262 passed in 31.69s`), ruff check & format 통과, mypy 통과, `scripts/check_harness.py` 통과.
 
 ### 다음 세션에서 할 일
-- **Phase 69 Step 2: Core API / YES24 도서 검색 1차 연동 및 후보 검증 체계 고도화**:
-  - 사용자에게 Step 1 결과 보고 후 승인 하에 Step 2 상세 설계 및 구현 착수.
+- **Phase 69 Step 2: Core API / YES24 도서 검색 1차 연동 및 후보 검증 체계 고도화**: 완료 (세션 74).
 
+---
+
+## 세션 74 (2026-10-17)
+
+### 진행한 작업
+1. **Core API 응답 스키마 정규화 (`app/infrastructure/core_api_client.py`)**:
+   - `search_books` 메소드가 `items` 키를 올바르게 파싱하도록 수정하고, CamelCase(`coverUrl`, `totalPages` 등)를 snake_case(`cover_url`, `page_count` 등)로 정규화.
+   - 통신 장애/에러 시 가짜 목데이터 생성을 배제하고 정직한 빈 리스트(`[]`)를 반환하도록 안전화.
+2. **ISBN-10 / ISBN-13 체크디지트 검증 및 재계산 로직 신설 (`app/domain/graph/curator_node.py`)**:
+   - `validate_isbn10`: Modulo 11 체크디지트 알고리즘 검증.
+   - `calculate_isbn13_check_digit`: EAN-13 가중치(1, 3 교대) 기반 13번째 체크디지트 계산기 구현.
+   - `validate_isbn13`: 13자리 및 EAN-13 체크디지트 유효성 검증.
+   - `convert_isbn10_to_isbn13`: 유효한 ISBN-10 검증 후 앞 9자리에 `978`을 붙이고 EAN-13 가중치로 새로운 체크디지트를 산출하여 결합.
+   - `normalize_and_validate_isbn`: VALID_13, CONVERTED_10, INVALID, MISSING 4대 상태로 엄격 분류.
+3. **저자 성명 정규화 및 보수적 비교 (`app/domain/graph/curator_node.py`)**:
+   - `_extract_primary_author`: 쉼표/슬래시/역할표기 분리 및 번역자/일러스트레이터와 원작자 구분.
+   - `_is_matching_author`: 서양식 성·이름 반전(`George Orwell` <-> `Orwell, George`) 지원, 단순 글자 set 비교 원천 금지로 한글 성명 오탐(`김영하` != `김하영`) 차단, 빈 expected author는 도서명 단독 검색 허용.
+4. **판본 의도 추출 및 캐시 분리 (`app/domain/graph/curator_node.py`)**:
+   - `extract_edition_intent`: 일반(`GENERAL`), 만화(`COMICS`), 아동(`CHILDREN`), 원서(`ORIGINAL`), 출판사(`PUB:{name}`) 판본 태그 분리 및 상충/모호 요청 시 캐시 bypass(`None`).
+   - `get_biblio_cache_key`: SHA-256 기반 판본 격리 캐시 키 생성 및 서로 다른 판본 요청 간 캐시 오염 차단.
+5. **계층형 서지 검증 체인 구축 (`_verify_single_candidate`, `resolve_targeted`, `verify_candidates`)**:
+   - 1차 Core API(YES24, 2.5s) -> 2차 국립중앙도서관(3.5s) 무중단 폴백 체계 안착.
+   - Track A(ISBN 유효) 및 Track B(ISBN 누락 시 출판사/표지/쪽수 3대 조건 엄격 검증) 적용. INVALID ISBN 즉시 탈락.
+   - 구조화된 로그(`[BIBLIO_SUCCESS]`, `[BIBLIO_FALLBACK]`, `[BIBLIO_REJECT]`, `[BIBLIO_CACHE_HIT]`) 표준화.
+6. **단위 테스트 작성 및 품질 검증**:
+   - `tests/unit/test_hierarchical_curator_verification.py` 22종 신규 작성 (ISBN 검증/변환, 저자 정규화, 캐시 격리, 계층형 폴백, Track A/B 검증).
+   - 전체 284개 단위 회귀 100% 그린 (`284 passed in 46.68s`), ruff check & format 통과, mypy 통과, `check_harness.py` 통과.
+
+### 다음 세션에서 할 일
+- **Phase 69 Step 2 변경 사항 검토 보고 및 PR 생성**:
+  - 사용자에게 변경 사항 최종 보고 후 승인 하에 PR 생성.
