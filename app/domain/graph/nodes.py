@@ -159,6 +159,21 @@ class ResilientLLM:
                 ],
             )
 
+        if has_curated_books:
+            titles = re.findall(r"- 《([^》]+)》", system_text)
+            if len(titles) >= 4:
+                lines = [f"{i + 1}. 《{t}》" for i, t in enumerate(titles)]
+                return AIMessage(
+                    content="독자님의 마음에 닿을 수 있는 추천 도서 목록입니다:\n\n"
+                    + "\n".join(lines)
+                )
+            elif titles:
+                headings = [f"### 📖 {t}" for t in titles]
+                return AIMessage(
+                    content="독자님의 마음에 닿을 수 있는 책을 권해드립니다.\n\n"
+                    + "\n\n".join(headings)
+                )
+
         if "서재" in last_msg or "책장" in last_msg:
             return AIMessage(
                 content="독자님의 서재를 확인해보니 흥미로운 책들이 가득하네요. 어떤 책에 대해 이야기해볼까요?"
@@ -243,11 +258,11 @@ def _sanitize_persona_output(
     """Sanitize persona output at code level to strictly prevent fake card fabrication.
 
     1. If curated_books is empty/absent:
-       - Strip all fake card markers ('📖', '등록 ➔', '### 📖', '💡 추천 이유', etc.)
+       - Strip all fake card markers ('📖', '등록 ➔', '### 📖', '1. 《도서명》', '💡 추천 이유', etc.)
          so frontend will NEVER falsely render a book registration card.
        - If the remaining content is too short (less than 15 chars), substitute with a gentle fallback.
     2. If curated_books exists:
-       - Ensure only verified book titles in curated_books appear under '### 📖' headings.
+       - Ensure only verified book titles in curated_books appear under '### 📖' headings or '1. 《도서명》' lists.
     3. For debate personas:
        - Strictly strip any accidental librarian animal endings (~냥, ~두둥, ~누누, ~크크).
     """
@@ -276,6 +291,9 @@ def _sanitize_persona_output(
                 or stripped.startswith("사유:")
             ):
                 continue
+            # Strip fake numbered book cards (e.g. 1. 《가짜도서명》) when no curated_books
+            if re.match(r"^\d+\.\s*(?:\*\*)?[『《]([^』》]+)[』》]", stripped):
+                continue
             cleaned_lines.append(line)
         cleaned_text = "\n".join(cleaned_lines)
         # Remove leftover isolated book emojis
@@ -287,7 +305,7 @@ def _sanitize_persona_output(
             return _strip_debate_animal_endings(fallback) if is_debate else fallback
         return _strip_debate_animal_endings(cleaned_result) if is_debate else cleaned_result
 
-    # When curated_books exist, clean up any fabricated book headings not in curated_books
+    # When curated_books exist, clean up any fabricated book headings or numbered cards not in curated_books
     valid_titles = {
         re.sub(r"[\s《》〈〉「」『』\"']", "", str(b.get("title", ""))) for b in curated_books
     }
@@ -304,7 +322,19 @@ def _sanitize_persona_output(
                 logger.warning("Sanitizer removed fabricated book heading: %s", match.group(1))
                 continue
         else:
-            curated_lines.append(line)
+            # Check numbered list item format: e.g. 1. 《도서명》 - 저자
+            num_match = re.match(r"^\d+\.\s*(?:\*\*)?[『《]([^』》]+)[』》]", line.strip())
+            if num_match:
+                item_title = re.sub(r"[\s《》〈〉「」『』\"']", "", num_match.group(1))
+                if any(vt in item_title or item_title in vt for vt in valid_titles if vt):
+                    curated_lines.append(line)
+                else:
+                    logger.warning(
+                        "Sanitizer removed fabricated numbered book: %s", num_match.group(1)
+                    )
+                    continue
+            else:
+                curated_lines.append(line)
 
     final_result = "\n".join(curated_lines).strip()
     return _strip_debate_animal_endings(final_result) if is_debate else final_result
@@ -774,6 +804,7 @@ async def _run_persona_node(
     # Inject verified curated books if returned from curator_node
     curated_books = state.get("curated_books")
     if curated_books:
+        book_count = len(curated_books)
         books_desc = "\n".join(
             [
                 f"- 《{b['title']}》 ({b.get('author', '저자')}, {b.get('publisher', '출판사')}) / ISBN: {b.get('isbn', '')}\n"
@@ -781,26 +812,38 @@ async def _run_persona_node(
                 for b in curated_books
             ]
         )
+
+        if book_count >= 4:
+            format_instruction = (
+                "  * 3단계: (다수 도서 간결한 번호 목록 양식)\n"
+                f"    - 추천 권수가 다수({book_count}권)이므로 독자의 스크롤 압박을 완화하기 위해 각 도서를 아래의 번호 매김 형식으로 간결하게 한 줄씩 소개해 주십시오.\n"
+                "      형식: `1. 《도서명》 - 저자: 핵심 이유` (예: `1. 《데미안》 - 헤르만 헤세: 참된 자아를 마주하는 성장 소설`)\n"
+                "      (화면에서는 이 번호 목록을 파싱하여 시스템 추천 도서 카드가 자동으로 예쁘게 렌더링됩니다.)\n"
+            )
+        else:
+            format_instruction = (
+                "  * 3단계: (마크다운 헤딩 규격 및 카드 트리거)\n"
+                "    - 답변의 하단부에 각 도서별로 반드시 `### 📖 도서명`(`### 📖 {도서명}`) 형식의 마크다운 3단계 헤딩만 별도의 줄에 명시하십시오. (화면에는 이 헤딩 아래에 시스템 추천 도서 카드가 자동으로 예쁘게 렌더링됩니다.)\n"
+                "    - 헤딩 아래에는 해당 책에 대한 1문장의 짧은 감상이나 격려를 덧붙일 수 있습니다.\n"
+            )
+
         system_prompt += (
-            "\n\n[도서 큐레이터가 엄선 및 검증한 국립중앙도서관 실존 도서 목록]\n"
+            f"\n\n[도서 큐레이터가 엄선 및 검증한 국립중앙도서관 실존 도서 목록 (총 {book_count}권)]\n"
             f"{books_desc}\n\n"
             "지침: 위의 검증된 실존 도서를 당신 고유의 어조와 캐릭터 감성으로 독자에게 다정하게 소개해 주십시오.\n"
             "- [도서 추천 시 필수 출력 순서 및 구성 원칙 - 포맷 하이재킹 및 자판기식 출력 엄격 금지]:\n"
-            "  * 절대로 인사나 공감 없이 책 제목이나 헤딩(`### 📖`)부터 성급하게 먼저 던지지 마십시오. 반드시 아래의 순서를 엄격히 지키십시오.\n"
+            "  * 절대로 인사나 공감 없이 책 제목이나 헤딩부터 성급하게 먼저 던지지 마십시오. 반드시 아래의 순서를 엄격히 지키십시오.\n"
             "  * 1단계: (상황 공감 및 캐릭터 고유 사색 / 2~3문장)\n"
             "    - 사용자의 현재 감정, 고민, 상황(예: 시험/연수 탈락, 번아웃, 우울, 새로운 시작 등)에 깊이 공감하고, 캐릭터 고유의 시선(예: 블루의 경우 철학적이고 차분한 사색)으로 따뜻한 위로와 사유의 말을 건넵니다. 섹션 헤딩 없이 부드러운 평문으로 시작하십시오.\n"
             "  * 2단계: (도서 추천 및 구체적 처방 사유 / 책 당 1~2문장)\n"
             "    - 추천하는 책이 왜 지금 사용자의 상황과 감정에 도움이 되는지, 책의 핵심 메시지와 철학적/감정적 처방 사유를 대화체로 풀어서 설명하십시오.\n"
-            "  * 3단계: (마크다운 헤딩 규격 및 카드 트리거)\n"
-            "    - 답변의 하단부에 각 도서별로 반드시 `### 📖 도서명`(`### 📖 {도서명}`) 형식의 마크다운 3단계 헤딩만 별도의 줄에 명시하십시오. (화면에는 이 헤딩 아래에 시스템 추천 도서 카드가 자동으로 예쁘게 렌더링됩니다.)\n"
-            "    - 헤딩 아래에는 해당 책에 대한 1문장의 짧은 감상이나 격려를 덧붙일 수 있습니다.\n"
+            f"{format_instruction}"
             "  * 4단계: (마무리 응원/작별 멘트 / 1문장)\n"
             "    - 독자의 마음을 보듬는 캐릭터 고유의 따뜻한 마무리 멘트로 마침표를 찍으십시오.\n"
             "- [답변 출력 형식 주의사항]:\n"
             "  * [헤딩 이모지 절대 금지]: 서두 섹션 타이틀(예: `### 📚 누디가 건네는 책`, `### 📚 블루의 서재` 등)이나 추천 도서 헤딩에 `📚` 이모지를 절대로 사용하지 마십시오. `📚`는 사용자의 '내 서재 보유 도서' 전용 이모지이므로, 추천 본문에 사용하면 프론트엔드가 이를 보유 도서로 오인합니다.\n"
-            "  * [추천 도서 헤딩 규격]: 추천 도서 헤딩은 오직 `### 📖 {도서명}` 형식만 사용하십시오. (헤딩에 다른 이모지나 부연 수식어를 붙이지 마십시오.)\n"
             "  * 본문에는 `저자: ...`, `사유: ...` 와 같은 딱딱한 메타데이터 목록이나 `---` 구분선, `등록 ➔` 버튼 텍스트를 직접 적지 마십시오. (화면 카드 컴포넌트와 중복되어 시인성을 해칩니다.)\n"
-            "- [절대 준수]: 도서의 제목과 저자명(작가)은 위 목록에 적힌 그대로 정확하게 일치시켜 언급해야 합니다. 작가 이름을 임의로 다른 작가(예: 김애란 등)로 바꾸거나 날조하지 마십시오.\n"
+            f"- [절대 준수 - 도서명 및 개수 100% 일치]: 도서의 제목과 저자명(작가)은 위 목록에 적힌 정확한 {book_count}권과 100% 일치시켜 언급해야 합니다. 목록에 없는 다른 책을 임의로 추가/날조하거나, 목록에 있는 도서를 빠뜨리지 마십시오.\n"
             "- [중복 호출 금지]: 도서 검색/추천 도구를 다시 호출하지 마십시오. 이미 큐레이터가 최적의 책을 엄선했으므로, 위 목록의 책들을 독자에게 소개하는 데 집중하십시오.\n"
             "- 존재하지 않는 가짜 책을 임의로 지어내지 마십시오."
         )

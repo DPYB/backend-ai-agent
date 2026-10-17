@@ -95,7 +95,65 @@ def _is_similar_title(a: str, b: str, threshold: float = 0.55) -> bool:
     return SequenceMatcher(None, clean_a_nows, clean_b_nows).ratio() >= threshold
 
 
-# 1. Pydantic Structured Output Schemas
+# 1. Pydantic Structured Output Schemas & Helpers
+MAX_CURATED_BOOKS: int = 10
+
+
+def parse_requested_book_count(request_text: Optional[str]) -> int:
+    """Parse requested number of books from user prompt.
+
+    - Default: 1 book for generic recommendations.
+    - Exploratory/comparative requests ('두세 권', '다양하게', '비교' 등): 2~3 books (defaults to 3).
+    - Explicit count (Arabic numbers or Korean numerals): parsed up to MAX_CURATED_BOOKS (10).
+    """
+    if not request_text:
+        return 1
+
+    clean = request_text.strip()
+
+    # 1. Explicit Arabic numbers (e.g. '3권', '5권', '10권')
+    match = re.search(r"(\d+)\s*권", clean)
+    if match:
+        count = int(match.group(1))
+        return max(1, min(MAX_CURATED_BOOKS, count))
+
+    # 2. Korean numeral words (e.g. '열 권', '다섯 권', '세 권', '한 권')
+    korean_counts = {
+        "열": 10,
+        "아홉": 9,
+        "여덟": 8,
+        "일곱": 7,
+        "여섯": 6,
+        "다섯": 5,
+        "네": 4,
+        "세": 3,
+        "두": 2,
+        "한": 1,
+    }
+    for word, cnt in korean_counts.items():
+        if re.search(rf"\b{word}\s*권", clean) or re.search(
+            rf"(?:딱|오직|그냥)?\s*{word}\s*권", clean
+        ):
+            return cnt
+
+    # 3. Approximate ranges
+    if any(r in clean for r in ["두세 권", "두, 세 권", "2~3권", "2-3권"]):
+        return 3
+    if any(r in clean for r in ["서너 권", "3~4권", "3-4권"]):
+        return 3
+
+    # 4. Exploratory / comparative keywords -> 3 books
+    exploratory_keywords = ["두세", "비교", "다양하게", "골고루", "여러 권", "몇 권", "다채롭게"]
+    if any(k in clean for k in exploratory_keywords):
+        return 3
+
+    # 5. Explicit single-book keywords
+    if any(k in clean for k in ["한 권만", "한권만", "딱 한 권", "1권만", "단 한 권"]):
+        return 1
+
+    return 1
+
+
 class BookCandidate(BaseModel):
     """Pydantic model representing a single recommended book candidate."""
 
@@ -111,7 +169,7 @@ class BookCandidate(BaseModel):
 
 
 class CuratorResponse(BaseModel):
-    """Pydantic schema enforcing hybrid book pairing and targeted book intent."""
+    """Pydantic schema enforcing book recommendations and targeted book intent."""
 
     target_title: Optional[str] = Field(
         None,
@@ -123,9 +181,13 @@ class CuratorResponse(BaseModel):
     )
     recommendations: List[BookCandidate] = Field(
         ...,
-        min_length=2,
-        max_length=2,
-        description="반드시 [오픈북]에서 고른 트렌드 도서 1권과, 감정에 꼭 맞는 인생 도서 1권, 총 정확히 2권이어야 합니다.",
+        min_length=1,
+        max_length=10,
+        description=(
+            "사용자 요청에 맞춘 추천 도서 목록입니다. "
+            "기본 추천은 가장 적합한 1권(원픽), 비교/탐색형 요청은 2~3권, "
+            "사용자가 특정 권수(N권)를 명시한 경우 해당 권수만큼(최대 10권) 구성하세요."
+        ),
     )
 
 
@@ -133,30 +195,33 @@ MAX_RECOMMENDED_HISTORY: int = 10
 
 # 2. Curator System Prompt with Emotion-focused Pairing Directive
 CURATOR_SYSTEM_PROMPT = """당신은 최고 수준의 도서 큐레이터입니다.
-사용자의 발화 의도, 최근 대화 맥락, 감정, 상황, 날씨를 차분히 분석하여 딱 2권의 책을 추천합니다.
+사용자의 발화 의도, 최근 대화 맥락, 감정, 상황, 날씨를 차분히 분석하여 적절한 권수의 도서를 추천합니다.
 
-[핵심 지침: 의도 식별 및 감정 맞춤형 큐레이션 페어링]
+[핵심 지침: 의도 식별 및 추천 권수 정책]
 1. [지목 도서(target_title) 식별]:
    - 사용자가 '《데미안》 등록해줘', '프로젝트 헤일메리 추천해줘'처럼 특정 도서를 직접 지정하거나,
      직전 대화 히스토리에서 언급된 그 책을 등록/추천해달라고 지칭할 때 target_title에 그 책의 순수 제목을 기재하세요.
    - '비 오는 날 읽을 책', '다른 책 추천해줘', '이전에 추천받은 책과 비슷한 도서 추천해줘'처럼 일반적인 추천/메타 질의인 경우 target_title은 반드시 null로 두어야 합니다.
-2. [트렌드 도서 1권]:
-   - 아래 [오늘의 화제작 오픈북] 데이터 안에서 사용자의 상황과 가장 잘 어울리는 책 1권을 선택하세요 (era: 'trend'). 절대 지어내지 마세요.
-3. [인생 도서 1권]:
-   - 연도나 시대에 얽매이지 않고 사용자의 감정을 가장 깊이 어루만져줄 수 있는 당신의 원픽(One-pick) 1권을 자유롭게 고르세요 (era: 'life_pick').
+2. [추천 권수(recommendations) 결정 원칙]:
+   - 기본 추천: 권수 언급이 없는 일반 추천 요청은 가장 적합하고 울림을 주는 '1권(원픽)'을 추천합니다.
+   - 비교·탐색형 추천: '두세 권 골라줘', '비교해줘', '다양하게 추천해줘' 등의 요청은 '2~3권'을 추천합니다.
+   - 명시적 권수 요청: 사용자가 '3권', '5권', '10권' 등 구체적인 권수를 요청한 경우, 그 요청에 맞춰 최대 10권까지 추천 목록을 구성합니다.
+3. [도서 선정 및 페어링]:
+   - 아래 [오늘의 화제작 오픈북] 데이터 안에 적합한 도서가 있다면 적극 반영하세요 (era: 'trend').
+   - 시대와 장르를 불문하고 사용자의 마음에 깊은 위로와 통찰을 줄 수 있는 인생책/고전 스테디셀러를 자유롭게 구성하세요 (era: 'life_pick' 또는 'classic').
+   - 4권 이상 추천 시에도 검증되지 않은 책을 억지로 날조하지 마세요.
 4. [다양성 및 중복 방지]:
    - 최근 이미 추천된 도서 목록에 있는 도서는 절대 추천하지 마세요.
-
-반드시 정확히 2권(recommendations)의 도서 조합을 구성해주세요.
 """
 
 
 def _get_random_elegant_fallback(
     exclude_titles: Optional[List[str]] = None,
+    count: int = 1,
 ) -> List[Dict[str, Any]]:
-    """Return a pair of timeless masterpieces when external LLM or library APIs fail.
+    """Return timeless masterpieces when external LLM or library APIs fail.
 
-    Provides an honest fallback pair while respecting recommended_history to avoid duplicates.
+    Provides honest fallback books while respecting recommended_history to avoid duplicates.
     """
     excluded = set(exclude_titles or [])
     masterpieces: List[Dict[str, Any]] = [
@@ -219,9 +284,10 @@ def _get_random_elegant_fallback(
     ]
     # Filter out recent books if possible
     available = [m for m in masterpieces if m["title"] not in excluded]
-    if len(available) < 2:
+    if len(available) < count:
         available = masterpieces
-    return random.sample(available, 2)
+    sample_size = min(len(available), max(1, count))
+    return random.sample(available, sample_size)
 
 
 # --- Module-Level LLM Cache & Fallback Helper ---
@@ -385,6 +451,8 @@ async def generate_candidates(
     ctx: Dict[str, Any], open_book_text: str
 ) -> Tuple[Optional[str], List[Dict[str, str]]]:
     """2. Generate book candidates and optional target_title via structured LLM chain."""
+    req_count = parse_requested_book_count(ctx.get("curator_request"))
+
     # Fast mock in testing environment if configured
     if getattr(settings, "app_env", "") == "test" or settings.is_testing:
         req = ctx["curator_request"]
@@ -394,7 +462,8 @@ async def generate_candidates(
         elif "《데미안》" in req or "데미안 등록" in req:
             target = "데미안"
 
-        return target, [
+        # Mock candidate catalog pool (up to 10 verified candidates)
+        test_catalog = [
             {
                 "title": "데미안",
                 "author": "헤르만 헤세",
@@ -407,12 +476,65 @@ async def generate_candidates(
                 "reason": "따스한 일상의 위로",
                 "era": "recent",
             },
+            {
+                "title": "코스모스",
+                "author": "칼 세이건",
+                "reason": "광대한 우주 속 인류의 숭고한 탐구 여정",
+                "era": "classic",
+            },
+            {
+                "title": "모모",
+                "author": "미하엘 엔데",
+                "reason": "시간의 소중함을 일깨우는 이야기",
+                "era": "classic",
+            },
+            {
+                "title": "어린 왕자",
+                "author": "앙투안 드 생텍쥐페리",
+                "reason": "마음으로 보는 소중한 것들",
+                "era": "classic",
+            },
+            {
+                "title": "달러구트 꿈 백화점",
+                "author": "이미예",
+                "reason": "지친 하루의 끝, 잠든 이들에게 건네는 몽환적인 위로",
+                "era": "recent",
+            },
+            {
+                "title": "이방인",
+                "author": "알베르 카뮈",
+                "reason": "부조리한 세상과 정직하게 맞선 인간의 실존적 초상",
+                "era": "classic",
+            },
+            {
+                "title": "소크라테스 익스프레스",
+                "author": "에릭 와이너",
+                "reason": "14명의 철학자와 함께 떠나는 유쾌한 사유의 여정",
+                "era": "classic",
+            },
+            {
+                "title": "사피엔스",
+                "author": "유발 하라리",
+                "reason": "인류 문명의 기원과 미래",
+                "era": "recent",
+            },
+            {
+                "title": "세네카",
+                "author": "세네카",
+                "reason": "인생의 짧음에 대하여",
+                "era": "classic",
+            },
         ]
+        excluded = set(ctx.get("recommended_history") or [])
+        available = [c for c in test_catalog if c["title"] not in excluded]
+        if len(available) < req_count:
+            available = test_catalog
+        return target, available[:req_count]
 
     chain_llm = get_cached_curator_chain()
     if not chain_llm:
         logger.warning("No configured LLM candidates found. Using random fallback.")
-        return None, _get_random_elegant_fallback(ctx["recommended_history"])
+        return None, _get_random_elegant_fallback(ctx["recommended_history"], count=req_count)
 
     prompt = ChatPromptTemplate.from_messages(
         [
@@ -458,7 +580,7 @@ async def generate_candidates(
     except Exception as e:
         logger.warning("Curator LLM invocation failed (%s). Using fallback.", e)
 
-    return None, _get_random_elegant_fallback(ctx["recommended_history"])
+    return None, _get_random_elegant_fallback(ctx["recommended_history"], count=req_count)
 
 
 async def resolve_targeted(target_title: Optional[str]) -> Optional[Dict[str, Any]]:
@@ -554,11 +676,13 @@ async def assemble_curated_books(
     targeted: Optional[Dict[str, Any]],
     verified: List[Dict[str, Any]],
     recommended_history: List[str],
+    requested_count: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
-    """5. Assemble verified books guaranteeing exact 2-book pairing without duplicates.
+    """5. Assemble verified books without forced fallback injections.
 
-    When filling with fallback masterpieces, enriches metadata (ISBN, cover URL, page count,
-    publisher, genre) via National Library client to guarantee 100% complete registration info.
+    Returns only books that successfully passed bibliography verification.
+    If verified books are fewer than requested, returns only the verified books
+    without fabricating or forcing classic fallback books.
     """
     final_books: List[Dict[str, Any]] = []
 
@@ -568,7 +692,7 @@ async def assemble_curated_books(
 
     # Add verified books that don't duplicate the targeted book or recently recommended history
     for b in verified:
-        if len(final_books) >= 2:
+        if requested_count is not None and len(final_books) >= requested_count:
             break
         b_title = str(b.get("title", ""))
         b_isbn = str(b.get("isbn", ""))
@@ -582,69 +706,12 @@ async def assemble_curated_books(
             continue
         final_books.append(b)
 
-    # If still fewer than 2 books, fill with honest fallback pool enriched with real metadata
-    if len(final_books) < 2:
-        existing_titles: List[str] = [str(b["title"]) for b in final_books if b.get("title")] + [
-            str(t) for t in recommended_history if t
-        ]
-        fallback_pairs = _get_random_elegant_fallback(exclude_titles=existing_titles)
-        nl_client = get_national_library_client()
+    # NOTE: Forced classic fallback injection (if len(final_books) < 2) is completely removed.
+    # We strictly return only books verified in the national library bibliography.
 
-        for fb in fallback_pairs:
-            if len(final_books) >= 2:
-                break
-            if not any(b.get("title") == fb["title"] for b in final_books):
-                # Search National Library / sample catalog to enrich fallback book with 100% real biblio
-                fb_title = fb["title"]
-                fb_author = fb.get("author", "")
-                biblio = None
-                try:
-                    biblio = await asyncio.wait_for(
-                        nl_client.search_book(title=fb_title, author=fb_author),
-                        timeout=5.0,
-                    )
-                except Exception as e:
-                    logger.warning("Fallback biblio enrichment failed for '%s': %s", fb_title, e)
-
-                if biblio and biblio.get("isbn"):
-                    final_books.append(
-                        {
-                            "title": biblio.get("title", fb_title),
-                            "author": biblio.get("author", fb_author),
-                            "publisher": biblio.get("publisher", "출판사 확인 중"),
-                            "isbn": biblio.get("isbn", ""),
-                            "cover_url": biblio.get("cover_url", ""),
-                            "page_count": biblio.get("page_count"),
-                            "genre": biblio.get("genre", "LITERATURE"),
-                            "description": biblio.get("description") or fb["reason"],
-                            "reason": fb["reason"],
-                            "era": fb.get("era", "classic"),
-                            "verified": True,
-                            "fallback": True,
-                            "source": biblio.get("source", "MASTERPIECE_FALLBACK"),
-                        }
-                    )
-                else:
-                    # Defensive fallback if even library search fails
-                    final_books.append(
-                        {
-                            "title": fb["title"],
-                            "author": fb["author"],
-                            "publisher": "출판사 확인 중",
-                            "isbn": "",
-                            "cover_url": "",
-                            "page_count": None,
-                            "genre": "LITERATURE",
-                            "description": fb["reason"],
-                            "reason": fb["reason"],
-                            "era": fb.get("era", "classic"),
-                            "verified": False,
-                            "fallback": True,
-                            "source": "MASTERPIECE_FALLBACK",
-                        }
-                    )
-
-    return final_books[:2]
+    if requested_count is not None:
+        return final_books[:requested_count]
+    return final_books
 
 
 async def book_curator_node(state: AgentState) -> Dict[str, Any]:
@@ -653,6 +720,7 @@ async def book_curator_node(state: AgentState) -> Dict[str, Any]:
 
     # Stage 1: Resolve Context
     ctx = resolve_context(state)
+    requested_count = parse_requested_book_count(ctx["curator_request"])
 
     # Fetch trending open-book catalog
     open_book_text = await get_trending_books_text(limit=30)
@@ -672,11 +740,12 @@ async def book_curator_node(state: AgentState) -> Dict[str, Any]:
         candidates_task = verify_candidates(raw_candidates)
         targeted_book, verified_books = await asyncio.gather(targeted_task, candidates_task)
 
-    # Stage 5: Assemble Exact 2-Book Pairing (async)
+    # Stage 5: Assemble Verified Books (async)
     curated_books = await assemble_curated_books(
         targeted=targeted_book,
         verified=verified_books,
         recommended_history=ctx["recommended_history"],
+        requested_count=requested_count,
     )
 
     # Update recommended history

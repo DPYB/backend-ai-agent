@@ -218,10 +218,15 @@ def test_curator_structured_output_schema():
 
 @pytest.mark.asyncio
 async def test_curator_random_elegant_fallback():
-    """Verify _get_random_elegant_fallback returns 2 masterpieces with honest fallback reasons."""
+    """Verify _get_random_elegant_fallback returns requested count of masterpieces with honest fallback reasons."""
     from app.domain.graph.curator_node import _get_random_elegant_fallback
 
-    fallback = _get_random_elegant_fallback()
+    # Default count is 1
+    fallback_default = _get_random_elegant_fallback()
+    assert len(fallback_default) == 1
+
+    # Explicit count = 2
+    fallback = _get_random_elegant_fallback(count=2)
     assert len(fallback) == 2
     for b in fallback:
         assert "title" in b
@@ -548,18 +553,19 @@ async def test_meta_recommendation_query_not_converted_to_fake_book():
 
 
 @pytest.mark.parametrize(
-    "query,expected_target,must_not_contain",
+    "query,expected_target,must_not_contain,expected_count",
     [
-        ("다른 책 추천해줘", None, ["다른 책"]),
-        ("비 오는 날 읽을 책", None, ["비 오는 날 읽을"]),
-        ("이전에 추천받은 책이랑 비슷한 도서 추천해줘", None, ["이전에 추천받은"]),
-        ("《데미안》 등록해줘", "데미안", []),
-        ("프로젝트 헤일메리 추천해줘", "프로젝트 헤일메리", []),
+        ("다른 책 추천해줘", None, ["다른 책"], 1),
+        ("비 오는 날 읽을 책", None, ["비 오는 날 읽을"], 1),
+        ("이전에 추천받은 책이랑 비슷한 도서 추천해줘", None, ["이전에 추천받은"], 1),
+        ("《데미안》 등록해줘", "데미안", [], 1),
+        ("프로젝트 헤일메리 추천해줘", "프로젝트 헤일메리", [], 1),
+        ("세 권 추천해줘", None, [], 3),
     ],
 )
 @pytest.mark.asyncio
-async def test_curator_query_case_matrix(query, expected_target, must_not_contain):
-    """Case Matrix test: verify various user intents produce exact 2 books,
+async def test_curator_query_case_matrix(query, expected_target, must_not_contain, expected_count):
+    """Case Matrix test: verify various user intents produce requested number of books,
     identify target_title only when explicitly targeted, and never leak query sentences as book titles.
     """
     from app.domain.graph.curator_node import book_curator_node
@@ -581,7 +587,9 @@ async def test_curator_query_case_matrix(query, expected_target, must_not_contai
     result = await book_curator_node(cast(AgentState, state))
     assert "curated_books" in result
     books = result["curated_books"]
-    assert len(books) == 2, f"Query '{query}' must yield exactly 2 books"
+    assert len(books) == expected_count, (
+        f"Query '{query}' must yield exactly {expected_count} books"
+    )
 
     # If target is expected, #1 priority must match
     if expected_target:
@@ -596,23 +604,15 @@ async def test_curator_query_case_matrix(query, expected_target, must_not_contai
 
 
 @pytest.mark.asyncio
-async def test_assemble_curated_books_guarantees_exact_two_books_and_enriched_fallback():
-    """Verify assemble_curated_books guarantees exactly 2 books and enriches fallback books with full metadata."""
+async def test_assemble_curated_books_returns_only_verified_books_without_forced_fallback():
+    """Verify assemble_curated_books returns only verified books without fabricating/forcing fallback books."""
     from app.domain.graph.curator_node import assemble_curated_books
 
-    # Case A: 0 verified books -> 2 fallback books enriched with 100% real metadata (ISBN, cover, page)
+    # Case A: 0 verified books -> returns empty list (no forced fallback injection)
     assembled_a = await assemble_curated_books(targeted=None, verified=[], recommended_history=[])
-    assert len(assembled_a) == 2
-    for b in assembled_a:
-        assert b["verified"] is True
-        assert len(b["isbn"]) == 13
-        assert b["cover_url"].startswith("http")
-        assert b["page_count"] is not None and b["page_count"] > 0
-        assert b["publisher"] != ""
-        assert b["genre"] is not None
-        assert b.get("fallback") is True
+    assert assembled_a == []
 
-    # Case B: 1 targeted book + 0 verified -> fills 1 fallback book with full metadata (total 2)
+    # Case B: 1 targeted book + 0 verified -> returns exactly 1 book without stuffing fake books
     targeted = {
         "title": "프로젝트 헤일메리",
         "author": "앤디 위어",
@@ -623,13 +623,27 @@ async def test_assemble_curated_books_guarantees_exact_two_books_and_enriched_fa
     assembled_b = await assemble_curated_books(
         targeted=targeted, verified=[], recommended_history=[]
     )
-    assert len(assembled_b) == 2
+    assert len(assembled_b) == 1
     assert assembled_b[0]["title"] == "프로젝트 헤일메리"
     assert assembled_b[0]["verified"] is True
-    assert assembled_b[1]["verified"] is True
-    assert len(assembled_b[1]["isbn"]) == 13
-    assert assembled_b[1]["cover_url"].startswith("http")
-    assert assembled_b[1].get("fallback") is True
+    assert assembled_b[0].get("fallback") is not True
+
+    # Case C: 10 requested, but only 4 verified -> returns exactly 4 verified books
+    verified_4 = [
+        {
+            "title": f"도서_{i}",
+            "author": f"저자_{i}",
+            "isbn": f"97889000000{i:02d}",
+            "verified": True,
+        }
+        for i in range(4)
+    ]
+    assembled_c = await assemble_curated_books(
+        targeted=None, verified=verified_4, recommended_history=[], requested_count=10
+    )
+    assert len(assembled_c) == 4
+    for b in assembled_c:
+        assert b["verified"] is True
 
 
 def test_is_similar_title():
@@ -693,7 +707,8 @@ async def test_target_unresolved_returned_when_targeted_book_fails_verification(
 
     result = await book_curator_node(cast(AgentState, state))
     assert result.get("target_unresolved") == "세상에없는가공의책12345"
-    assert len(result["curated_books"]) == 2
+    # When targeted book fails and candidates are empty, returns 0 books without forced fallback
+    assert len(result["curated_books"]) == 0
 
 
 @pytest.mark.asyncio
@@ -722,7 +737,8 @@ async def test_assemble_curated_books_deduplicates_against_recommended_history()
         verified=verified,
         recommended_history=recommended_history,
     )
-    assert len(assembled) == 2
+    # Exactly 1 verified book ("코스모스") remains without forced fallback injection
+    assert len(assembled) == 1
     # "데미안" must NOT be in assembled books
     assembled_titles = [b["title"] for b in assembled]
     assert "데미안" not in assembled_titles
