@@ -68,7 +68,7 @@ class CoreApiClient:
     async def search_books(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
         """Search books via core-api (GET /api/v1/books/search?query=...).
 
-        Provides graceful fallback if core-api is not yet reachable.
+        Returns normalized book items from core-api (YES24).
         """
         try:
             client = await self._get_client()
@@ -77,22 +77,35 @@ class CoreApiClient:
                 params={"query": query, "limit": limit},
             )
             if response.status_code == 200:
-                return response.json().get("books", [])
+                data = response.json()
+                items = data.get("items", [])
+                normalized_items: List[Dict[str, Any]] = []
+                for item in items:
+                    normalized_items.append(
+                        {
+                            "book_id": str(item.get("bookId") or item.get("book_id", "")),
+                            "title": item.get("title", ""),
+                            "author": item.get("author", ""),
+                            "publisher": item.get("publisher", ""),
+                            "isbn": item.get("isbn"),
+                            "cover_url": item.get("coverUrl") or item.get("cover_url", ""),
+                            "page_count": item.get("totalPages") or item.get("page_count"),
+                            "description": item.get("description", ""),
+                            "published_date": item.get("publishedDate")
+                            or item.get("published_date"),
+                            "star_score": item.get("starScore") or item.get("star_score"),
+                        }
+                    )
+                return normalized_items
+            logger.info(
+                "core-api book search returned status %d for query %s",
+                response.status_code,
+                query,
+            )
         except Exception as e:
-            logger.info("core-api book search failed (%s), returning query-based fallback", e)
+            logger.info("core-api book search failed (%s) for query %s", e, query)
 
-        return [
-            {
-                "book_id": f"core-book-{i + 1}",
-                "title": f"{query} 관련 추천 도서 {i + 1}",
-                "author": f"저자 {i + 1}",
-                "publisher": "DPYB 출판사",
-                "isbn": f"979110000000{i + 1}",
-                "cover_url": "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c",
-                "description": f"'{query}' 주제에 부합하는 추천 도서입니다.",
-            }
-            for i in range(min(limit, 3))
-        ]
+        return []
 
     async def get_my_bookshelf(
         self,

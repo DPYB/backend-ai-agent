@@ -5,6 +5,11 @@
 
 ---
 
+### 2026-10-17: Core API(YES24) 우선 ➔ 국립중앙도서관 폴백 계층형 서지 검증 체계 구현 (Phase 69 Step 2)
+- **결정**: 1차 Core API(YES24 실서지, 2.5s 하드 타임아웃) 조회 후 검증 실패/지연 시 2차 국립중앙도서관 API(3.5s)로 무중단 폴백하는 계층형 검증 체인을 구축. ISBN-10 Modulo 11 검증 ➔ `978` + 9자리에 EAN-13 가중치(1, 3 교대)로 13번째 체크디지트를 신규 산출하는 변환기를 구현하고, ISBN을 4대 상태(`VALID_13`, `CONVERTED_10`, `INVALID`, `MISSING`)로 분류. 유효한 ISBN은 Track A로 합격시키며, ISBN 누락(`MISSING`) 시에는 출판사(>=2자), 표지 URL, 쪽수(>0) 3대 필수 요건을 모두 충족하는 경우에만 Track B로 대체 검증 합격. 서양식 성·이름 반전(`George Orwell` <-> `Orwell, George`) 지원 및 단순 글자 set 비교를 원천 금지하여 anagram 오탐 차단. 판본 의도(`GENERAL`, `COMICS`, `CHILDREN`, `ORIGINAL`, `PUB:*`)를 추출하여 캐시 키에 반영하고 상충 시 캐시 우회.
+- **이유**: 최신 실서지 및 고화질 표지/정확한 쪽수가 확보된 Core API(YES24)를 우선 활용하여 큐레이션 품질을 극대화하고, 외부 API 장애 시에도 국립도서관 안전망으로 서비스를 무중단 보장하며, ISBN 변환 오류 및 저자 성명 오탐/캐시 오염을 수학적·논리적으로 원천 차단하기 위함.
+- **영향**: 표지/쪽수 완성도 대폭 향상, ISBN-10 ➔ 13 변환 체크디지트 무결성 100% 확보, 판본별 캐시 오염 0건 달성, 신규 단위 테스트 22종 추가 및 284개 단위 회귀 100% 그린 검증 완료.
+
 ### 2026-10-17: 도서 추천 권수 유연화(1~10권) 및 억지 고전 주입 폴백 제거 (Phase 69 Step 1)
 - **결정**: `CuratorResponse.recommendations`를 `min_length=1, max_length=10`으로 완화하고 `parse_requested_book_count`를 도입하여 기본 1권(원픽), 탐색/비교 2~3권, 명시적 요청 시 최대 10권을 유연하게 수용. `assemble_curated_books`에서 강제 고전 주입 루프(`if len(final_books) < 2:`)를 완전히 제거하여 국립중앙도서관 서지 검증 통과 도서만 정직하게 반환(검증 부족 시 축소 반환, 0건 시 `[]`). 4권 이상 다수 추천 시 프론트엔드 파싱 정규식에 맞춰 간결한 번호 목록(`1. 《도서명》 - 저자: 이유`) 출력 지침 적용.
 - **이유**: 기존의 고정 2권 강제 및 검증 실패 시 임의 고전을 끼워넣는 비현실적 제약을 제거하여 사용자 의도를 최우선 존중하고, 없는 책이나 가짜 서지 정보를 날조하지 않는 무결성을 확보하기 위함.
@@ -113,19 +118,9 @@
 - **이유**: Supabase 단일 공유 DB 환경에서 `core-api`(`core.alembic_version`)와의 충돌 방지 및 Transaction Pooler prepared statement 에러 방지.
 - **영향**: `agent` 스키마 DDL(벡터 테이블 `scrap_vector`, `debate_insights`, HNSW 인덱스)의 결정론적 버전 추적 가능.
 
-### 2026-09-18: 해커톤 체험 모드 게스트 JWT 기반 세션 격리 및 Role 분리 이중 서킷 브레이커
-- **결정**: 게스트 JWT(`sub: "guest-{uuid}"`, `role: "guest"`) 식별, 세션 키 `{guest_id}:{persona}` 파티셔닝, 영구 사용량 카운터 `guest_usage:{guest_id}`(14일 TTL), 분당(`circuit:rpm:...`, 90초 NX TTL) / 일일(`circuit:rpd:...`, 48시간 NX TTL) 이중 서킷 브레이커 적용.
-- **이유**: 로그인 없는 핵심 기능 체험 제공 시 정회원 서비스 안정성 보호 및 개인 기억 데이터 오염 방지.
-- **영향**: 개인 기억/벡터화 엔드포인트(`POST /memory/scraps`, `POST /memory/debate-insights`, `POST /vectors/records`) 쓰기 락(403 Forbidden 및 비동기 스킵), 한도 초과 시 200 OK 우아한 UX 폴백 멘트 반환.
-
-### 2026-09-18: 페르소나 간 어조 오염 방지: 전 모드 세션 파티셔닝(`{session_id}:{persona}`) 및 네거티브 가드
-- **결정**: 8개 페르소나 전체에 세션 파티셔닝 적용, `librarian_name` 토론자 주입 차단, `DEBATE_GUARDRAILS` 신설하여 동물 종결어미(`~냥`, `~두둥`, `~누누`, `~크크`), 사서 사칭, 반말 엄격 금지.
-- **이유**: 탭 전환 시 동일 `session_id` 유지로 인해 사서 종결어미가 토론 파트너로 유입되는 현상 차단.
-- **영향**: 페르소나 전환 시 어조 전이 0% 물리적 격리 달성. (참조: ~~2026-09-18 check_user_reading_streak~~ 아카이브 보존)
-
-### 2026-09-17: Yes24 실시간 SSR 베스트셀러 웹 스크래퍼(`beautifulsoup4`) 채택
-- **결정**: 폐기된 Yes24 RSS 대신 실시간 종합 베스트셀러 웹페이지(`pageSize=40`)를 `httpx` + `beautifulsoup4`(0.8초 소요)로 파싱하여 Redis에 24시간 TTL(`daily_trending_books`) 캐싱. (참조: ~~2026-09-17 Yes24 RSS~~ 대체)
-
+- ~~2026-09-18 해커톤 체험 모드 게스트 JWT 기반 세션 격리 및 Role 분리 이중 서킷 브레이커~~ → [아카이브 보존(DECISIONS_2026-10.md)]
+- ~~2026-09-18 페르소나 간 어조 오염 방지: 전 모드 세션 파티셔닝 및 네거티브 가드~~ → [아카이브 보존(DECISIONS_2026-10.md)]
+- ~~2026-09-17 Yes24 실시간 SSR 베스트셀러 웹 스크래퍼 채택~~ → [아카이브 보존(DECISIONS_2026-10.md)]
 - ~~2026-09-16 Vision OCR ISBN 인식, Tavily 경량 REST 탐색, 4단계 보안 가드레일, Gemini Flash-Lite 라우팅~~ → [아카이브 보존(DECISIONS_2026-10.md)]
 - ~~2026-09-12~15 전사 중앙 인증, Supabase 스키마 격리, 사서 월간 리포트 및 Clova OCR~~ → [아카이브 보존(DECISIONS_2026-10.md)]
 

@@ -11,6 +11,8 @@ Hybrid Curation Principle:
 """
 
 import asyncio
+import hashlib
+import json
 import logging
 import random
 import re
@@ -23,7 +25,9 @@ from pydantic import BaseModel, Field
 
 from app.core.config import settings
 from app.domain.graph.state import AgentState
+from app.infrastructure.core_api_client import get_core_api_client
 from app.infrastructure.national_library_client import clean_book_title, get_national_library_client
+from app.infrastructure.redis_session import get_redis_session_manager
 from app.infrastructure.trending_books import get_trending_books_text
 
 logger = logging.getLogger(__name__)
@@ -93,6 +97,293 @@ def _is_similar_title(a: str, b: str, threshold: float = 0.55) -> bool:
         return True
 
     return SequenceMatcher(None, clean_a_nows, clean_b_nows).ratio() >= threshold
+
+
+# ---------------------------------------------------------------------------
+# ISBN Validation & Conversion Helpers (EAN-13 & Modulo 11)
+# ---------------------------------------------------------------------------
+
+
+def validate_isbn10(isbn10: str) -> bool:
+    """Validate an ISBN-10 string using the Modulo 11 check digit algorithm."""
+    if not isbn10 or not isinstance(isbn10, str):
+        return False
+    clean = re.sub(r"[-\s]", "", isbn10).upper()
+    if len(clean) != 10:
+        return False
+    if not clean[:9].isdigit():
+        return False
+    last_char = clean[9]
+    if not (last_char.isdigit() or last_char == "X"):
+        return False
+    s = sum(int(clean[i]) * (10 - i) for i in range(9))
+    check = 10 if last_char == "X" else int(last_char)
+    s += check
+    return (s % 11) == 0
+
+
+def calculate_isbn13_check_digit(raw12: str) -> str:
+    """Calculate the 13th check digit for a 12-digit string according to EAN-13 rules."""
+    if not raw12 or len(raw12) != 12 or not raw12.isdigit():
+        raise ValueError(f"raw12 must be a 12-digit numeric string, got '{raw12}'")
+    s = sum(int(d) * (1 if i % 2 == 0 else 3) for i, d in enumerate(raw12))
+    check = (10 - (s % 10)) % 10
+    return str(check)
+
+
+def validate_isbn13(isbn13: str) -> bool:
+    """Validate an ISBN-13 string using the EAN-13 check digit algorithm."""
+    if not isbn13 or not isinstance(isbn13, str):
+        return False
+    clean = re.sub(r"[-\s]", "", isbn13)
+    if len(clean) != 13 or not clean.isdigit():
+        return False
+    expected_check = calculate_isbn13_check_digit(clean[:12])
+    return clean[12] == expected_check
+
+
+def convert_isbn10_to_isbn13(isbn10: str) -> Optional[str]:
+    """Convert a valid ISBN-10 to an ISBN-13 by recalculating the 13th check digit.
+
+    Rules:
+      1. Verify valid ISBN-10 check digit first.
+      2. Take first 9 digits and prefix with '978' (12 digits).
+      3. Calculate 13th check digit using EAN-13 alternating weights (1, 3).
+    """
+    if not validate_isbn10(isbn10):
+        return None
+    clean = re.sub(r"[-\s]", "", isbn10).upper()
+    raw12 = "978" + clean[:9]
+    check_digit = calculate_isbn13_check_digit(raw12)
+    return raw12 + check_digit
+
+
+def normalize_and_validate_isbn(
+    isbn_raw: Optional[str],
+) -> Tuple[Optional[str], Literal["VALID_13", "CONVERTED_10", "INVALID", "MISSING"]]:
+    """Normalize and categorize an input ISBN string.
+
+    Returns:
+      (normalized_isbn, status)
+      - VALID_13: Valid 13-digit ISBN
+      - CONVERTED_10: Valid 10-digit ISBN converted to ISBN-13
+      - INVALID: Malformed or checksum-failed ISBN
+      - MISSING: Empty or omitted ISBN
+    """
+    if isbn_raw is None or not str(isbn_raw).strip():
+        return None, "MISSING"
+    clean = re.sub(r"[-\s]", "", str(isbn_raw)).strip().upper()
+    if not clean:
+        return None, "MISSING"
+    if len(clean) == 13:
+        if validate_isbn13(clean):
+            return clean, "VALID_13"
+        return None, "INVALID"
+    elif len(clean) == 10:
+        if validate_isbn10(clean):
+            conv13 = convert_isbn10_to_isbn13(clean)
+            return conv13, "CONVERTED_10"
+        return None, "INVALID"
+    return None, "INVALID"
+
+
+# ---------------------------------------------------------------------------
+# Author Normalization & Conservative Matching Helpers
+# ---------------------------------------------------------------------------
+
+
+def _extract_primary_author(raw_author: str) -> str:
+    """Extract primary author from string, removing translator/editor roles.
+
+    e.g. '조지 오웰 지음, 박경희 옮김' -> '조지 오웰'
+         '헤르만 헤세 저 / 정현규 역' -> '헤르만 헤세'
+         'Orwell, George' -> 'Orwell, George'
+    """
+    if not raw_author:
+        return ""
+
+    raw = raw_author.strip()
+
+    # Split into candidate segments by delimiters
+    # If comma is present with explicit role markers, treat comma as a segment delimiter.
+    # Otherwise keep comma for western name 'Last, First' convention.
+    has_role_markers = any(
+        role in raw
+        for role in ["지음", "옮김", "번역", "역자", "글", "그림", "저자", "원작", "저", "역"]
+    )
+    if has_role_markers and "," in raw:
+        segments = re.split(r"[,;/]|\s+외\b", raw)
+    else:
+        segments = re.split(r"[;/]|\s+외\b", raw)
+
+    chosen_seg = ""
+    # 1. Prefer segments with author markers ('지음', '원작', '글') or '저'
+    for seg in segments:
+        s = seg.strip()
+        if any(marker in s for marker in ["지음", "원작", "글"]) or (
+            "저" in s and not any(r in s for r in ["역자", "옮김", "번역"])
+        ):
+            chosen_seg = s
+            break
+
+    # 2. If no explicit author marker, pick first segment without translator/illustrator markers
+    if not chosen_seg:
+        for seg in segments:
+            s = seg.strip()
+            if not any(
+                r in s
+                for r in ["옮김", "번역", "역", "해설", "그림", "일러스트", "감수", "편", "엮음"]
+            ):
+                chosen_seg = s
+                break
+
+    if not chosen_seg and segments:
+        chosen_seg = segments[0].strip()
+
+    # Clean roles and brackets from chosen segment
+    cleaned = re.sub(r"\([^)]*\)|\[[^\]]*\]", "", chosen_seg)
+    cleaned = re.sub(
+        r"(?:지음|지은이|글|저자|원작|저)\b|\b(?:지음|지은이|글|저자|원작|저)",
+        "",
+        cleaned,
+    ).strip()
+    return cleaned
+
+
+def _is_matching_author(expected_author: str, candidate_author: str) -> bool:
+    """Conservatively check if candidate author matches expected author.
+
+    - If expected_author is empty/unspecified, returns True (permits title-only lookup).
+    - Distinguishes primary author from translator.
+    - Supports western inverted name representations ('George Orwell' <-> 'Orwell, George').
+    - Strict avoidance of set-based false positives ('김영하' != '김하영').
+    - Rejects single-character surname matches.
+    """
+    if not expected_author or not expected_author.strip():
+        return True
+    if not candidate_author or not candidate_author.strip():
+        return False
+
+    p_exp = _extract_primary_author(expected_author)
+    p_cand = _extract_primary_author(candidate_author)
+    if not p_exp or not p_cand:
+        return False
+
+    # Exact normalized string match (ignoring whitespace and delimiters)
+    norm_exp = re.sub(r"[\s·・•\.\,\-_/]", "", p_exp).lower()
+    norm_cand = re.sub(r"[\s·・•\.\,\-_/]", "", p_cand).lower()
+    if norm_exp == norm_cand:
+        return True
+
+    # Token-level conservative matching (handles 'Last, First' vs 'First Last')
+    tokens_exp = [t.lower() for t in re.split(r"[\s·・•\.\,\-_/]+", p_exp) if t]
+    tokens_cand = [t.lower() for t in re.split(r"[\s·・•\.\,\-_/]+", p_cand) if t]
+
+    if not tokens_exp or not tokens_cand:
+        return False
+
+    # Two-token Western name inversion: e.g. ['george', 'orwell'] <-> ['orwell', 'george']
+    if len(tokens_exp) == 2 and len(tokens_cand) == 2:
+        if tokens_exp == tokens_cand or tokens_exp == tokens_cand[::-1]:
+            return True
+
+    # Korean / Asian short names (<= 4 chars): Require exact normalized character match!
+    # Explicitly do NOT use set matching to prevent '김영하' <-> '김하영' false positive.
+    if len(norm_exp) <= 4 or len(norm_cand) <= 4:
+        return norm_exp == norm_cand
+
+    # For longer foreign names (>= 5 chars, e.g. '헤르만 헤세', '알베르 카뮈')
+    if set(tokens_exp) == set(tokens_cand):
+        return True
+
+    return SequenceMatcher(None, norm_exp, norm_cand).ratio() >= 0.85
+
+
+# ---------------------------------------------------------------------------
+# Edition Intent Extraction & Bibliography Caching
+# ---------------------------------------------------------------------------
+
+
+def extract_edition_intent(request_text: Optional[str]) -> Optional[str]:
+    """Extract edition intent from user request for cache partitioning.
+
+    Returns:
+      - 'COMICS': Comics / Webtoon / Graphic novel
+      - 'CHILDREN': Children / Fairy tale / Youth
+      - 'ORIGINAL': Original language / Foreign edition
+      - 'PUB:{publisher}': Explicit publisher request
+      - 'GENERAL': Standard book recommendation
+      - None: Ambiguous or conflicting intent (bypasses cache)
+    """
+    if not request_text:
+        return "GENERAL"
+
+    clean = request_text.strip().lower()
+
+    intents = []
+    if any(k in clean for k in ["만화", "웹툰", "코믹", "그래픽노블"]):
+        intents.append("COMICS")
+    if any(k in clean for k in ["어린이", "아동", "동화", "그림책", "유아"]):
+        intents.append("CHILDREN")
+    if any(k in clean for k in ["원서", "영문판", "영어판", "외서", "원문"]):
+        intents.append("ORIGINAL")
+
+    known_publishers = [
+        "민음사",
+        "문학동네",
+        "열린책들",
+        "창비",
+        "시공사",
+        "웅진",
+        "김영사",
+        "을유문화사",
+        "펭귄",
+    ]
+    for pub in known_publishers:
+        if pub in clean:
+            intents.append(f"PUB:{pub}")
+
+    # If multiple distinct categories conflict, bypass cache to avoid pollution
+    if len(intents) > 1:
+        base_types = {i.split(":")[0] for i in intents}
+        if len(base_types) > 1:
+            return None
+        return intents[0]
+
+    if len(intents) == 1:
+        return intents[0]
+
+    return "GENERAL"
+
+
+def get_biblio_cache_key(title: str, author: str, edition_intent: str) -> str:
+    """Build a deterministic SHA-256 cache key reflecting title, author, and edition intent."""
+    clean_t = re.sub(r"[\s《》〈〉「」『』\"'\[\]\(\)]", "", title).lower()
+    clean_a = re.sub(r"[\s·・•\.\,\-_/]", "", author).lower()
+    h = hashlib.sha256(f"{clean_t}::{clean_a}".encode("utf-8")).hexdigest()[:16]
+    return f"book_biblio:v1:{edition_intent}:{h}"
+
+
+async def get_cached_biblio(cache_key: str) -> Optional[Dict[str, Any]]:
+    """Retrieve verified bibliography from Redis/in-memory cache."""
+    try:
+        redis_mgr = get_redis_session_manager()
+        raw = await redis_mgr.get(cache_key)
+        if raw:
+            return json.loads(raw)
+    except Exception as e:
+        logger.warning("Failed to retrieve biblio cache for %s: %s", cache_key, e)
+    return None
+
+
+async def set_cached_biblio(cache_key: str, data: Dict[str, Any], ttl_seconds: int = 86400) -> None:
+    """Save verified bibliography to Redis/in-memory cache with 24h TTL."""
+    try:
+        redis_mgr = get_redis_session_manager()
+        serialized = json.dumps(data, ensure_ascii=False)
+        await redis_mgr.set(cache_key, serialized, ex=ttl_seconds)
+    except Exception as e:
+        logger.warning("Failed to store biblio cache for %s: %s", cache_key, e)
 
 
 # 1. Pydantic Structured Output Schemas & Helpers
@@ -583,91 +874,251 @@ async def generate_candidates(
     return None, _get_random_elegant_fallback(ctx["recommended_history"], count=req_count)
 
 
-async def resolve_targeted(target_title: Optional[str]) -> Optional[Dict[str, Any]]:
-    """3. Verify targeted book directly against National Library with title similarity check."""
-    if not target_title or len(target_title.strip()) < 2:
+async def _verify_single_candidate(
+    cand: Dict[str, Any],
+    edition_intent: Optional[str] = "GENERAL",
+) -> Optional[Dict[str, Any]]:
+    """Verify a single candidate book using hierarchical verification (Cache -> Core API -> National Library).
+
+    1. Cache Check: If edition_intent is provided, lookup Redis/in-memory cache.
+    2. Tier 1: Core API (YES24) search with 2.5s timeout.
+    3. Tier 2: National Library fallback with 3.5s timeout.
+    Enforces Track A (valid ISBN) or Track B (strict 3-condition verification for missing ISBN).
+    """
+    title = cand.get("title", "")
+    author = cand.get("author", "")
+    if not title or len(title.strip()) < 2:
         return None
 
-    clean_target = target_title.strip().strip("《》〈〉「」『』\"'")
+    clean_t = title.strip().strip("《》〈〉「」『』\"'")
+
+    # 1. Cache Check
+    cache_key: Optional[str] = None
+    if edition_intent is not None:
+        cache_key = get_biblio_cache_key(clean_t, author, edition_intent)
+        cached = await get_cached_biblio(cache_key)
+        if cached:
+            logger.info("[BIBLIO_CACHE_HIT] '%s' (%s)", clean_t, cache_key)
+            return cached
+
+    # 2. Tier 1: Core API (YES24) Search
+    core_client = get_core_api_client()
+    try:
+        core_items = await asyncio.wait_for(
+            core_client.search_books(query=clean_t, limit=5),
+            timeout=2.5,
+        )
+        for item in core_items:
+            cand_title = item.get("title", "")
+            cand_author = item.get("author", "")
+
+            # Title & Author Matching
+            if not _is_similar_title(clean_t, cand_title):
+                continue
+            if author and not _is_matching_author(author, cand_author):
+                continue
+
+            # Check Edition Intent Compatibility
+            desc = (item.get("description") or "").lower()
+            title_lower = cand_title.lower()
+            pub_lower = (item.get("publisher") or "").lower()
+
+            if edition_intent == "COMICS":
+                if not any(k in title_lower or k in desc for k in ["만화", "웹툰", "코믹"]):
+                    continue
+            elif edition_intent == "CHILDREN":
+                if not any(
+                    k in title_lower or k in desc for k in ["어린이", "아동", "동화", "그림책"]
+                ):
+                    continue
+            elif edition_intent == "ORIGINAL":
+                if not any(k in title_lower or k in desc for k in ["원서", "영문", "영어판"]):
+                    continue
+            elif edition_intent and edition_intent.startswith("PUB:"):
+                target_pub = edition_intent.split(":", 1)[1].lower()
+                if target_pub not in pub_lower:
+                    continue
+            elif edition_intent == "GENERAL":
+                # Demote explicit comic or children adaptations when general edition is requested
+                if any(k in title_lower for k in ["(만화)", "[만화]", "어린이 만화"]):
+                    continue
+
+            # ISBN Validation: Track A vs Track B
+            norm_isbn, isbn_status = normalize_and_validate_isbn(item.get("isbn"))
+            is_valid = False
+
+            if isbn_status in ("VALID_13", "CONVERTED_10"):
+                is_valid = True
+            elif isbn_status == "MISSING":
+                # Track B: Strict 3 conditions must be satisfied
+                has_pub = len((item.get("publisher") or "").strip()) >= 2
+                has_cover = str(item.get("cover_url") or "").startswith("http")
+                has_pages = (item.get("page_count") or 0) > 0
+                if has_pub and has_cover and has_pages:
+                    is_valid = True
+                else:
+                    logger.info(
+                        "[BIBLIO_REJECT] Core API candidate '%s' missing ISBN failed Track B (pub=%s, cover=%s, pages=%s)",
+                        cand_title,
+                        has_pub,
+                        has_cover,
+                        has_pages,
+                    )
+            else:
+                # INVALID ISBN
+                logger.info(
+                    "[BIBLIO_REJECT] Core API candidate '%s' has INVALID ISBN (%s)",
+                    cand_title,
+                    item.get("isbn"),
+                )
+
+            if is_valid:
+                verified_data = {
+                    "title": item.get("title", clean_t),
+                    "author": item.get("author", author or "저자 미상"),
+                    "publisher": item.get("publisher", ""),
+                    "isbn": norm_isbn or "",
+                    "cover_url": item.get("cover_url", ""),
+                    "page_count": item.get("page_count"),
+                    "genre": cand.get("genre"),
+                    "description": item.get("description") or cand.get("reason", ""),
+                    "reason": cand.get("reason", ""),
+                    "era": cand.get("era", "classic"),
+                    "verified": True,
+                    "source": "CORE_API",
+                }
+                if cache_key:
+                    await set_cached_biblio(cache_key, verified_data)
+                logger.info(
+                    "[BIBLIO_SUCCESS] Core API verified '%s' (ISBN: %s, Source: CORE_API)",
+                    clean_t,
+                    norm_isbn or "Track-B",
+                )
+                return verified_data
+    except Exception as e:
+        logger.info("[BIBLIO_FALLBACK] Core API search failed/timed out for '%s' (%s)", clean_t, e)
+
+    # 3. Tier 2: National Library Fallback Search
+    logger.info("[BIBLIO_FALLBACK] Falling back to National Library for '%s'", clean_t)
     nl_client = get_national_library_client()
     try:
-        biblio = await asyncio.wait_for(nl_client.search_book(title=clean_target), timeout=5.0)
-        if biblio and biblio.get("isbn"):
+        biblio = await asyncio.wait_for(
+            nl_client.search_book(title=clean_t, author=author),
+            timeout=3.5,
+        )
+        if biblio:
             found_title = biblio.get("title", "")
-            # Ensure retrieved title actually matches the target to prevent false positives
-            if not _is_similar_title(clean_target, found_title):
-                logger.warning(
-                    "Targeted book title mismatch: requested '%s', found '%s'",
-                    clean_target,
+            found_author = biblio.get("author", "")
+
+            # Title & Author Matching
+            if not _is_similar_title(clean_t, found_title):
+                logger.info(
+                    "[BIBLIO_REJECT] National Library title mismatch for '%s' (found '%s')",
+                    clean_t,
                     found_title,
                 )
                 return None
+            if author and not _is_matching_author(author, found_author):
+                logger.info(
+                    "[BIBLIO_REJECT] National Library author mismatch for '%s' (expected '%s', found '%s')",
+                    clean_t,
+                    author,
+                    found_author,
+                )
+                return None
 
-            logger.info(
-                "Direct targeted book verified: %s (ISBN %s)", clean_target, biblio.get("isbn")
-            )
-            return {
-                "title": biblio.get("title", clean_target),
-                "author": biblio.get("author", "저자 미상"),
-                "publisher": biblio.get("publisher", ""),
-                "isbn": biblio.get("isbn", ""),
-                "cover_url": biblio.get("cover_url", ""),
-                "page_count": biblio.get("page_count"),
-                "genre": biblio.get("genre"),
-                "description": f"요청하신 도서 《{biblio.get('title', clean_target)}》의 정식 서지 정보입니다.",
-                "reason": f"사용자께서 직접 서재 등록 및 추천을 요청하신 도서 《{biblio.get('title', clean_target)}》입니다.",
-                "era": "targeted",
-                "verified": True,
-                "source": biblio.get("source", "NATIONAL_LIBRARY"),
-            }
-    except Exception as e:
-        logger.warning("Targeted book verification failed for '%s' (%s)", clean_target, e)
+            # ISBN Validation: Track A vs Track B
+            norm_isbn, isbn_status = normalize_and_validate_isbn(biblio.get("isbn"))
+            is_valid = False
 
-    return None
-
-
-async def verify_candidates(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """4. Parallel verification of candidates via National Library (asyncio.gather)."""
-    nl_client = get_national_library_client()
-
-    async def _verify_one(cand: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        title = cand.get("title", "")
-        author = cand.get("author", "")
-        if not title:
-            return None
-        try:
-            biblio = await asyncio.wait_for(
-                nl_client.search_book(title=title, author=author), timeout=5.0
-            )
-            if biblio and biblio.get("isbn"):
-                found_title = biblio.get("title", "")
-                if not _is_similar_title(title, found_title):
-                    logger.warning(
-                        "Candidate title mismatch: expected '%s', got '%s'", title, found_title
+            if isbn_status in ("VALID_13", "CONVERTED_10"):
+                is_valid = True
+            elif isbn_status == "MISSING":
+                has_pub = len((biblio.get("publisher") or "").strip()) >= 2
+                has_cover = str(biblio.get("cover_url") or "").startswith("http")
+                has_pages = (biblio.get("page_count") or 0) > 0
+                if has_pub and has_cover and has_pages:
+                    is_valid = True
+                else:
+                    logger.info(
+                        "[BIBLIO_REJECT] National Library candidate '%s' failed Track B",
+                        clean_t,
                     )
-                    return None
-                return {
-                    "title": biblio.get("title", title),
-                    "author": biblio.get("author", author),
+            else:
+                logger.info(
+                    "[BIBLIO_REJECT] National Library candidate '%s' has INVALID ISBN (%s)",
+                    clean_t,
+                    biblio.get("isbn"),
+                )
+
+            if is_valid:
+                verified_data = {
+                    "title": biblio.get("title", clean_t),
+                    "author": biblio.get("author", author or "저자 미상"),
                     "publisher": biblio.get("publisher", ""),
-                    "isbn": biblio.get("isbn", ""),
+                    "isbn": norm_isbn or "",
                     "cover_url": biblio.get("cover_url", ""),
                     "page_count": biblio.get("page_count"),
-                    "genre": biblio.get("genre"),
+                    "genre": biblio.get("genre") or cand.get("genre"),
                     "description": biblio.get("description", cand.get("reason", "")),
                     "reason": cand.get("reason", ""),
                     "era": cand.get("era", "classic"),
                     "verified": True,
-                    "source": biblio.get("source", "NATIONAL_LIBRARY"),
+                    "source": "NATIONAL_LIBRARY",
                 }
-        except Exception as e:
-            logger.warning("Verification failed for '%s' (%s)", title, e)
+                if cache_key:
+                    await set_cached_biblio(cache_key, verified_data)
+                logger.info(
+                    "[BIBLIO_SUCCESS] National Library verified '%s' (ISBN: %s, Source: NATIONAL_LIBRARY)",
+                    clean_t,
+                    norm_isbn or "Track-B",
+                )
+                return verified_data
+    except Exception as e:
+        logger.warning("National Library verification failed for '%s' (%s)", clean_t, e)
+
+    logger.warning("[BIBLIO_REJECT] Verification completely failed for '%s'", clean_t)
+    return None
+
+
+async def resolve_targeted(
+    target_title: Optional[str],
+    edition_intent: Optional[str] = "GENERAL",
+) -> Optional[Dict[str, Any]]:
+    """3. Verify targeted book directly using hierarchical verification."""
+    if not target_title or len(target_title.strip()) < 2:
         return None
 
-    results = await asyncio.gather(*[_verify_one(c) for c in candidates], return_exceptions=True)
+    clean_target = target_title.strip().strip("《》〈〉「」『』\"'")
+    cand = {
+        "title": clean_target,
+        "author": "",
+        "reason": f"사용자께서 직접 서재 등록 및 추천을 요청하신 도서 《{clean_target}》입니다.",
+        "era": "targeted",
+    }
+    verified = await _verify_single_candidate(cand, edition_intent=edition_intent)
+    if verified:
+        verified["description"] = f"요청하신 도서 《{verified['title']}》의 정식 서지 정보입니다."
+        verified["reason"] = (
+            f"사용자께서 직접 서재 등록 및 추천을 요청하신 도서 《{verified['title']}》입니다."
+        )
+        verified["era"] = "targeted"
+        return verified
+    return None
+
+
+async def verify_candidates(
+    candidates: List[Dict[str, Any]],
+    edition_intent: Optional[str] = "GENERAL",
+) -> List[Dict[str, Any]]:
+    """4. Parallel hierarchical verification of candidates (asyncio.gather)."""
+    results = await asyncio.gather(
+        *[_verify_single_candidate(c, edition_intent=edition_intent) for c in candidates],
+        return_exceptions=True,
+    )
     verified: List[Dict[str, Any]] = []
     for r in results:
-        if isinstance(r, dict) and r.get("isbn"):
+        if isinstance(r, dict) and r.get("verified"):
             verified.append(r)
     return verified
 
@@ -721,6 +1172,7 @@ async def book_curator_node(state: AgentState) -> Dict[str, Any]:
     # Stage 1: Resolve Context
     ctx = resolve_context(state)
     requested_count = parse_requested_book_count(ctx["curator_request"])
+    edition_intent = extract_edition_intent(ctx["curator_request"])
 
     # Fetch trending open-book catalog
     open_book_text = await get_trending_books_text(limit=30)
@@ -729,7 +1181,7 @@ async def book_curator_node(state: AgentState) -> Dict[str, Any]:
     target_title, raw_candidates = await generate_candidates(ctx, open_book_text)
 
     # Stage 3 & 4: Resolve Targeted Book and Candidates in Parallel
-    targeted_task = resolve_targeted(target_title)
+    targeted_task = resolve_targeted(target_title, edition_intent=edition_intent)
 
     # Check if raw_candidates are already emergency fallback books
     is_fallback_candidates = any(c.get("fallback") for c in raw_candidates)
@@ -737,7 +1189,7 @@ async def book_curator_node(state: AgentState) -> Dict[str, Any]:
         targeted_book = await targeted_task
         verified_books = []
     else:
-        candidates_task = verify_candidates(raw_candidates)
+        candidates_task = verify_candidates(raw_candidates, edition_intent=edition_intent)
         targeted_book, verified_books = await asyncio.gather(targeted_task, candidates_task)
 
     # Stage 5: Assemble Verified Books (async)
