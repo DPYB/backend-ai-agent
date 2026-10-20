@@ -130,3 +130,21 @@ def find_first_kdc(text: str) -> Optional[str]:
     """Find the best matching KDC candidate or 5-digit supplementary code."""
     cands = extract_kdc_candidates(text)
     return cands[0] if cands else None
+
+
+def mask_isbn(isbn: Optional[str]) -> str:
+    """Mask ISBN for secure performance logging (e.g. '97911****3135').
+
+    Returns 'NONE' if isbn is None or empty.
+    Masks 13-digit, 10-digit, and general ISBN strings while preserving prefixes and suffixes.
+    """
+    if not isbn:
+        return "NONE"
+    clean = re.sub(r"\D", "", str(isbn))
+    if len(clean) == 13:
+        return f"{clean[:5]}****{clean[-4:]}"
+    elif len(clean) == 10:
+        return f"{clean[:3]}****{clean[-3:]}"
+    elif len(clean) >= 6:
+        return f"{clean[:3]}****{clean[-2:]}"
+    return "***"

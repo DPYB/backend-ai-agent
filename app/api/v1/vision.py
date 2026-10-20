@@ -4,6 +4,8 @@ import base64
 import io
 import json
 import logging
+import time
+import uuid
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
@@ -12,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from app.vision.barcode_service import barcode_service
 from app.vision.gemini_ocr_client import gemini_ocr_client
+from app.vision.isbn_utils import mask_isbn
 
 logger = logging.getLogger(__name__)
 
@@ -180,149 +183,229 @@ async def _handle_cover_ocr(image: UploadFile) -> OcrCoverResponse:
         )
     image_bytes = await image.read()
 
-    from app.infrastructure.national_library_client import get_national_library_client
+    t_start = time.perf_counter()
+    correlation_id = uuid.uuid4().hex[:8]
+    barcode_ms = 0.0
+    barcode_status = "NOT_FOUND"
+    vlm_ms = 0.0
+    vlm_status = "SKIPPED"
+    nl_api_ms = 0.0
+    nl_api_status = "SKIPPED"
+    final_isbn: Optional[str] = None
 
-    nl_client = get_national_library_client()
+    try:
+        from app.infrastructure.national_library_client import get_national_library_client
 
-    # -------------------------------------------------------------
-    # [1단계]: 바코드(ISBN) 무조건 최우선 탐색 (OpenCV 리사이즈 + 대비 + 4방향 회전)
-    # -------------------------------------------------------------
-    isbn = barcode_service.scan_isbn(image_bytes)
+        nl_client = get_national_library_client()
 
-    lines: List[str] = []
-    title_cand = ""
-    author_cand: List[str] = []
-    book_info: Optional[Dict[str, Any]] = None
+        # -------------------------------------------------------------
+        # [1단계]: 바코드(ISBN) 무조건 최우선 탐색 (OpenCV 리사이즈 + 대비 + 4방향 회전)
+        # -------------------------------------------------------------
+        t_barcode_start = time.perf_counter()
+        try:
+            isbn = barcode_service.scan_isbn(image_bytes)
+            barcode_status = "SUCCESS" if isbn else "NOT_FOUND"
+        except Exception:
+            barcode_status = "ERROR"
+            raise
+        finally:
+            barcode_ms = (time.perf_counter() - t_barcode_start) * 1000.0
 
-    if isbn:
-        # [핵심 방어]: ISBN 바코드가 잡혔으면 OCR은 쳐다보지도 말고 바로 도서관 API로 직행!
-        # 뒷표지의 추천사나 광고 문구("올해 최고의 감동!")가 제목으로 오인되는 것을 100% 원천 차단
-        logger.info("바코드 ISBN %s 검출 성공. OCR 텍스트 무시하고 서지 DB 직행.", isbn)
-        book_doc = await nl_client.fetch_and_fill_book_info_by_isbn(isbn)
-        kdc_cand: Optional[str] = None
-        if book_doc:
-            title_cand = book_doc.get("title", "")
-            if book_doc.get("author"):
-                author_cand = [str(book_doc.get("author"))]
-            kdc_cand = book_doc.get("kdc")
-            book_info = {
-                "title": book_doc.get("title"),
-                "author": book_doc.get("author"),
-                "isbn": isbn,
-                "kdc": kdc_cand,
-                "publisher": book_doc.get("publisher"),
-                "totalPages": book_doc.get("page_count") or 0,
-                "coverUrl": book_doc.get("cover_url"),
-                "genre": book_doc.get("genre"),
-            }
+        lines: List[str] = []
+        title_cand = ""
+        author_cand: List[str] = []
+        book_info: Optional[Dict[str, Any]] = None
+
+        if isbn:
+            final_isbn = isbn
+            # [핵심 방어]: ISBN 바코드가 잡혔으면 OCR은 쳐다보지도 말고 바로 도서관 API로 직행!
+            # 뒷표지의 추천사나 광고 문구("올해 최고의 감동!")가 제목으로 오인되는 것을 100% 원천 차단
+            logger.info("바코드 ISBN %s 검출 성공. OCR 텍스트 무시하고 서지 DB 직행.", isbn)
+            t_nl_start = time.perf_counter()
+            try:
+                book_doc = await nl_client.fetch_and_fill_book_info_by_isbn(isbn)
+                nl_api_status = "SUCCESS" if book_doc else "NOT_FOUND"
+            except Exception:
+                nl_api_status = "ERROR"
+                raise
+            finally:
+                nl_api_ms = (time.perf_counter() - t_nl_start) * 1000.0
+
+            kdc_cand: Optional[str] = None
+            if book_doc:
+                title_cand = book_doc.get("title", "")
+                if book_doc.get("author"):
+                    author_cand = [str(book_doc.get("author"))]
+                kdc_cand = book_doc.get("kdc")
+                book_info = {
+                    "title": book_doc.get("title"),
+                    "author": book_doc.get("author"),
+                    "isbn": isbn,
+                    "kdc": kdc_cand,
+                    "publisher": book_doc.get("publisher"),
+                    "totalPages": book_doc.get("page_count") or 0,
+                    "coverUrl": book_doc.get("cover_url"),
+                    "genre": book_doc.get("genre"),
+                }
+
+            return OcrCoverResponse(
+                isbn=isbn,
+                kdc=kdc_cand,
+                title_candidate=title_cand,
+                author_candidates=author_cand,
+                lines=[],
+                book=book_info,
+                already_registered=False,
+            )
+
+        # -------------------------------------------------------------
+        # [2단계]: 바코드 미검출 시에만 Gemini Vision OCR 가동
+        # -------------------------------------------------------------
+        logger.info("바코드 미검출. 표지/뒷표지 이미지로 간주하고 Gemini Vision OCR 가동.")
+        t_vlm_start = time.perf_counter()
+        try:
+            cover_result = await gemini_ocr_client.extract_cover_info(
+                image_bytes, image.content_type
+            )
+            vlm_status = "SUCCESS"
+        except Exception:
+            vlm_status = "ERROR"
+            raise
+        finally:
+            vlm_ms = (time.perf_counter() - t_vlm_start) * 1000.0
+
+        lines = cover_result.lines
+        title_cand = cover_result.title or ""
+        kdc_cand = cover_result.kdc
+        if cover_result.author:
+            author_cand = [cover_result.author]
+
+        # 2-1. Vision AI가 이미지 속 인쇄된 13자리 ISBN 숫자를 읽어낸 경우 (뒷표지 숫자 등)
+        if cover_result.isbn:
+            from app.vision.isbn_utils import find_first_valid_isbn
+
+            isbn = find_first_valid_isbn(cover_result.isbn)
+
+        if not isbn:
+            from app.vision.isbn_utils import find_first_valid_isbn
+
+            combined_text = f"{cover_result.raw_text}\n" + "\n".join(lines)
+            isbn = find_first_valid_isbn(combined_text)
+
+        # 2-2. KDC/5자리 부가기호가 아직 비어있다면 OCR 텍스트에서 보조 추출
+        if not kdc_cand:
+            from app.vision.isbn_utils import find_first_kdc
+
+            combined_text = f"{cover_result.raw_text}\n" + "\n".join(lines)
+            kdc_cand = find_first_kdc(combined_text)
+
+        # 2-3. Vision OCR에서 ISBN을 건졌다면, 뒷표지 텍스트(lines)는 무시하고 정식 ISBN 서지 조회
+        if isbn:
+            final_isbn = isbn
+            logger.info("Vision OCR에서 인쇄된 ISBN %s 검출 성공. 서지 DB 조회.", isbn)
+            t_nl_start = time.perf_counter()
+            try:
+                book_doc = await nl_client.fetch_and_fill_book_info_by_isbn(isbn)
+                nl_api_status = "SUCCESS" if book_doc else "NOT_FOUND"
+            except Exception:
+                nl_api_status = "ERROR"
+                raise
+            finally:
+                nl_api_ms = (time.perf_counter() - t_nl_start) * 1000.0
+
+            if book_doc:
+                doc_title = book_doc.get("title", "")
+                if doc_title and not doc_title.startswith("도서_"):
+                    title_cand = doc_title
+                elif not title_cand:
+                    title_cand = doc_title
+
+                if book_doc.get("author") and not str(book_doc.get("author")).startswith(
+                    "국립중앙도서관"
+                ):
+                    author_cand = [str(book_doc.get("author"))]
+                # VLM이 추출한 kdc가 우선, 없으면 국립도서관 KDC 활용
+                final_kdc = kdc_cand or book_doc.get("kdc")
+                book_info = {
+                    "title": title_cand or book_doc.get("title"),
+                    "author": (author_cand[0] if author_cand else book_doc.get("author")),
+                    "isbn": isbn,
+                    "kdc": final_kdc,
+                    "publisher": book_doc.get("publisher"),
+                    "totalPages": book_doc.get("page_count") or 0,
+                    "coverUrl": book_doc.get("cover_url"),
+                    "genre": book_doc.get("genre"),
+                }
+            return OcrCoverResponse(
+                isbn=isbn,
+                kdc=kdc_cand or (book_doc.get("kdc") if book_doc else None),
+                title_candidate=title_cand,
+                author_candidates=author_cand,
+                lines=lines,
+                book=book_info,
+                already_registered=False,
+            )
+
+        # 2-4. ISBN이 전혀 없는 앞표지 사진인 경우: 제목/저자 기반 국립도서관 검색
+        if title_cand:
+            search_author = author_cand[0] if author_cand else ""
+            t_nl_start = time.perf_counter()
+            try:
+                book_doc = await nl_client.search_book(title_cand, search_author)
+                nl_api_status = "SUCCESS" if book_doc else "NOT_FOUND"
+            except Exception:
+                nl_api_status = "ERROR"
+                raise
+            finally:
+                nl_api_ms = (time.perf_counter() - t_nl_start) * 1000.0
+
+            if book_doc:
+                isbn = book_doc.get("isbn")
+                if isbn:
+                    final_isbn = isbn
+                title_cand = book_doc.get("title", title_cand)
+                if book_doc.get("author"):
+                    author_cand = [str(book_doc.get("author"))]
+                final_kdc = kdc_cand or book_doc.get("kdc")
+                book_info = {
+                    "title": book_doc.get("title"),
+                    "author": book_doc.get("author"),
+                    "isbn": isbn,
+                    "kdc": final_kdc,
+                    "publisher": book_doc.get("publisher"),
+                    "totalPages": book_doc.get("page_count") or 0,
+                    "coverUrl": book_doc.get("cover_url"),
+                    "genre": book_doc.get("genre"),
+                }
 
         return OcrCoverResponse(
             isbn=isbn,
-            kdc=kdc_cand,
-            title_candidate=title_cand,
-            author_candidates=author_cand,
-            lines=[],
-            book=book_info,
-            already_registered=False,
-        )
-
-    # -------------------------------------------------------------
-    # [2단계]: 바코드 미검출 시에만 Gemini Vision OCR 가동
-    # -------------------------------------------------------------
-    logger.info("바코드 미검출. 표지/뒷표지 이미지로 간주하고 Gemini Vision OCR 가동.")
-    cover_result = await gemini_ocr_client.extract_cover_info(image_bytes, image.content_type)
-    lines = cover_result.lines
-    title_cand = cover_result.title or ""
-    kdc_cand = cover_result.kdc
-    if cover_result.author:
-        author_cand = [cover_result.author]
-
-    # 2-1. Vision AI가 이미지 속 인쇄된 13자리 ISBN 숫자를 읽어낸 경우 (뒷표지 숫자 등)
-    if cover_result.isbn:
-        from app.vision.isbn_utils import find_first_valid_isbn
-
-        isbn = find_first_valid_isbn(cover_result.isbn)
-
-    if not isbn:
-        from app.vision.isbn_utils import find_first_valid_isbn
-
-        combined_text = f"{cover_result.raw_text}\n" + "\n".join(lines)
-        isbn = find_first_valid_isbn(combined_text)
-
-    # 2-2. KDC/5자리 부가기호가 아직 비어있다면 OCR 텍스트에서 보조 추출
-    if not kdc_cand:
-        from app.vision.isbn_utils import find_first_kdc
-
-        combined_text = f"{cover_result.raw_text}\n" + "\n".join(lines)
-        kdc_cand = find_first_kdc(combined_text)
-
-    # 2-3. Vision OCR에서 ISBN을 건졌다면, 뒷표지 텍스트(lines)는 무시하고 정식 ISBN 서지 조회
-    if isbn:
-        logger.info("Vision OCR에서 인쇄된 ISBN %s 검출 성공. 서지 DB 조회.", isbn)
-        book_doc = await nl_client.fetch_and_fill_book_info_by_isbn(isbn)
-        if book_doc:
-            doc_title = book_doc.get("title", "")
-            if doc_title and not doc_title.startswith("도서_"):
-                title_cand = doc_title
-            elif not title_cand:
-                title_cand = doc_title
-
-            if book_doc.get("author") and not str(book_doc.get("author")).startswith(
-                "국립중앙도서관"
-            ):
-                author_cand = [str(book_doc.get("author"))]
-            # VLM이 추출한 kdc가 우선, 없으면 국립도서관 KDC 활용
-            final_kdc = kdc_cand or book_doc.get("kdc")
-            book_info = {
-                "title": title_cand or book_doc.get("title"),
-                "author": (author_cand[0] if author_cand else book_doc.get("author")),
-                "isbn": isbn,
-                "kdc": final_kdc,
-                "publisher": book_doc.get("publisher"),
-                "totalPages": book_doc.get("page_count") or 0,
-                "coverUrl": book_doc.get("cover_url"),
-                "genre": book_doc.get("genre"),
-            }
-        return OcrCoverResponse(
-            isbn=isbn,
-            kdc=kdc_cand or (book_doc.get("kdc") if book_doc else None),
+            kdc=kdc_cand or (book_info.get("kdc") if book_info else None),
             title_candidate=title_cand,
             author_candidates=author_cand,
             lines=lines,
             book=book_info,
             already_registered=False,
         )
-
-    # 2-4. ISBN이 전혀 없는 앞표지 사진인 경우: 제목/저자 기반 국립도서관 검색
-    if title_cand:
-        search_author = author_cand[0] if author_cand else ""
-        book_doc = await nl_client.search_book(title_cand, search_author)
-        if book_doc:
-            isbn = book_doc.get("isbn")
-            title_cand = book_doc.get("title", title_cand)
-            if book_doc.get("author"):
-                author_cand = [str(book_doc.get("author"))]
-            final_kdc = kdc_cand or book_doc.get("kdc")
-            book_info = {
-                "title": book_doc.get("title"),
-                "author": book_doc.get("author"),
-                "isbn": isbn,
-                "kdc": final_kdc,
-                "publisher": book_doc.get("publisher"),
-                "totalPages": book_doc.get("page_count") or 0,
-                "coverUrl": book_doc.get("cover_url"),
-                "genre": book_doc.get("genre"),
-            }
-
-    return OcrCoverResponse(
-        isbn=isbn,
-        kdc=kdc_cand or (book_info.get("kdc") if book_info else None),
-        title_candidate=title_cand,
-        author_candidates=author_cand,
-        lines=lines,
-        book=book_info,
-        already_registered=False,
-    )
+    finally:
+        total_ms = (time.perf_counter() - t_start) * 1000.0
+        masked_isbn = mask_isbn(final_isbn)
+        logger.info(
+            "[PERF_TIMING] op=cover_ocr correlation_id=%s total_ms=%.2f "
+            "barcode_ms=%.2f barcode_status=%s "
+            "vlm_ms=%.2f vlm_status=%s "
+            "nl_api_ms=%.2f nl_api_status=%s "
+            "isbn_masked=%s",
+            correlation_id,
+            total_ms,
+            barcode_ms,
+            barcode_status,
+            vlm_ms,
+            vlm_status,
+            nl_api_ms,
+            nl_api_status,
+            masked_isbn,
+        )
 
 
 @ocr_router.post("/sentences", response_model=OcrSentenceResponse)

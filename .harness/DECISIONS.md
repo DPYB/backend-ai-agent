@@ -5,6 +5,11 @@
 
 ---
 
+### 2026-10-20: Vision 및 도서 분류(classify-genre) 구간별 성능 계측 구현 (Phase 70)
+- **결정**: `_handle_cover_ocr` 및 `classify_genre` 엔드포인트에 `time.perf_counter()` 기반으로 전체 요청(`total_ms`)과 각 하위 구간(바코드 `barcode_ms`, VLM `vlm_ms`, 국립도서관 API `nl_api_ms`, 장르 분류 LLM `llm_ms`, KDC 폴백 `fallback_ms`)의 소요 시간을 분리 계측하고 세부 상태 코드(`SUCCESS`, `NOT_FOUND`, `SKIPPED`, `TIMEOUT`, `RATE_LIMIT`, `ERROR`)를 로깅. 8자리 `correlation_id`를 발행하고 `mask_isbn` 헬퍼로 ISBN 민감정보(`97911****3135`)를 마스킹. `try...finally` 구조로 예외/타임아웃 시에도 타이밍 유실 없이 기존 비즈니스 로직과 반환값을 100% 무간섭 보존.
+- **이유**: 도서 등록 시 바코드 스캔 vs Gemini Vision VLM 지연, 국립도서관 API 호출 지연, LLM 장르 분류 지연 등 병목 지점을 정밀 식별하고 모니터링하기 위함.
+- **영향**: 도서 등록/분류 파이프라인 구간별 지연 가시성 100% 확보, 마스킹을 통한 보안 강화, 신규 단위 테스트 10종 추가 및 297개 전체 단위 회귀 100% 그린 검증 완료.
+
 ### 2026-10-17: Core API(YES24) 우선 ➔ 국립중앙도서관 폴백 계층형 서지 검증 체계 구현 (Phase 69 Step 2)
 - **결정**: 1차 Core API(YES24 실서지, 2.5s 하드 타임아웃) 조회 후 검증 실패/지연 시 2차 국립중앙도서관 API(3.5s)로 무중단 폴백하는 계층형 검증 체인을 구축. ISBN-10 Modulo 11 검증 ➔ `978` + 9자리에 EAN-13 가중치(1, 3 교대)로 13번째 체크디지트를 신규 산출하는 변환기를 구현하고, ISBN을 4대 상태(`VALID_13`, `CONVERTED_10`, `INVALID`, `MISSING`)로 분류. 유효한 ISBN은 Track A로 합격시키며, ISBN 누락(`MISSING`) 시에는 출판사(>=2자), 표지 URL, 쪽수(>0) 3대 필수 요건을 모두 충족하는 경우에만 Track B로 대체 검증 합격. 서양식 성·이름 반전(`George Orwell` <-> `Orwell, George`) 지원 및 단순 글자 set 비교를 원천 금지하여 anagram 오탐 차단. 판본 의도(`GENERAL`, `COMICS`, `CHILDREN`, `ORIGINAL`, `PUB:*`)를 추출하여 캐시 키에 반영하고 상충 시 캐시 우회.
 - **이유**: 최신 실서지 및 고화질 표지/정확한 쪽수가 확보된 Core API(YES24)를 우선 활용하여 큐레이션 품질을 극대화하고, 외부 API 장애 시에도 국립도서관 안전망으로 서비스를 무중단 보장하며, ISBN 변환 오류 및 저자 성명 오탐/캐시 오염을 수학적·논리적으로 원천 차단하기 위함.
@@ -103,21 +108,9 @@
 - **이유**: 사용자의 자연어 대화 문장이 국립도서관 가짜 ISBN(`9791100000000`) 카드로 변질되던 결함 해결.
 - **영향**: 엉뚱한 대화가 도서 카드로 둔갑하지 않고 LLM의 정상 큐레이션 추론으로 연결.
 
-### 2026-09-20: 전 사서 도서 추천 마크다운 헤딩(`### 📖`) 규격화 및 서재(`library_books`) vs 추천(`recommended_books`) 분기
-- **결정**: 추천 도서는 오직 `### 📖 {도서명}` 헤딩만 허용하고 `📚` 이모지 추천 섹션 타이틀 사용 금지. 응답 페이로드에서 `recommended_books`와 `library_books` 구조화 데이터를 상호 배타적으로 분리.
-- **이유**: 사서가 서두에 `### 📚 누디가 건네는 책`을 출력하여 프론트엔드가 추천 카드를 '내 서재 보유 도서'로 오인 렌더링하던 결함 차단.
-- **영향**: 서재 조회와 도서 추천 UI 렌더링 100% 정합성 확보.
-
-### 2026-09-20: Supabase 원격 마이그레이션 인터락(`ALLOW_REMOTE_MIGRATION`)
-- **결정**: 원격 호스트 대상 `alembic upgrade` 실행 시 `ALLOW_REMOTE_MIGRATION=true` 환경변수가 없으면 `RuntimeError`로 즉시 차단하는 `migration_guard.py` 구축.
-- **이유**: 로컬 개발 중 실수로 팀 공용 Supabase DB(`agent` 스키마) 형상을 무단 수정하는 참사 방지.
-- **영향**: 로컬 마이그레이션 실수 방어. *(운영 주의: Dockerfile 기동 CMD에 `alembic upgrade head`가 포함되어 Cloud Run에서 상시 켜져 있으므로, 향후 1회성 마이그레이션 잡 분리 검토 필요)*
-
-### 2026-09-19: Alembic 기반 비동기 마이그레이션 체계 도입 및 `agent.alembic_version` 스키마 격리
-- **결정**: 수동 SQL 스크립트 대신 Alembic 비동기 마이그레이션을 도입하고, `version_table_schema="agent"`, `connect_args={"statement_cache_size": 0, "prepared_statement_cache_size": 0}`(포트 6543 Pooler 환경) 적용.
-- **이유**: Supabase 단일 공유 DB 환경에서 `core-api`(`core.alembic_version`)와의 충돌 방지 및 Transaction Pooler prepared statement 에러 방지.
-- **영향**: `agent` 스키마 DDL(벡터 테이블 `scrap_vector`, `debate_insights`, HNSW 인덱스)의 결정론적 버전 추적 가능.
-
+- ~~2026-09-20 전 사서 도서 추천 마크다운 헤딩(### 📖) 규격화 및 서재 vs 추천 분기~~ → [아카이브 보존(DECISIONS_2026-10.md)]
+- ~~2026-09-20 Supabase 원격 마이그레이션 인터락(ALLOW_REMOTE_MIGRATION)~~ → [아카이브 보존(DECISIONS_2026-10.md)]
+- ~~2026-09-19 Alembic 기반 비동기 마이그레이션 체계 도입 및 agent.alembic_version 격리~~ → [아카이브 보존(DECISIONS_2026-10.md)]
 - ~~2026-09-18 해커톤 체험 모드 게스트 JWT 기반 세션 격리 및 Role 분리 이중 서킷 브레이커~~ → [아카이브 보존(DECISIONS_2026-10.md)]
 - ~~2026-09-18 페르소나 간 어조 오염 방지: 전 모드 세션 파티셔닝 및 네거티브 가드~~ → [아카이브 보존(DECISIONS_2026-10.md)]
 - ~~2026-09-17 Yes24 실시간 SSR 베스트셀러 웹 스크래퍼 채택~~ → [아카이브 보존(DECISIONS_2026-10.md)]

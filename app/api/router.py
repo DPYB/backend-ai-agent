@@ -5,6 +5,7 @@ import json
 import logging
 import re
 import time
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 from uuid import UUID
@@ -1374,128 +1375,173 @@ async def classify_genre(
         map_kdc_to_genre,
     )
 
+    t_start = time.perf_counter()
+    correlation_id = uuid.uuid4().hex[:8]
+    llm_ms = 0.0
+    llm_status = "SKIPPED"
+    fallback_ms = 0.0
+    fallback_status = "SKIPPED"
+    res_source = "UNKNOWN"
+    res_genre = "UNKNOWN"
+
     clean_desc = (req.description or "").strip()[:1500]
 
     # Helper for safe KDC fallback execution
     def _execute_kdc_fallback(fallback_reason: str) -> ClassifyGenreResponse:
-        logger.warning(
-            "Gemini classify fallback triggered: reason=%s, title=%s",
-            fallback_reason,
-            req.title,
-        )
-        # Note: Do not pass long description to subject parameter to prevent misclassification
-        genre_code = map_kdc_to_genre(kdc=req.kdc or "", subject="", title=req.title)
-        fallback_genre_raw = _normalize_to_core_genre(genre_code)
-        fallback_genre = (
-            fallback_genre_raw if fallback_genre_raw in ALLOWED_CORE_GENRES else "GENERAL"
-        )
-        default_subject = genre_to_korean(fallback_genre)
-        return ClassifyGenreResponse(
-            genre=fallback_genre,  # type: ignore[arg-type]
-            subject=default_subject,
-            confidence=0.7,
-            source="KDC_FALLBACK",
-            reason=fallback_reason,
-        )
+        nonlocal fallback_ms, fallback_status, res_source, res_genre
+        t_fb_start = time.perf_counter()
+        try:
+            logger.warning(
+                "Gemini classify fallback triggered: reason=%s, title=%s",
+                fallback_reason,
+                req.title,
+            )
+            # Note: Do not pass long description to subject parameter to prevent misclassification
+            genre_code = map_kdc_to_genre(kdc=req.kdc or "", subject="", title=req.title)
+            fallback_genre_raw = _normalize_to_core_genre(genre_code)
+            fallback_genre = (
+                fallback_genre_raw if fallback_genre_raw in ALLOWED_CORE_GENRES else "GENERAL"
+            )
+            default_subject = genre_to_korean(fallback_genre)
+            resp = ClassifyGenreResponse(
+                genre=fallback_genre,  # type: ignore[arg-type]
+                subject=default_subject,
+                confidence=0.7,
+                source="KDC_FALLBACK",
+                reason=fallback_reason,
+            )
+            fallback_status = "SUCCESS"
+            res_source = resp.source
+            res_genre = str(resp.genre)
+            return resp
+        finally:
+            fallback_ms = (time.perf_counter() - t_fb_start) * 1000.0
 
-    # 1. Check API Key configuration
-    gemini_key = (
-        getattr(settings, "gemini_api_key", "").strip()
-        or getattr(settings, "gemini_fallback_api_key", "").strip()
-    )
-    if not gemini_key or gemini_key.startswith("your_") or len(gemini_key) < 10:
-        return _execute_kdc_fallback("FALLBACK_NO_API_KEY: Gemini API key not configured")
-
-    # 2. Prepare lightweight LLM call
-    light_model = getattr(settings, "gemini_light_model", "gemini-3.1-flash-lite")
-    user_payload_dict: Dict[str, Any] = {
-        "title": req.title,
-        "author": req.author or "",
-        "kdc_hint": req.kdc or "",
-        "isbn": req.isbn or "",
-        "description": clean_desc,
-    }
-    user_prompt = f"다음 도서 서지 데이터를 분석하여 장르와 세부 주제어를 분류해주세요:\n{json.dumps(user_payload_dict, ensure_ascii=False)}"
-
-    async def _call_llm_once() -> str:
-        from langchain_google_genai import ChatGoogleGenerativeAI
-
-        llm = ChatGoogleGenerativeAI(
-            model=light_model,
-            google_api_key=gemini_key,
-            temperature=0.1,
-            max_retries=0,
-        )
-        response = await llm.ainvoke(
-            [
-                HumanMessage(
-                    content=f"{CLASSIFY_GENRE_SYSTEM_PROMPT}\n\n[입력 도서 정보]\n{user_prompt}"
-                )
-            ]
-        )
-        if hasattr(response, "content") and response.content:
-            return str(response.content)
-        return ""
-
-    # 3. Call LLM with 2.0s hard timeout
     try:
-        raw_text = await asyncio.wait_for(_call_llm_once(), timeout=2.0)
-    except asyncio.TimeoutError:
-        return _execute_kdc_fallback("FALLBACK_TIMEOUT: LLM took > 2.0s")
-    except Exception as exc:
-        exc_str = str(exc)
-        if "429" in exc_str or "RESOURCE_EXHAUSTED" in exc_str:
-            return _execute_kdc_fallback(f"FALLBACK_RATE_LIMIT: {exc_str[:120]}")
-        return _execute_kdc_fallback(f"FALLBACK_LLM_ERROR: {exc_str[:120]}")
-
-    # 4. Parse LLM JSON output
-    cleaned_text = raw_text.strip()
-    if cleaned_text.startswith("```"):
-        cleaned_text = re.sub(r"^```(?:json)?\s*", "", cleaned_text)
-        cleaned_text = re.sub(r"\s*```$", "", cleaned_text)
-    cleaned_text = cleaned_text.strip()
-
-    parsed: Optional[Dict[str, Any]] = None
-    try:
-        parsed = json.loads(cleaned_text)
-    except Exception:
-        # Fallback regex search for JSON block
-        start = cleaned_text.find("{")
-        end = cleaned_text.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            try:
-                parsed = json.loads(cleaned_text[start : end + 1])
-            except Exception:
-                pass
-
-    if not parsed or not isinstance(parsed, dict):
-        return _execute_kdc_fallback(
-            f"FALLBACK_PARSE_ERROR: Invalid JSON response ({cleaned_text[:80]})"
+        # 1. Check API Key configuration
+        gemini_key = (
+            getattr(settings, "gemini_api_key", "").strip()
+            or getattr(settings, "gemini_fallback_api_key", "").strip()
         )
+        if not gemini_key or gemini_key.startswith("your_") or len(gemini_key) < 10:
+            return _execute_kdc_fallback("FALLBACK_NO_API_KEY: Gemini API key not configured")
 
-    raw_genre = str(parsed.get("genre", "")).strip().upper()
-    if raw_genre not in ALLOWED_CORE_GENRES and raw_genre not in ("ART", "SCIENCE"):
-        return _execute_kdc_fallback(
-            f"FALLBACK_INVALID_GENRE: LLM output '{raw_genre}' not in allowed genres"
+        # 2. Prepare lightweight LLM call
+        light_model = getattr(settings, "gemini_light_model", "gemini-3.1-flash-lite")
+        user_payload_dict: Dict[str, Any] = {
+            "title": req.title,
+            "author": req.author or "",
+            "kdc_hint": req.kdc or "",
+            "isbn": req.isbn or "",
+            "description": clean_desc,
+        }
+        user_prompt = f"다음 도서 서지 데이터를 분석하여 장르와 세부 주제어를 분류해주세요:\n{json.dumps(user_payload_dict, ensure_ascii=False)}"
+
+        async def _call_llm_once() -> str:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+
+            llm = ChatGoogleGenerativeAI(
+                model=light_model,
+                google_api_key=gemini_key,
+                temperature=0.1,
+                max_retries=0,
+            )
+            response = await llm.ainvoke(
+                [
+                    HumanMessage(
+                        content=f"{CLASSIFY_GENRE_SYSTEM_PROMPT}\n\n[입력 도서 정보]\n{user_prompt}"
+                    )
+                ]
+            )
+            if hasattr(response, "content") and response.content:
+                return str(response.content)
+            return ""
+
+        # 3. Call LLM with 2.0s hard timeout
+        t_llm_start = time.perf_counter()
+        try:
+            raw_text = await asyncio.wait_for(_call_llm_once(), timeout=2.0)
+            llm_status = "SUCCESS"
+        except asyncio.TimeoutError:
+            llm_status = "TIMEOUT"
+            return _execute_kdc_fallback("FALLBACK_TIMEOUT: LLM took > 2.0s")
+        except Exception as exc:
+            exc_str = str(exc)
+            if "429" in exc_str or "RESOURCE_EXHAUSTED" in exc_str:
+                llm_status = "RATE_LIMIT"
+                return _execute_kdc_fallback(f"FALLBACK_RATE_LIMIT: {exc_str[:120]}")
+            llm_status = "ERROR"
+            return _execute_kdc_fallback(f"FALLBACK_LLM_ERROR: {exc_str[:120]}")
+        finally:
+            llm_ms = (time.perf_counter() - t_llm_start) * 1000.0
+
+        # 4. Parse LLM JSON output
+        cleaned_text = raw_text.strip()
+        if cleaned_text.startswith("```"):
+            cleaned_text = re.sub(r"^```(?:json)?\s*", "", cleaned_text)
+            cleaned_text = re.sub(r"\s*```$", "", cleaned_text)
+        cleaned_text = cleaned_text.strip()
+
+        parsed: Optional[Dict[str, Any]] = None
+        try:
+            parsed = json.loads(cleaned_text)
+        except Exception:
+            # Fallback regex search for JSON block
+            start = cleaned_text.find("{")
+            end = cleaned_text.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                try:
+                    parsed = json.loads(cleaned_text[start : end + 1])
+                except Exception:
+                    pass
+
+        if not parsed or not isinstance(parsed, dict):
+            return _execute_kdc_fallback(
+                f"FALLBACK_PARSE_ERROR: Invalid JSON response ({cleaned_text[:80]})"
+            )
+
+        raw_genre = str(parsed.get("genre", "")).strip().upper()
+        if raw_genre not in ALLOWED_CORE_GENRES and raw_genre not in ("ART", "SCIENCE"):
+            return _execute_kdc_fallback(
+                f"FALLBACK_INVALID_GENRE: LLM output '{raw_genre}' not in allowed genres"
+            )
+        norm_genre = _normalize_to_core_genre(raw_genre)
+
+        raw_subject = str(parsed.get("subject", "")).strip()
+        subject = raw_subject[:15] if raw_subject else genre_to_korean(norm_genre)
+
+        confidence = 1.0
+        try:
+            conf_val = float(parsed.get("confidence", 1.0))
+            confidence = max(0.0, min(1.0, conf_val))
+        except (ValueError, TypeError):
+            confidence = 0.9
+
+        reason = str(parsed.get("reason", "")).strip() or None
+
+        resp = ClassifyGenreResponse(
+            genre=norm_genre,  # type: ignore[arg-type]
+            subject=subject,
+            confidence=confidence,
+            source="LLM",
+            reason=reason,
         )
-    norm_genre = _normalize_to_core_genre(raw_genre)
-
-    raw_subject = str(parsed.get("subject", "")).strip()
-    subject = raw_subject[:15] if raw_subject else genre_to_korean(norm_genre)
-
-    confidence = 1.0
-    try:
-        conf_val = float(parsed.get("confidence", 1.0))
-        confidence = max(0.0, min(1.0, conf_val))
-    except (ValueError, TypeError):
-        confidence = 0.9
-
-    reason = str(parsed.get("reason", "")).strip() or None
-
-    return ClassifyGenreResponse(
-        genre=norm_genre,  # type: ignore[arg-type]
-        subject=subject,
-        confidence=confidence,
-        source="LLM",
-        reason=reason,
-    )
+        res_source = resp.source
+        res_genre = str(resp.genre)
+        return resp
+    finally:
+        total_ms = (time.perf_counter() - t_start) * 1000.0
+        logger.info(
+            "[PERF_TIMING] op=classify_genre correlation_id=%s total_ms=%.2f "
+            "llm_ms=%.2f llm_status=%s "
+            "fallback_ms=%.2f fallback_status=%s "
+            "source=%s genre=%s",
+            correlation_id,
+            total_ms,
+            llm_ms,
+            llm_status,
+            fallback_ms,
+            fallback_status,
+            res_source,
+            res_genre,
+        )

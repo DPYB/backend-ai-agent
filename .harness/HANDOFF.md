@@ -2,55 +2,7 @@
 
 > 세션마다 무엇을 진행했고 다음 세션에서 무엇을 이어받아야 하는지 서술형으로 기록합니다.
 > **관리 규칙**: 본 문서에는 **최근 3~5개 세션만 유지**하며, 과거 세션 로그는 `.harness/archive/`에 보관합니다. 타 레포 내부 작업은 기록하지 않고 연동 링크만 참조합니다.
-> *(과거 세션 1~60 내역은 `.harness/archive/HANDOFF_2026-09.md` 참조)*
-
-
-
----
-
-## 세션 70 (2026-10-10)
-
-### 진행한 작업
-1. **브랜치 생성 및 작업 환경 정비**:
-   - `feat/debate-persona-pingpong` 브랜치 생성 및 체크아웃.
-2. **토론 공통 및 4종 페르소나 프롬프트 고도화 (Phase 66)**:
-   - `debate_common.py`에 `COMMON_DEBATE_TURN_RULES` 신설: 1) 단순 동조 탈피 및 팩트 그라운딩 기반 건설적 반론(독자 근거 인정 후 쟁점 좁히기, 없는 내용 날조 금지), 2) 완전 독립 1:1 토론 몰입(타 파트너 언급/연계 지침 원천 배제), 3) 개방형 꼬리물기 질문(Ping-Pong, 피날레/마무리 턴 질문 억제) 지침 구축.
-   - `debate_critic.py`, `debate_storyteller.py`, `debate_counselor.py`, `debate_observer.py`: 4종 페르소나 고유 어조별 팩트 기반 반론 화법, 1:1 몰입, 핑퐁 질문 및 예시 연동.
-   - `DEBATE_*_TURN_PROMPT` 조립(`compose`)에 `COMMON_DEBATE_TURN_RULES` 결합.
-3. **사서 말투 누수 코드 레벨 방어 및 격리 안전 가드 검증**:
-   - `nodes.py`에 `_strip_debate_animal_endings` 신설 및 `_sanitize_persona_output` 연동: 토론 모드 응답에서 사서 종결어미(`~냥`, `~두둥`, `~누누`, `~크크`) 코드 레벨 강제 소거 (단, `그냥`, `안녕` 등 일반 어휘 보호).
-   - `nodes.py`에서 `is_debate` 시 사서 추천 선위임(`curator_attempted`), 커스텀 사서 이름(`librarian_name`), 날씨(`weather_context`) 주입 완전 격리 검증.
-   - `DEBATE_TOOLS` 분리 바인딩 및 서재 도구 장르 간섭 부재 검증.
-4. **단위 테스트 보강 및 품질 검증**:
-   - `tests/unit/test_debate_pingpong.py` 신규 테스트 7종 작성: 공통 턴 규칙 연동, 시작 문구 다양성/도서 정보 한계 인정, 4종 고유 어조 검증, 사서 추천 위임 차단, 사서 이름/날씨/컨텍스트 요약 격리, 오프닝/턴 프롬프트 분기, 피날레 질문 억제, 자연어 마무리 오탐 방지 검증.
-   - `tests/unit/test_debate_isolation.py` 사서 어미 소거 및 명사/부사 오탐 방지 테스트 1종 추가.
-   - 전체 247개 단위 테스트 100% 그린 (`247 passed in 16.90s`), ruff check & format 통과, mypy 통과.
-5. **하네스 문서 갱신 및 롤링 아카이빙**:
-   - 세션 65 롤링 아카이빙(`archive/HANDOFF_2026-10.md`), `STATE.md`, `PLAN.md`, `DECISIONS.md` 갱신.
-
-### 다음 세션에서 할 일
-- **Phase 66 PR 생성 및 develop 머지 지원**: 완료 (세션 70 머지 완료).
-
----
-
-## 세션 71 (2026-10-15)
-
-### 진행한 작업
-1. **에이전트 독립 추출 마이그레이션 가이드 수립**:
-   - LangGraph, 8종 페르소나, RAG, 도서 큐레이션, 실시간 스트리밍 에이전트 코어와 비-에이전트(Vision, 리포트) 간 분리 경계 정의.
-   - 새 프로젝트용 파일 인벤토리, 경량화 `pyproject.toml` (무거운 C-라이브러리 `libzbar0`, `pyzbar`, `opencv` 전면 배제), `.env` 명세 및 15개 핵심 테스트 파일 매핑.
-2. **Clova OCR 레거시 잔재 전면 제거 및 Gemini Vision 단일화 (Phase 67)**:
-   - `app/vision/clova_ocr_client.py` 하위 호환 리다이렉트 파일 완전 삭제.
-   - `app/vision/gemini_ocr_client.py` 및 `app/vision/__init__.py`에서 `ClovaOcrClient`, `ClovaOcrResult`, `clova_ocr_client` 레거시 별칭 완전 제거.
-   - `app/core/config.py`에서 `naver_clova_api_url`, `naver_clova_secret_key` 미사용 환경변수 필드 제거.
-   - `tests/unit/test_vision.py`에서 `test_clova_alias_compatibility` 및 별칭 타입 단언 제거.
-   - `AGENTS.md`, `.harness/ARCHITECTURE.md`, `README.md`에서 Clova 언급 전면 제거 및 Google Gemini Flash Vision 단일 체계로 일원화.
-3. **품질 검증**:
-   - `tests/unit/test_vision.py` 17개 단위 테스트 100% 그린 (`17 passed in 2.82s`).
-   - 전체 단위 회귀 100% 그린, ruff check & format 통과, mypy 통과, `scripts/check_harness.py` 통과.
-
-### 다음 세션에서 할 일
-- **Phase 67 PR 생성 및 develop 머지 지원**: 완료.
+> *(과거 세션 1~71 내역은 `.harness/archive/HANDOFF_2026-10.md` 참조)*
 
 ---
 
@@ -127,3 +79,45 @@
 ### 다음 세션에서 할 일
 - **Phase 69 Step 2 변경 사항 검토 보고 및 PR 생성**:
   - 사용자에게 변경 사항 최종 보고 후 승인 하에 PR 생성.
+
+---
+
+## 세션 75 (2026-10-20)
+
+### 진행한 작업
+1. **웹 프런트엔드 장르 라벨 다국어 연동 완료**:
+   - 도서 등록 화면에서 장르 Enum이 raw 영문으로 노출되던 문제를 다국어 체계와 연동하여 한국어(`기술과학 (건강/의학)`), 영어(`Technology / Science`) 분기 렌더링으로 정비 ([PR #181](https://github.com/DPYB/frontend-reader-web/pull/181) 머지 완료 참조).
+2. **Phase 2 성능 계측 설계 및 비기능 원칙 수립**:
+   - 도서 등록 지연 구간 분석: 바코드 스캔 vs Gemini Vision VLM 지연, 국립도서관 API 중복 호출, 대형서점 1차 병렬 및 2차 직렬 fallback 구간 식별.
+   - 계측 설계: 전체 요청 시간과 개별 하위 시간 분리, 상태 코드(`SUCCESS`, `CACHE_HIT`, `TIMEOUT`, `SKIPPED`) 세분화, 마스킹 ISBN(`97911****3135`) 및 correlation_id 연계 규격 수립.
+   - 무간섭 원칙: `try...finally`로 감싸 기존 비즈니스 로직, 반환값, 타임아웃, 예외 전파 100% 보존.
+3. **타 서비스 작업 트리 격리 및 보호**:
+   - 코어 API 서비스가 팀원의 별도 작업 브랜치(`feat/scrap-presigned-url`) 진행 중임을 확인하고 일체 수정 없이 안전하게 격리 보호.
+
+### 다음 세션에서 할 일
+- **Phase 70 1차 구현 착수 (`backend-ai-agent` 단독)**: 완료 (세션 76).
+
+---
+
+## 세션 76 (2026-10-20)
+
+### 진행한 작업
+1. **ISBN 민감정보 마스킹 유틸리티 구현 (`app/vision/isbn_utils.py`)**:
+   - `mask_isbn` 함수 신설: 13자리(`97911****3135`), 10자리(`893****607`), 미인식(`NONE`), 비정규(`***`) 마스킹 규격 정립.
+2. **Vision 표지/바코드 OCR 구간별 성능 계측 (`app/api/v1/vision.py`)**:
+   - `_handle_cover_ocr`에 `time.perf_counter()` 기반으로 전체 요청(`total_ms`), 바코드 스캔(`barcode_ms`), Gemini Vision VLM(`vlm_ms`), 국립도서관 API(`nl_api_ms`) 구간 분리 계측.
+   - 바코드 성공 시 VLM 스킵(`vlm_status=SKIPPED`, `vlm_ms=0.00`) 및 세부 상태 코드(`SUCCESS`, `NOT_FOUND`, `SKIPPED`, `ERROR`) 로깅.
+   - 8자리 `correlation_id` 및 `isbn_masked` 연동, `try...finally`로 예외 전파 및 비즈니스 로직 100% 무간섭 보존.
+3. **도서 장르 분류 API 구간별 성능 계측 (`app/api/router.py`)**:
+   - `POST /api/v1/classify-genre`에서 전체 요청(`total_ms`), LLM 호출(`llm_ms`), KDC 폴백(`fallback_ms`) 분리 계측.
+   - 세부 상태 코드(`SUCCESS`, `TIMEOUT`, `RATE_LIMIT`, `ERROR`, `SKIPPED`) 및 `correlation_id`, `source`, `genre` 로깅.
+4. **신규 단위 테스트 작성 및 기존 테스트 안정화**:
+   - `tests/unit/test_vision_timing.py` 10종 작성: mask_isbn 변형, 바코드 성공/VLM 스킵, VLM 검출, 제목 검색 폴백, sleep(0.04s) 주입 타이밍 정밀도(>=35ms), 예외 발생 시 finally 로그 보존, classify_genre LLM/타임아웃/키부재/429 로깅 전수 검증.
+   - `tests/unit/test_vision.py`의 미모킹 국립도서관 외부 API 호출을 Mock 격리하여 불안정성 해소.
+5. **Tier 1/2 품질 검증**:
+   - Ruff 린트/포맷 통과, Mypy 타입 체크 99개 파일 100% 통과, 로컬 단위 회귀 297개 100% 그린 (`297 passed in 19.89s`), `scripts/check_harness.py` 하네스 검증 통과.
+
+### 다음 세션에서 할 일
+- **Phase 70 PR 생성 및 develop 머지 지원**:
+  - 사용자에게 변경 사항 최종 보고 후 승인 하에 `feat/perf-timing-logging` PR 생성.
+
