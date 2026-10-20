@@ -293,12 +293,28 @@ async def test_cover_ocr_endpoint_with_title_search_fallback():
             request_id="test-req-456",
         )
 
+        mock_book_doc = {
+            "title": "데미안",
+            "author": "헤르만 헤세",
+            "publisher": "민음사",
+            "isbn": "9788937460449",
+            "page_count": 240,
+            "cover_url": "https://example.com/demian.jpg",
+            "genre": "LITERATURE",
+            "kdc": "853",
+        }
+
         with (
             patch("app.vision.barcode_service.BarcodeService.scan_isbn", return_value=None),
             patch(
                 "app.vision.gemini_ocr_client.GeminiOcrClient.extract_cover_info",
                 new_callable=AsyncMock,
                 return_value=mock_cover_result,
+            ),
+            patch(
+                "app.infrastructure.national_library_client.NationalLibraryClient.search_book",
+                new_callable=AsyncMock,
+                return_value=mock_book_doc,
             ),
         ):
             response = await client.post("/api/v1/vision/ocr/covers", files=files)

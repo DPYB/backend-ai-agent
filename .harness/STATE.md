@@ -35,6 +35,10 @@
 
 ### 📌 최근 마일스톤 완료 내역
 
+- [x] **Phase 70: Vision 및 도서 분류(classify-genre) 구간별 성능 계측(Timing Logging) 구현**
+  - `_handle_cover_ocr`에 `time.perf_counter()` 기반 바코드(zbar), Gemini Vision VLM, 국립도서관 API 구간별 독립 계측 및 상태 코드(`SUCCESS`, `NOT_FOUND`, `SKIPPED`, `ERROR`) 로깅.
+  - `mask_isbn` 도입으로 민감정보 마스킹(`97911****3135`) 및 8자리 `correlation_id` 추적. `try...finally`로 비즈니스 로직/예외 무간섭 100% 보존.
+  - `POST /api/v1/classify-genre` LLM 및 KDC fallback 구간별 시간/상태 분리 계측, 신규 단위 테스트 10종(`test_vision_timing.py`) 작성 및 297개 전체 단위 회귀 100% 그린 검증 완료.
 - [x] **Phase 69 Step 2: Core API(YES24) 우선 ➔ 국립중앙도서관 폴백 계층형 서지 검증 체계 구현**
   - Core API `items` 파싱 정규화 및 통신 실패 시 가짜 목데이터 배제/빈 리스트(`[]`) 반환. ISBN-10 Modulo 11 검증 ➔ EAN-13 가중치 체크디지트 재계산 변환 및 4대 상태(`VALID_13`, `CONVERTED_10`, `INVALID`, `MISSING`) 분류.
   - 서양식 성·이름 반전(`George Orwell` <-> `Orwell, George`) 지원 및 단순 글자 set 오탐 차단. 판본 의도(`GENERAL`, `COMICS`, `CHILDREN`, `ORIGINAL`, `PUB:*`) 캐시 키 분리/우회, 1차 Core API(2.5s) -> 2차 국립도서관(3.5s) 무중단 폴백 및 Track A/B 검증 체인 구축 (신규 단위 테스트 22종 포함 전체 284개 100% 그린).
