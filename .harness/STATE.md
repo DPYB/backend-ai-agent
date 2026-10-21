@@ -35,6 +35,10 @@
 
 ### 📌 최근 마일스톤 완료 내역
 
+- [x] **Phase 70-1: 문장 스크랩 OCR(`_handle_sentence_ocr`) 구간별 성능 계측(Timing Logging) 구현**
+  - `_handle_sentence_ocr`에 `time.perf_counter()` 기반 크롭(`crop_ms`), Gemini Flash Vision VLM(`vlm_ms`), 전체 요청(`total_ms`) 독립 계측 및 세부 상태 코드(`SUCCESS`, `FALLBACK`, `SKIPPED`, `TIMEOUT`, `ERROR`) 로깅.
+  - 8자리 `correlation_id` 및 `text_len` 추적, `try...finally`로 비즈니스 로직/예외 무간섭 100% 보존.
+  - 신규 단위 테스트 7종(`test_vision_timing.py`) 추가 작성 및 304개 전체 단위 회귀 100% 그린 검증 완료.
 - [x] **Phase 70: Vision 및 도서 분류(classify-genre) 구간별 성능 계측(Timing Logging) 구현**
   - `_handle_cover_ocr`에 `time.perf_counter()` 기반 바코드(zbar), Gemini Vision VLM, 국립도서관 API 구간별 독립 계측 및 상태 코드(`SUCCESS`, `NOT_FOUND`, `SKIPPED`, `ERROR`) 로깅.
   - `mask_isbn` 도입으로 민감정보 마스킹(`97911****3135`) 및 8자리 `correlation_id` 추적. `try...finally`로 비즈니스 로직/예외 무간섭 100% 보존.

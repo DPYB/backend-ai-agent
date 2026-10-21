@@ -12,7 +12,7 @@ from httpx import ASGITransport, AsyncClient
 from PIL import Image
 
 from app.main import app
-from app.vision.gemini_ocr_client import CoverOcrResult
+from app.vision.gemini_ocr_client import CoverOcrResult, GeminiOcrResult
 from app.vision.isbn_utils import mask_isbn
 
 
@@ -442,3 +442,239 @@ async def test_classify_genre_timing_logging_rate_limit(caplog):
         assert "llm_status=RATE_LIMIT" in log
         assert "fallback_status=SUCCESS" in log
         assert "source=KDC_FALLBACK" in log
+
+
+# ---------------------------------------------------------------------------
+# 4. Sentence OCR Timing Logging 테스트 (Phase 70-1)
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_sentence_ocr_timing_logging_success(caplog):
+    """Verify sentence OCR timing logging on success without crop."""
+    caplog.set_level(logging.INFO)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        img_bytes = _create_dummy_image_bytes()
+        files = {"image": ("sentence.jpg", img_bytes, "image/jpeg")}
+
+        mock_ocr_result = GeminiOcrResult(
+            text="삶이 있는 한 희망은 있다.",
+            lines=["삶이 있는 한 희망은 있다."],
+            request_id="req-sent-1",
+        )
+
+        with patch(
+            "app.vision.gemini_ocr_client.GeminiOcrClient.extract_text",
+            new_callable=AsyncMock,
+            return_value=mock_ocr_result,
+        ):
+            resp = await client.post("/api/v1/vision/ocr/sentences", files=files)
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["text"] == "삶이 있는 한 희망은 있다."
+
+        timing_logs = [
+            r.message for r in caplog.records if "[PERF_TIMING] op=sentence_ocr" in r.message
+        ]
+        assert len(timing_logs) == 1
+        log = timing_logs[0]
+
+        assert "crop_status=SKIPPED" in log
+        assert "crop_ms=0.00" in log
+        assert "vlm_status=SUCCESS" in log
+        assert "text_len=15" in log
+        assert re.search(r"correlation_id=[0-9a-f]{8}", log) is not None
+        assert re.search(r"total_ms=\d+\.\d{2}", log) is not None
+        assert re.search(r"vlm_ms=\d+\.\d{2}", log) is not None
+
+
+@pytest.mark.asyncio
+async def test_sentence_ocr_timing_logging_with_crop(caplog):
+    """Verify sentence OCR timing logging when valid crop_box is provided."""
+    caplog.set_level(logging.INFO)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        img_bytes = _create_dummy_image_bytes()
+        files = {"image": ("sentence.jpg", img_bytes, "image/jpeg")}
+        data = {"crop_box": "[10, 10, 50, 50]"}
+
+        mock_ocr_result = GeminiOcrResult(
+            text="크롭된 문장 본문",
+            lines=["크롭된 문장 본문"],
+            request_id="req-sent-crop",
+        )
+
+        with patch(
+            "app.vision.gemini_ocr_client.GeminiOcrClient.extract_text",
+            new_callable=AsyncMock,
+            return_value=mock_ocr_result,
+        ):
+            resp = await client.post("/api/v1/vision/ocr/sentences", files=files, data=data)
+            assert resp.status_code == 200
+
+        timing_logs = [
+            r.message for r in caplog.records if "[PERF_TIMING] op=sentence_ocr" in r.message
+        ]
+        assert len(timing_logs) == 1
+        log = timing_logs[0]
+
+        assert "crop_status=SUCCESS" in log
+        assert "vlm_status=SUCCESS" in log
+        assert "text_len=9" in log
+        assert re.search(r"crop_ms=\d+\.\d{2}", log) is not None
+
+
+@pytest.mark.asyncio
+async def test_sentence_ocr_timing_logging_with_invalid_crop(caplog):
+    """Verify sentence OCR timing logging when invalid crop_box is provided (falls back to original)."""
+    caplog.set_level(logging.INFO)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        img_bytes = _create_dummy_image_bytes()
+        files = {"image": ("sentence.jpg", img_bytes, "image/jpeg")}
+        data = {"crop_box": "not_valid_json"}
+
+        mock_ocr_result = GeminiOcrResult(
+            text="원본 이미지 텍스트",
+            lines=["원본 이미지 텍스트"],
+            request_id="req-sent-fallback",
+        )
+
+        with patch(
+            "app.vision.gemini_ocr_client.GeminiOcrClient.extract_text",
+            new_callable=AsyncMock,
+            return_value=mock_ocr_result,
+        ):
+            resp = await client.post("/api/v1/vision/ocr/sentences", files=files, data=data)
+            assert resp.status_code == 200
+
+        timing_logs = [
+            r.message for r in caplog.records if "[PERF_TIMING] op=sentence_ocr" in r.message
+        ]
+        assert len(timing_logs) == 1
+        log = timing_logs[0]
+
+        assert "crop_status=FALLBACK" in log
+        assert "vlm_status=SUCCESS" in log
+
+
+@pytest.mark.asyncio
+async def test_sentence_ocr_timing_precision_with_delay(caplog):
+    """Verify sentence OCR timing precision with injected VLM sleep delay."""
+    caplog.set_level(logging.INFO)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        img_bytes = _create_dummy_image_bytes()
+        files = {"image": ("sentence.jpg", img_bytes, "image/jpeg")}
+
+        async def _delayed_extract(*args, **kwargs):
+            await asyncio.sleep(0.04)
+            return GeminiOcrResult(
+                text="지연 테스트 텍스트",
+                lines=["지연 테스트 텍스트"],
+                request_id="req-sent-delay",
+            )
+
+        with patch(
+            "app.vision.gemini_ocr_client.GeminiOcrClient.extract_text",
+            side_effect=_delayed_extract,
+        ):
+            resp = await client.post("/api/v1/vision/ocr/sentences", files=files)
+            assert resp.status_code == 200
+
+        timing_logs = [
+            r.message for r in caplog.records if "[PERF_TIMING] op=sentence_ocr" in r.message
+        ]
+        assert len(timing_logs) == 1
+        log = timing_logs[0]
+
+        v_match = re.search(r"vlm_ms=(\d+\.\d{2})", log)
+        t_match = re.search(r"total_ms=(\d+\.\d{2})", log)
+        assert v_match is not None and t_match is not None
+        assert float(v_match.group(1)) >= 35.0
+        assert float(t_match.group(1)) >= 35.0
+
+
+@pytest.mark.asyncio
+async def test_sentence_ocr_timing_logged_even_on_exception(caplog):
+    """Verify sentence OCR timing is faithfully logged when VLM raises an unhandled exception."""
+    caplog.set_level(logging.INFO)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        img_bytes = _create_dummy_image_bytes()
+        files = {"image": ("sentence.jpg", img_bytes, "image/jpeg")}
+
+        with patch(
+            "app.vision.gemini_ocr_client.GeminiOcrClient.extract_text",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("Vision Service Down"),
+        ):
+            with pytest.raises(RuntimeError, match="Vision Service Down"):
+                await client.post("/api/v1/vision/ocr/sentences", files=files)
+
+        timing_logs = [
+            r.message for r in caplog.records if "[PERF_TIMING] op=sentence_ocr" in r.message
+        ]
+        assert len(timing_logs) == 1
+        log = timing_logs[0]
+
+        assert "crop_status=SKIPPED" in log
+        assert "vlm_status=ERROR" in log
+        assert "text_len=0" in log
+
+
+@pytest.mark.asyncio
+async def test_sentence_ocr_timing_logging_timeout(caplog):
+    """Verify sentence OCR timing status=TIMEOUT when asyncio.TimeoutError occurs."""
+    caplog.set_level(logging.INFO)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        img_bytes = _create_dummy_image_bytes()
+        files = {"image": ("sentence.jpg", img_bytes, "image/jpeg")}
+
+        with patch(
+            "app.vision.gemini_ocr_client.GeminiOcrClient.extract_text",
+            new_callable=AsyncMock,
+            side_effect=asyncio.TimeoutError("VLM Timeout"),
+        ):
+            with pytest.raises(asyncio.TimeoutError):
+                await client.post("/api/v1/vision/ocr/sentences", files=files)
+
+        timing_logs = [
+            r.message for r in caplog.records if "[PERF_TIMING] op=sentence_ocr" in r.message
+        ]
+        assert len(timing_logs) == 1
+        log = timing_logs[0]
+
+        assert "vlm_status=TIMEOUT" in log
+        assert "text_len=0" in log
+
+
+@pytest.mark.asyncio
+async def test_sentence_ocr_timing_legacy_endpoint(caplog):
+    """Verify legacy endpoint /api/v1/ocr/sentences also correctly triggers timing logging."""
+    caplog.set_level(logging.INFO)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        img_bytes = _create_dummy_image_bytes()
+        files = {"image": ("sentence.jpg", img_bytes, "image/jpeg")}
+
+        mock_ocr_result = GeminiOcrResult(
+            text="레거시 엔드포인트 텍스트",
+            lines=["레거시 엔드포인트 텍스트"],
+            request_id="req-sent-legacy",
+        )
+
+        with patch(
+            "app.vision.gemini_ocr_client.GeminiOcrClient.extract_text",
+            new_callable=AsyncMock,
+            return_value=mock_ocr_result,
+        ):
+            resp = await client.post("/api/v1/ocr/sentences", files=files)
+            assert resp.status_code == 200
+
+        timing_logs = [
+            r.message for r in caplog.records if "[PERF_TIMING] op=sentence_ocr" in r.message
+        ]
+        assert len(timing_logs) == 1
+        assert "vlm_status=SUCCESS" in timing_logs[0]
+        assert "text_len=13" in timing_logs[0]

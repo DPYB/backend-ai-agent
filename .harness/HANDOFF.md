@@ -2,27 +2,7 @@
 
 > 세션마다 무엇을 진행했고 다음 세션에서 무엇을 이어받아야 하는지 서술형으로 기록합니다.
 > **관리 규칙**: 본 문서에는 **최근 3~5개 세션만 유지**하며, 과거 세션 로그는 `.harness/archive/`에 보관합니다. 타 레포 내부 작업은 기록하지 않고 연동 링크만 참조합니다.
-> *(과거 세션 1~71 내역은 `.harness/archive/HANDOFF_2026-10.md` 참조)*
-
----
-
-## 세션 72 (2026-10-16)
-
-### 진행한 작업
-1. **도서 장르 경량 분류 API 신설 및 Gemini Flash-Lite 연동 (`POST /api/v1/classify-genre`)**:
-   - `app/api/schemas.py`: Core API와 100% 일치하는 `GenreLiteral` 10종(`GENERAL`, `PHILOSOPHY`, `RELIGION`, `SOCIAL_SCIENCE`, `NATURAL_SCIENCE`, `TECHNOLOGY`, `ARTS`, `LANGUAGE`, `LITERATURE`, `HISTORY`) 확정.
-   - `ClassifyGenreRequest(title, author, description, kdc, isbn)`, `ClassifyGenreResponse(genre, subject, confidence, source, reason)` 스키마 확정.
-   - `app/api/router.py`: `settings.gemini_light_model` 기반 LangChain ChatGoogleGenerativeAI 바인딩, `max_retries=0`, `asyncio.wait_for(timeout=2.0)` 하드 타임아웃, `clean_desc` 1,500자 슬라이싱 적용.
-   - 429 Rate Limit, 타임아웃, 파싱/스키마 에러 시 500 없이 `map_kdc_to_genre` 200 OK 무중단 KDC 폴백(`source="KDC_FALLBACK"`, `reason` 실패 원인 기록).
-2. **Phase 60 통합 (KDC 513.8 철학 승격 및 5자리 부가기호 폴백 보강)**:
-   - `app/infrastructure/national_library_client.py`: `_normalize_to_core_genre` 헬퍼 신설 및 `CORE_GENRE_ALIASES`(`ART`->`ARTS`, `SCIENCE`->`NATURAL_SCIENCE`) SSOT 정규화.
-   - 5자리 부가기호(`EA_ADD_CODE`, 예: `03320` -> `320`) 기반 KDC 추출 및 `513.8` 심리/미술치료 철학 승격 정상 연동.
-3. **품질 검증**:
-   - `tests/unit/test_classify_genre.py` 신규 테스트 5종 작성: 정상 LLM 판정(《그림의 힘》 -> `PHILOSOPHY`), Gemini 429 Rate Limit 폴백, 2초 타임아웃 폴백, 파싱/불법 장르 폴백, KDC 513.8 및 5자리 부가기호 폴백 전수 통과.
-   - 전체 251개 단위 회귀 100% 그린 (`251 passed in 35.71s`), ruff check & format 통과, mypy 통과, `scripts/check_harness.py` 통과.
-
-### 다음 세션에서 할 일
-- **Phase 68 PR 생성 및 develop 머지 지원**: 완료 (PR #66 머지 완료, 커밋 `7ae875f`).
+> *(과거 세션 1~72 내역은 `.harness/archive/HANDOFF_2026-10.md` 참조)*
 
 ---
 
@@ -118,6 +98,22 @@
    - Ruff 린트/포맷 통과, Mypy 타입 체크 99개 파일 100% 통과, 로컬 단위 회귀 297개 100% 그린 (`297 passed in 19.89s`), `scripts/check_harness.py` 하네스 검증 통과.
 
 ### 다음 세션에서 할 일
-- **Phase 70 PR 생성 및 develop 머지 지원**:
-  - 사용자에게 변경 사항 최종 보고 후 승인 하에 `feat/perf-timing-logging` PR 생성.
+- **Phase 70-1 착수: 문장 스크랩 OCR(`_handle_sentence_ocr`) 구간별 성능 계측 구현 (`feat/perf-timing-sentence-ocr`)**: 완료 (세션 77).
+
+---
+
+## 세션 77 (2026-10-21)
+
+### 진행한 작업
+1. **문장 스크랩 OCR 구간별 성능 계측 구현 (Phase 70-1)**:
+   - `app/api/v1/vision.py`의 `_handle_sentence_ocr`에 `time.perf_counter()` 기반으로 전체 요청(`total_ms`), 크롭 처리(`crop_ms`), Gemini Flash Vision VLM(`vlm_ms`) 구간 분리 계측.
+   - 크롭 상태(`SUCCESS`, `FALLBACK`, `SKIPPED`, `ERROR`) 및 VLM 상태(`SUCCESS`, `TIMEOUT`, `ERROR`, `SKIPPED`), `text_len` 로깅.
+   - 8자리 `correlation_id` 발급 및 `try...finally` 구조로 예외 발생/타임아웃 시에도 타이밍 유실 없이 기존 비즈니스 로직 및 `OcrSentenceResponse` 반환 100% 무간섭 보존.
+2. **신규 단위 테스트 작성 및 품질 검증**:
+   - `tests/unit/test_vision_timing.py`에 문장 OCR 계측 테스트 7종 추가: 정상 호출(crop_status=SKIPPED), 유효한 crop_box(crop_status=SUCCESS), 잘못된 crop_box(crop_status=FALLBACK), sleep(0.04s) 주입 타이밍 정밀도(>=35ms), VLM 예외 발생 시 finally 로깅 보존, 타임아웃(vlm_status=TIMEOUT), 레거시 엔드포인트(`/api/v1/ocr/sentences`) 연동 전수 통과.
+   - Tier 1/2 검증: Ruff 린트/포맷 100% 통과, Mypy 타입 체크 99개 파일 100% 통과, 로컬 단위 회귀 304개 100% 그린 (`304 passed in 19.62s`).
+
+### 다음 세션에서 할 일
+- **Phase 70-1 PR 생성 및 develop 머지 지원**:
+  - 사용자에게 변경 사항 최종 보고 후 승인 하에 `feat/perf-timing-sentence-ocr` PR 생성.
 
