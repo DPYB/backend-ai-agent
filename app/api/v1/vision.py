@@ -1,5 +1,6 @@
 """Vision API endpoints for Barcode Scanning and Google Gemini Flash Vision OCR."""
 
+import asyncio
 import base64
 import io
 import json
@@ -163,16 +164,76 @@ async def _handle_sentence_ocr(
             detail="이미지 파일만 업로드할 수 있습니다.",
         )
     raw_bytes = await image.read()
-    image_bytes = _crop_image_if_requested(raw_bytes, crop_box)
-    result = await gemini_ocr_client.extract_text(image_bytes, image.content_type)
-    b64_str = base64.b64encode(image_bytes).decode("utf-8")
-    data_url = f"data:{image.content_type};base64,{b64_str}"
-    return OcrSentenceResponse(
-        text=result.text,
-        lines=result.lines,
-        scrap_image_url=data_url,
-        scrap_id=None,
-    )
+
+    t_start = time.perf_counter()
+    correlation_id = uuid.uuid4().hex[:8]
+    crop_ms = 0.0
+    crop_status = "SKIPPED"
+    vlm_ms = 0.0
+    vlm_status = "SKIPPED"
+    text_len = 0
+
+    try:
+        # 1. 크롭 처리 (crop_box가 요청된 경우)
+        if crop_box and crop_box.strip():
+            t_crop_start = time.perf_counter()
+            try:
+                image_bytes = _crop_image_if_requested(raw_bytes, crop_box)
+                crop_status = (
+                    "SUCCESS"
+                    if (image_bytes is not raw_bytes and image_bytes != raw_bytes)
+                    else "FALLBACK"
+                )
+            except Exception:
+                crop_status = "ERROR"
+                image_bytes = raw_bytes
+                raise
+            finally:
+                crop_ms = (time.perf_counter() - t_crop_start) * 1000.0
+        else:
+            image_bytes = raw_bytes
+
+        # 2. Gemini Flash Vision OCR VLM 텍스트 추출
+        t_vlm_start = time.perf_counter()
+        try:
+            result = await gemini_ocr_client.extract_text(image_bytes, image.content_type)
+            vlm_status = "SUCCESS"
+            text_len = len(result.text)
+        except asyncio.TimeoutError:
+            vlm_status = "TIMEOUT"
+            raise
+        except Exception as exc:
+            if "timeout" in str(exc).lower():
+                vlm_status = "TIMEOUT"
+            else:
+                vlm_status = "ERROR"
+            raise
+        finally:
+            vlm_ms = (time.perf_counter() - t_vlm_start) * 1000.0
+
+        b64_str = base64.b64encode(image_bytes).decode("utf-8")
+        data_url = f"data:{image.content_type};base64,{b64_str}"
+        return OcrSentenceResponse(
+            text=result.text,
+            lines=result.lines,
+            scrap_image_url=data_url,
+            scrap_id=None,
+        )
+    finally:
+        total_ms = (time.perf_counter() - t_start) * 1000.0
+        logger.info(
+            "[PERF_TIMING] op=sentence_ocr correlation_id=%s total_ms=%.2f "
+            "crop_ms=%.2f crop_status=%s "
+            "vlm_ms=%.2f vlm_status=%s "
+            "text_len=%d",
+            correlation_id,
+            total_ms,
+            crop_ms,
+            crop_status,
+            vlm_ms,
+            vlm_status,
+            text_len,
+        )
 
 
 async def _handle_cover_ocr(image: UploadFile) -> OcrCoverResponse:

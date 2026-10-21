@@ -212,3 +212,23 @@
 ### 다음 세션에서 할 일
 - **Phase 67 PR 생성 및 develop 머지 지원**: 완료.
 
+
+---
+
+## 세션 72 (2026-10-16)
+
+### 진행한 작업
+1. **도서 장르 경량 분류 API 신설 및 Gemini Flash-Lite 연동 (`POST /api/v1/classify-genre`)**:
+   - `app/api/schemas.py`: Core API와 100% 일치하는 `GenreLiteral` 10종(`GENERAL`, `PHILOSOPHY`, `RELIGION`, `SOCIAL_SCIENCE`, `NATURAL_SCIENCE`, `TECHNOLOGY`, `ARTS`, `LANGUAGE`, `LITERATURE`, `HISTORY`) 확정.
+   - `ClassifyGenreRequest(title, author, description, kdc, isbn)`, `ClassifyGenreResponse(genre, subject, confidence, source, reason)` 스키마 확정.
+   - `app/api/router.py`: `settings.gemini_light_model` 기반 LangChain ChatGoogleGenerativeAI 바인딩, `max_retries=0`, `asyncio.wait_for(timeout=2.0)` 하드 타임아웃, `clean_desc` 1,500자 슬라이싱 적용.
+   - 429 Rate Limit, 타임아웃, 파싱/스키마 에러 시 500 없이 `map_kdc_to_genre` 200 OK 무중단 KDC 폴백(`source="KDC_FALLBACK"`, `reason` 실패 원인 기록).
+2. **Phase 60 통합 (KDC 513.8 철학 승격 및 5자리 부가기호 폴백 보강)**:
+   - `app/infrastructure/national_library_client.py`: `_normalize_to_core_genre` 헬퍼 신설 및 `CORE_GENRE_ALIASES`(`ART`->`ARTS`, `SCIENCE`->`NATURAL_SCIENCE`) SSOT 정규화.
+   - 5자리 부가기호(`EA_ADD_CODE`, 예: `03320` -> `320`) 기반 KDC 추출 및 `513.8` 심리/미술치료 철학 승격 정상 연동.
+3. **품질 검증**:
+   - `tests/unit/test_classify_genre.py` 신규 테스트 5종 작성: 정상 LLM 판정(《그림의 힘》 -> `PHILOSOPHY`), Gemini 429 Rate Limit 폴백, 2초 타임아웃 폴백, 파싱/불법 장르 폴백, KDC 513.8 및 5자리 부가기호 폴백 전수 통과.
+   - 전체 251개 단위 회귀 100% 그린 (`251 passed in 35.71s`), ruff check & format 통과, mypy 통과, `scripts/check_harness.py` 통과.
+
+### 다음 세션에서 할 일
+- **Phase 68 PR 생성 및 develop 머지 지원**: 완료 (PR #66 머지 완료, 커밋 `7ae875f`).

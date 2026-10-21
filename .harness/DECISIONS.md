@@ -5,6 +5,11 @@
 
 ---
 
+### 2026-10-21: 문장 스크랩 OCR 구간별 성능 계측 구현 (Phase 70-1)
+- **결정**: `_handle_sentence_ocr` 엔드포인트에 `time.perf_counter()` 기반으로 전체 요청(`total_ms`), 크롭 처리(`crop_ms`), Gemini Flash Vision VLM(`vlm_ms`)의 소요 시간을 분리 계측하고 세부 상태 코드(`SUCCESS`, `FALLBACK`, `SKIPPED`, `TIMEOUT`, `ERROR`)를 로깅. 8자리 `correlation_id` 및 `text_len`을 함께 기록. `try...finally` 구조로 예외/타임아웃 시에도 타이밍 유실 없이 기존 비즈니스 로직과 `OcrSentenceResponse` 반환값을 100% 무간섭 보존.
+- **이유**: 책 문장 스크랩 시 이미지 크롭 지연 vs Gemini Vision VLM 지연 병목 지점을 정밀 분리 식별하고 도서 문장 수집의 안정성을 모니터링하기 위함.
+- **영향**: 문장 OCR 처리 파이프라인의 크롭/VLM 구간별 지연 가시성 100% 확보, 신규 단위 테스트 7종 추가 및 304개 전체 단위 회귀 100% 그린 검증 완료.
+
 ### 2026-10-20: Vision 및 도서 분류(classify-genre) 구간별 성능 계측 구현 (Phase 70)
 - **결정**: `_handle_cover_ocr` 및 `classify_genre` 엔드포인트에 `time.perf_counter()` 기반으로 전체 요청(`total_ms`)과 각 하위 구간(바코드 `barcode_ms`, VLM `vlm_ms`, 국립도서관 API `nl_api_ms`, 장르 분류 LLM `llm_ms`, KDC 폴백 `fallback_ms`)의 소요 시간을 분리 계측하고 세부 상태 코드(`SUCCESS`, `NOT_FOUND`, `SKIPPED`, `TIMEOUT`, `RATE_LIMIT`, `ERROR`)를 로깅. 8자리 `correlation_id`를 발행하고 `mask_isbn` 헬퍼로 ISBN 민감정보(`97911****3135`)를 마스킹. `try...finally` 구조로 예외/타임아웃 시에도 타이밍 유실 없이 기존 비즈니스 로직과 반환값을 100% 무간섭 보존.
 - **이유**: 도서 등록 시 바코드 스캔 vs Gemini Vision VLM 지연, 국립도서관 API 호출 지연, LLM 장르 분류 지연 등 병목 지점을 정밀 식별하고 모니터링하기 위함.
@@ -97,16 +102,8 @@
 - **이유**: 국립도서관의 비정형 권차 표기(`v, 1책`)로 인한 쪽수 파싱 실패율 최소화.
 - **영향**: 쪽수 보강률 대폭 향상, 최종 표지는 교보 CDN 0ms 폴백으로 이어지는 3단 안전망 확립.
 
-### 2026-09-20: 큐레이터 5단계 파이프라인 및 LLM 구조화 출력(`with_structured_output`) 단일화
-- **결정**: 큐레이터 노드를 5개 독립 함수(`resolve_context` ➔ `generate_candidates` ➔ `resolve_targeted` ➔ `verify_candidates` ➔ `assemble_curated_books`)로 분리하고, 의도 판별을 `CuratorResponse.target_title` Pydantic 스키마로 일원화.
-- **이유**: 정규식 덧붙이기 오탐의 악순환 및 LLM JSON 파싱 실패 차단.
-- **영향**: 특정 도서 지목/일반 추천/메타 질의 구분 정확도 향상, 미검증 도서는 `verified: False`, `isbn: ""` 계약 확립.
-- ~~2026-09-13 사서 노드에서 큐레이터 선위임 및 텍스트 파싱~~ → [Superseded by 2026-09-20 큐레이터 5단계 파이프라인 및 LLM 구조화 출력 단일화]
-
-### 2026-09-20: 메타 질의("이전 추천 책과 비슷한 책") 도서명 둔갑 방지 및 가짜 서지 폴백 차단
-- **결정**: 메타 키워드(`이전`, `아까`, `비슷`, `골라준` 등)나 조사(`이랑`, `으로` 등)가 남은 문장형 텍스트의 도서명 후보 추출을 차단하고, `national_library_client.py`의 미확인 찌꺼기에 대한 가짜 서지 생성을 금지.
-- **이유**: 사용자의 자연어 대화 문장이 국립도서관 가짜 ISBN(`9791100000000`) 카드로 변질되던 결함 해결.
-- **영향**: 엉뚱한 대화가 도서 카드로 둔갑하지 않고 LLM의 정상 큐레이션 추론으로 연결.
+- ~~2026-09-20 큐레이터 5단계 파이프라인 및 LLM 구조화 출력 단일화~~ → [아카이브 보존(DECISIONS_2026-10.md)]
+- ~~2026-09-20 메타 질의("이전 추천 책과 비슷한 책") 도서명 둔갑 방지 및 가짜 서지 폴백 차단~~ → [아카이브 보존(DECISIONS_2026-10.md)]
 
 - ~~2026-09-20 전 사서 도서 추천 마크다운 헤딩(### 📖) 규격화 및 서재 vs 추천 분기~~ → [아카이브 보존(DECISIONS_2026-10.md)]
 - ~~2026-09-20 Supabase 원격 마이그레이션 인터락(ALLOW_REMOTE_MIGRATION)~~ → [아카이브 보존(DECISIONS_2026-10.md)]
