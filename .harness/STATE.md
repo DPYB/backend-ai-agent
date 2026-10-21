@@ -35,6 +35,14 @@
 
 ### 📌 최근 마일스톤 완료 내역
 
+- [x] **Phase 70-3: Core API 추천 도서 서지 장르 누락 수정 (구현 완료, 커밋·푸시·PR 대기)**
+  - `core_api_client.py`에서 `genre`, `kdc`, `subject` 딕셔너리 정규화 보존.
+  - `curator_node.py`의 `_verify_single_candidate`에서 Core API 1차 검증 성공 시 표준 장르 정규화(`_normalize_to_core_genre`) 및 KDC 폴백(`map_kdc_to_genre`), 부재 시 `None` 유지 적용.
+  - 신규 단위 테스트 4종(`test_hierarchical_curator_verification.py`) 추가 (이전 실행 기준 비통합 308개 통과, Ruff·Mypy 통과). 커밋·푸시·PR 미실행.
+- [x] **Phase 70-2: 도서 추천 카드 응답 규격 점검 (분석 완료, E2E 검증 미완료)**
+  - 큐레이터 응답 ➔ 프론트엔드 카드 렌더링 ➔ 도서 등록 폼(`/register`) 전체 데이터 흐름 읽기 전용 점검 완료.
+  - `### 📖 {도서명}`, `cover_url`, `page_count` 규격 일치 확인 및 Core API 1차 검증 경로 `genre` 누락 결함 식별.
+  - 추천 카드 E2E 실연동 검증 및 카드 UI 계약 엔드투엔드 통합 테스트 공백 식별 (Milestone 4 미완료 유지).
 - [x] **Phase 70-1: 문장 스크랩 OCR(`_handle_sentence_ocr`) 구간별 성능 계측(Timing Logging) 구현**
   - `_handle_sentence_ocr`에 `time.perf_counter()` 기반 크롭(`crop_ms`), Gemini Flash Vision VLM(`vlm_ms`), 전체 요청(`total_ms`) 독립 계측 및 세부 상태 코드(`SUCCESS`, `FALLBACK`, `SKIPPED`, `TIMEOUT`, `ERROR`) 로깅.
   - 8자리 `correlation_id` 및 `text_len` 추적, `try...finally`로 비즈니스 로직/예외 무간섭 100% 보존.

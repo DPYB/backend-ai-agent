@@ -26,7 +26,12 @@ from pydantic import BaseModel, Field
 from app.core.config import settings
 from app.domain.graph.state import AgentState
 from app.infrastructure.core_api_client import get_core_api_client
-from app.infrastructure.national_library_client import clean_book_title, get_national_library_client
+from app.infrastructure.national_library_client import (
+    _normalize_to_core_genre,
+    clean_book_title,
+    get_national_library_client,
+    map_kdc_to_genre,
+)
 from app.infrastructure.redis_session import get_redis_session_manager
 from app.infrastructure.trending_books import get_trending_books_text
 
@@ -973,6 +978,18 @@ async def _verify_single_candidate(
                 )
 
             if is_valid:
+                raw_genre = item.get("genre")
+                if raw_genre and str(raw_genre).strip().upper() != "NONE":
+                    final_genre: Optional[str] = _normalize_to_core_genre(str(raw_genre))
+                elif item.get("kdc"):
+                    final_genre = map_kdc_to_genre(
+                        kdc=str(item.get("kdc")),
+                        subject=str(item.get("subject") or ""),
+                        title=clean_t,
+                    )
+                else:
+                    final_genre = cand.get("genre")
+
                 verified_data = {
                     "title": item.get("title", clean_t),
                     "author": item.get("author", author or "저자 미상"),
@@ -980,7 +997,7 @@ async def _verify_single_candidate(
                     "isbn": norm_isbn or "",
                     "cover_url": item.get("cover_url", ""),
                     "page_count": item.get("page_count"),
-                    "genre": cand.get("genre"),
+                    "genre": final_genre,
                     "description": item.get("description") or cand.get("reason", ""),
                     "reason": cand.get("reason", ""),
                     "era": cand.get("era", "classic"),
