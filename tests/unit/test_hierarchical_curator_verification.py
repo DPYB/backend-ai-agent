@@ -646,3 +646,164 @@ async def test_verify_candidate_core_api_all_invalid_falls_back_to_national_libr
     assert result is not None
     assert result["source"] == "NATIONAL_LIBRARY"
     assert result["isbn"] == "9788983711892"
+
+
+# ---------------------------------------------------------------------------
+# 6. Core API Verification Genre Preservation Tests (Phase 70-3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_verify_candidate_core_api_genre_preserved(monkeypatch):
+    """Verify standard genre Enum is preserved and normalized when Core API provides genre."""
+    from app.infrastructure.core_api_client import get_core_api_client
+
+    core_client = get_core_api_client()
+
+    # Case 1: Standard uppercase Enum from Core API
+    async def mock_core_search_lit(query, limit=5):
+        return [
+            {
+                "title": "데미안",
+                "author": "헤르만 헤세",
+                "publisher": "민음사",
+                "isbn": "9788937460012",
+                "cover_url": "https://images.example.com/demian.jpg",
+                "page_count": 240,
+                "genre": "LITERATURE",
+                "kdc": "853",
+            }
+        ]
+
+    monkeypatch.setattr(core_client, "search_books", mock_core_search_lit)
+    cand = {"title": "데미안", "author": "헤르만 헤세", "reason": "성장 소설"}
+    result = await _verify_single_candidate(cand, edition_intent=None)
+    assert result is not None
+    assert result["source"] == "CORE_API"
+    assert result["genre"] == "LITERATURE"
+
+    # Case 2: Lowercase / alias normalization (e.g. 'art' -> 'ARTS')
+    async def mock_core_search_art(query, limit=5):
+        return [
+            {
+                "title": "서양미술사",
+                "author": "에른스트 곰브리치",
+                "publisher": "열화당",
+                "isbn": "9788930101882",
+                "cover_url": "https://images.example.com/art.jpg",
+                "page_count": 688,
+                "genre": "art",
+            }
+        ]
+
+    monkeypatch.setattr(core_client, "search_books", mock_core_search_art)
+    cand_art = {"title": "서양미술사", "author": "에른스트 곰브리치", "reason": "미술 고전"}
+    result_art = await _verify_single_candidate(cand_art, edition_intent=None)
+    assert result_art is not None
+    assert result_art["genre"] == "ARTS"
+
+
+@pytest.mark.asyncio
+async def test_verify_candidate_core_api_kdc_fallback_when_genre_none(monkeypatch):
+    """Verify KDC mapping fallback works when Core API returns genre='NONE' or None."""
+    from app.infrastructure.core_api_client import get_core_api_client
+
+    core_client = get_core_api_client()
+
+    # Core API genre='NONE', but kdc='190' (철학)
+    async def mock_core_search_kdc(query, limit=5):
+        return [
+            {
+                "title": "정의란 무엇인가",
+                "author": "마이클 샌델",
+                "publisher": "김영사",
+                "isbn": "9788934939603",
+                "cover_url": "https://images.example.com/justice.jpg",
+                "page_count": 400,
+                "genre": "NONE",
+                "kdc": "190",
+                "subject": "서양철학",
+            }
+        ]
+
+    monkeypatch.setattr(core_client, "search_books", mock_core_search_kdc)
+    cand = {"title": "정의란 무엇인가", "author": "마이클 샌델", "reason": "정의와 윤리"}
+    result = await _verify_single_candidate(cand, edition_intent=None)
+    assert result is not None
+    assert result["source"] == "CORE_API"
+    assert result["genre"] == "PHILOSOPHY"
+
+
+@pytest.mark.asyncio
+async def test_verify_candidate_core_api_genre_none_when_no_genre_info(monkeypatch):
+    """Verify genre remains None when neither Core API genre nor KDC is available."""
+    from app.infrastructure.core_api_client import get_core_api_client
+
+    core_client = get_core_api_client()
+
+    async def mock_core_search_no_genre(query, limit=5):
+        return [
+            {
+                "title": "미지의 책",
+                "author": "알 수 없음",
+                "publisher": "독립출판",
+                "isbn": "9788937460012",  # Valid ISBN
+                "cover_url": "https://images.example.com/unknown.jpg",
+                "page_count": 100,
+                "genre": None,
+                "kdc": None,
+            }
+        ]
+
+    monkeypatch.setattr(core_client, "search_books", mock_core_search_no_genre)
+    cand = {"title": "미지의 책", "author": "알 수 없음", "reason": "새로운 시도"}
+    result = await _verify_single_candidate(cand, edition_intent=None)
+    assert result is not None
+    assert result["source"] == "CORE_API"
+    assert result["genre"] is None
+
+
+@pytest.mark.asyncio
+async def test_core_api_client_search_books_preserves_genre_and_kdc(monkeypatch):
+    """Verify CoreApiClient.search_books preserves genre, kdc, and subject fields from Core API response."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from app.infrastructure.core_api_client import CoreApiClient
+
+    client = CoreApiClient()
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "items": [
+            {
+                "bookId": "book-123",
+                "title": "데미안",
+                "author": "헤르만 헤세",
+                "publisher": "민음사",
+                "isbn": "9788937460012",
+                "coverUrl": "https://images.example.com/cover.jpg",
+                "totalPages": 240,
+                "genre": "LITERATURE",
+                "kdc": "853",
+                "subject": "소설",
+            }
+        ]
+    }
+
+    mock_http_client = AsyncMock()
+    mock_http_client.get = AsyncMock(return_value=mock_response)
+
+    async def mock_get_client():
+        return mock_http_client
+
+    monkeypatch.setattr(client, "_get_client", mock_get_client)
+
+    results = await client.search_books("데미안")
+    assert len(results) == 1
+    item = results[0]
+    assert item["genre"] == "LITERATURE"
+    assert item["kdc"] == "853"
+    assert item["subject"] == "소설"
+    assert item["page_count"] == 240
+    assert item["cover_url"] == "https://images.example.com/cover.jpg"

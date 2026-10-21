@@ -232,3 +232,28 @@
 
 ### 다음 세션에서 할 일
 - **Phase 68 PR 생성 및 develop 머지 지원**: 완료 (PR #66 머지 완료, 커밋 `7ae875f`).
+
+
+---
+
+## 세션 73 (2026-10-17)
+
+### 진행한 작업
+1. **도서 추천 권수 정책 유연화 (Phase 69 Step 1)**:
+   - `app/domain/graph/curator_node.py`: `CuratorResponse.recommendations` 제약을 `min_length=1, max_length=10`으로 완화.
+   - `parse_requested_book_count` 함수 신설: 기본 1권(원픽), 비교/탐색형("두세 권", "다양하게", "비교" 등) 2~3권, 명시적 숫자(아라비아/한글 수사) 최대 10권 파싱 지원.
+   - `CURATOR_SYSTEM_PROMPT` 유연화: "딱 2권" 하드코딩 제거 및 권수 가변 추천 지침 반영.
+2. **억지 고전 강제 주입 폴백 제거 및 정직한 서지 반환 (`assemble_curated_books`)**:
+   - `if len(final_books) < 2:` 고전 강제 주입 루프 완전 삭제.
+   - 국립중앙도서관 서지 검증(`verified=True`)을 통과한 도서만 반환하며, 10권 요청 중 4권만 성공 시 4권만 반환, 0권 성공 시 빈 리스트(`[]`) 정직하게 반환.
+3. **사서 노드 프롬프트 및 산출물 정제 개선 (`nodes.py`)**:
+   - `system_prompt` 조립 시 4권 이상 다수 추천일 경우 독자의 스크롤 압박 완화를 위해 간결한 번호 목록(`1. 《도서명》 - 저자: 핵심 이유`) 출력 지침 적용 (1~3권은 기존 `### 📖` 유지).
+   - 본문 서술 도서명과 `curated_books` 배열의 제목/개수 100% 일치 지침 강화.
+   - `_sanitize_persona_output`: `1. 《도서명》` 번호 목록 포맷 정합성 검증 추가 및 `curated_books` 부재 시 가짜 번호 목록 카드 마커 소거.
+4. **단위 테스트 작성 및 기존 테스트 갱신**:
+   - `tests/unit/test_curator_node.py` 신규 10종 작성: 기본 1권, 3권, 5권 요청, 10권 요청 중 4권 성공 시 4권 반환, 0권 성공 시 빈 리스트 반환, 본문 마크다운 제목/개수 일치 및 프론트 정규식 매칭 전수 통과.
+   - `tests/unit/test_curator_pipeline.py`: 기존 2권 고정 전제 테스트 9종을 유연한 권수 계약으로 갱신 (전체 28개 100% 통과).
+   - 전체 262개 단위 회귀 100% 그린 (`262 passed in 31.69s`), ruff check & format 통과, mypy 통과, `scripts/check_harness.py` 통과.
+
+### 다음 세션에서 할 일
+- **Phase 69 Step 2: Core API / YES24 도서 검색 1차 연동 및 후보 검증 체계 고도화**: 완료 (세션 74).

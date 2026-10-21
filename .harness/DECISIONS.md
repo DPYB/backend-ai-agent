@@ -5,6 +5,11 @@
 
 ---
 
+### 2026-10-21: Core API 추천 도서 서지 장르 보존 및 3단계 폴백 정책 (Phase 70-3)
+- **결정**: `CoreApiClient.search_books` 정규화 시 `genre`, `kdc`, `subject`를 딕셔너리에 보존하고, `curator_node._verify_single_candidate`의 Core API 서지 검증 성공 경로에서 1순위 Core API `genre` 표준 정규화(`_normalize_to_core_genre`), 2순위 `kdc` 기반 매핑(`map_kdc_to_genre`), 3순위 서지 정보 부재 시 `cand.get("genre")` 또는 `None` 유지(근거 없는 장르 억지 추론 배제)의 3단계 장르 바인딩을 적용.
+- **이유**: Phase 70-2 분석 결과 Core API 1차 서지 검증 성공 시 `genre`가 `None`으로 누락되어 프론트 도서 등록 폼으로 장르가 연계되지 못하던 결함을 해결하고, Core API 표준 `GenreType` 규격 정합성을 확보하기 위함.
+- **영향**: Core API 추천 도서의 표준 장르 연계 무결성 확보, 신규 회귀 테스트 4종 추가 (이전 실행 기준 308개 회귀 통과), 국립도서관 폴백 및 비즈니스 로직 무간섭 보존.
+
 ### 2026-10-21: 문장 스크랩 OCR 구간별 성능 계측 구현 (Phase 70-1)
 - **결정**: `_handle_sentence_ocr` 엔드포인트에 `time.perf_counter()` 기반으로 전체 요청(`total_ms`), 크롭 처리(`crop_ms`), Gemini Flash Vision VLM(`vlm_ms`)의 소요 시간을 분리 계측하고 세부 상태 코드(`SUCCESS`, `FALLBACK`, `SKIPPED`, `TIMEOUT`, `ERROR`)를 로깅. 8자리 `correlation_id` 및 `text_len`을 함께 기록. `try...finally` 구조로 예외/타임아웃 시에도 타이밍 유실 없이 기존 비즈니스 로직과 `OcrSentenceResponse` 반환값을 100% 무간섭 보존.
 - **이유**: 책 문장 스크랩 시 이미지 크롭 지연 vs Gemini Vision VLM 지연 병목 지점을 정밀 분리 식별하고 도서 문장 수집의 안정성을 모니터링하기 위함.
@@ -92,15 +97,9 @@
 - **이유**: Vision 모델의 장르 환각을 차단하고 도서관 정식 십진분류체계를 단일 진실 공급원(SSOT)으로 활용.
 - **영향**: `GEMINI_COVER_SYSTEM_PROMPT` 및 `extract_kdc_candidates` 다단계 안전망 구축, KDC 원본 누락 0건 달성.
 
-### 2026-09-21: 회원별 세션 네임스페이스 격리(`{effective_member_id}:{validated_uuid}:{persona}`)
-- **결정**: 서버(`router.py`)에서 인증된 `effective_member_id`를 강제 접두하여 Redis 키 및 LangGraph 스레드 격리, `ChatRequest.session_id` UUID 형식 엄격 검증.
-- **이유**: 타인의 세션 UUID를 엿보거나 임의 키를 주입하는 크로스 어카운트 세션 도청 및 Redis 키 인젝션 원천 차단.
-- **영향**: 회원 간, 게스트 간 대화 맥락 침범 0% 물리적 격리 달성.
+- ~~2026-09-21 회원별 세션 네임스페이스 격리({effective_member_id}:{validated_uuid}:{persona})~~ → [아카이브 보존(DECISIONS_2026-10.md)]
 
-### 2026-09-20: Google Books API 보조 클라이언트 연동 및 서지 메타데이터 다중 폴백
-- **결정**: 인프라 레이어(`GoogleBooksClient`)를 캡슐화하여 국립중앙도서관 서지 조립 시 `page_count`나 `cover_url` 누락 시에만 조건부 보조 호출(2.0s 타임아웃, 429 시 0ms 바이패스).
-- **이유**: 국립도서관의 비정형 권차 표기(`v, 1책`)로 인한 쪽수 파싱 실패율 최소화.
-- **영향**: 쪽수 보강률 대폭 향상, 최종 표지는 교보 CDN 0ms 폴백으로 이어지는 3단 안전망 확립.
+- ~~2026-09-20 Google Books API 보조 클라이언트 연동 및 서지 메타데이터 다중 폴백~~ → [아카이브 보존(DECISIONS_2026-10.md)]
 
 - ~~2026-09-20 큐레이터 5단계 파이프라인 및 LLM 구조화 출력 단일화~~ → [아카이브 보존(DECISIONS_2026-10.md)]
 - ~~2026-09-20 메타 질의("이전 추천 책과 비슷한 책") 도서명 둔갑 방지 및 가짜 서지 폴백 차단~~ → [아카이브 보존(DECISIONS_2026-10.md)]

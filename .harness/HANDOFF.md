@@ -2,31 +2,7 @@
 
 > 세션마다 무엇을 진행했고 다음 세션에서 무엇을 이어받아야 하는지 서술형으로 기록합니다.
 > **관리 규칙**: 본 문서에는 **최근 3~5개 세션만 유지**하며, 과거 세션 로그는 `.harness/archive/`에 보관합니다. 타 레포 내부 작업은 기록하지 않고 연동 링크만 참조합니다.
-> *(과거 세션 1~72 내역은 `.harness/archive/HANDOFF_2026-10.md` 참조)*
-
----
-
-## 세션 73 (2026-10-17)
-
-### 진행한 작업
-1. **도서 추천 권수 정책 유연화 (Phase 69 Step 1)**:
-   - `app/domain/graph/curator_node.py`: `CuratorResponse.recommendations` 제약을 `min_length=1, max_length=10`으로 완화.
-   - `parse_requested_book_count` 함수 신설: 기본 1권(원픽), 비교/탐색형("두세 권", "다양하게", "비교" 등) 2~3권, 명시적 숫자(아라비아/한글 수사) 최대 10권 파싱 지원.
-   - `CURATOR_SYSTEM_PROMPT` 유연화: "딱 2권" 하드코딩 제거 및 권수 가변 추천 지침 반영.
-2. **억지 고전 강제 주입 폴백 제거 및 정직한 서지 반환 (`assemble_curated_books`)**:
-   - `if len(final_books) < 2:` 고전 강제 주입 루프 완전 삭제.
-   - 국립중앙도서관 서지 검증(`verified=True`)을 통과한 도서만 반환하며, 10권 요청 중 4권만 성공 시 4권만 반환, 0권 성공 시 빈 리스트(`[]`) 정직하게 반환.
-3. **사서 노드 프롬프트 및 산출물 정제 개선 (`nodes.py`)**:
-   - `system_prompt` 조립 시 4권 이상 다수 추천일 경우 독자의 스크롤 압박 완화를 위해 간결한 번호 목록(`1. 《도서명》 - 저자: 핵심 이유`) 출력 지침 적용 (1~3권은 기존 `### 📖` 유지).
-   - 본문 서술 도서명과 `curated_books` 배열의 제목/개수 100% 일치 지침 강화.
-   - `_sanitize_persona_output`: `1. 《도서명》` 번호 목록 포맷 정합성 검증 추가 및 `curated_books` 부재 시 가짜 번호 목록 카드 마커 소거.
-4. **단위 테스트 작성 및 기존 테스트 갱신**:
-   - `tests/unit/test_curator_node.py` 신규 10종 작성: 기본 1권, 3권, 5권 요청, 10권 요청 중 4권 성공 시 4권 반환, 0권 성공 시 빈 리스트 반환, 본문 마크다운 제목/개수 일치 및 프론트 정규식 매칭 전수 통과.
-   - `tests/unit/test_curator_pipeline.py`: 기존 2권 고정 전제 테스트 9종을 유연한 권수 계약으로 갱신 (전체 28개 100% 통과).
-   - 전체 262개 단위 회귀 100% 그린 (`262 passed in 31.69s`), ruff check & format 통과, mypy 통과, `scripts/check_harness.py` 통과.
-
-### 다음 세션에서 할 일
-- **Phase 69 Step 2: Core API / YES24 도서 검색 1차 연동 및 후보 검증 체계 고도화**: 완료 (세션 74).
+> *(과거 세션 1~73 내역은 `.harness/archive/HANDOFF_2026-10.md` 참조)*
 
 ---
 
@@ -112,8 +88,31 @@
 2. **신규 단위 테스트 작성 및 품질 검증**:
    - `tests/unit/test_vision_timing.py`에 문장 OCR 계측 테스트 7종 추가: 정상 호출(crop_status=SKIPPED), 유효한 crop_box(crop_status=SUCCESS), 잘못된 crop_box(crop_status=FALLBACK), sleep(0.04s) 주입 타이밍 정밀도(>=35ms), VLM 예외 발생 시 finally 로깅 보존, 타임아웃(vlm_status=TIMEOUT), 레거시 엔드포인트(`/api/v1/ocr/sentences`) 연동 전수 통과.
    - Tier 1/2 검증: Ruff 린트/포맷 100% 통과, Mypy 타입 체크 99개 파일 100% 통과, 로컬 단위 회귀 304개 100% 그린 (`304 passed in 19.62s`).
+3. **Phase 70-1 머지 및 브랜치 정리**:
+   - PR #70(`feat/perf-timing-sentence-ocr` ➔ `develop`) 머지 완료 (커밋 `f98ae41`).
 
 ### 다음 세션에서 할 일
-- **Phase 70-1 PR 생성 및 develop 머지 지원**:
-  - 사용자에게 변경 사항 최종 보고 후 승인 하에 `feat/perf-timing-sentence-ocr` PR 생성.
+- **Phase 70-2 착수: 도서 추천 카드 응답 규격 점검 및 Milestone 4 준비**: 완료 (세션 78).
 
+---
+
+## 세션 78 (2026-10-21)
+
+### 진행한 작업
+1. **도서 추천 카드 응답 규격 점검 (Phase 70-2, 분석 완료)**:
+   - 큐레이터 응답 ➔ 프론트엔드 카드 렌더링 ➔ 도서 등록 폼(`/register`) 전체 데이터 흐름 읽기 전용 점검.
+   - 제목(`### 📖 {도서명}`), 표지 이미지(`cover_url`), 총 쪽수(`page_count`) 규격 일치 확인.
+   - Core API 1차 서지 검증 성공 경로에서 `genre`가 `None`으로 누락되는 유일한 결함 식별.
+   - 추천 카드 UI 계약 E2E 실연동 및 통합 테스트 공백 식별 (Milestone 4 미완료 유지).
+2. **Core API 추천 도서 서지 장르 보존 구현 (Phase 70-3, 구현 완료 / PR 대기)**:
+   - `app/infrastructure/core_api_client.py`: `search_books` 정규화 시 Core API 응답의 `genre`, `kdc`, `subject` 딕셔너리 보존.
+   - `app/domain/graph/curator_node.py`: `_verify_single_candidate`에서 Core API 성공 경로에 3단계 장르 바인딩 적용 (1순위 Core API `genre` 정규화, 2순위 `kdc` 매핑 폴백, 3순위 서지 부재 시 `None` 유지).
+   - `tests/unit/test_hierarchical_curator_verification.py`: 회귀 테스트 4종 추가 (Core API genre 제공, KDC 제공, 장르 부재 시 `None`, 국립도서관 폴백).
+   - 품질 검증 이력 (이전 세션 실측 기록): 단위 테스트 29개(0.50s), 전체 비통합 308개(63.24s) 100% 그린, Ruff, Mypy, 하네스 규격 통과 (커밋, 푸시, PR 미실행 상태).
+
+### 다음 세션에서 할 일
+- **Phase 70-3 변경 사항 최종 검토 및 사용자 승인 후 커밋/PR 생성 (`feat/fix-core-api-genre-curation`)**.
+- **Milestone 4 남은 점검 항목 착수**:
+  - 추천 카드 마커 `### 📖 {도서명}` 및 카드 메타데이터의 프론트엔드 E2E 실연동 검증
+  - 서재 도서 조회 분기(`### 📚 {도서명}`, `library_books`) 검증
+  - 토론 모드 팩트 그라운딩 및 페르소나 전환 정합성 검증
