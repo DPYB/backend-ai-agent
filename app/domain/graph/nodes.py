@@ -42,6 +42,123 @@ def extract_message_text(content: Any) -> str:
     return str(content)
 
 
+def check_recall_intent(message: str) -> bool:
+    """Return True if message asks to recall or references past book recommendations in this session.
+
+    Strictly requires book/recommendation context so general memory questions
+    like '너 나 기억나?' or '내가 한 말 기억나?' do NOT falsely trigger recall.
+    """
+    if not message:
+        return False
+    msg = message.strip().lower()
+
+    recall_patterns = [
+        # Explicit past recommendation references
+        r"(이전|전에|아까|지난번|저번|과거에?)\s*(에|에서)?\s*(추천|말씀|소개|알려)",
+        r"(이전|전에|아까|지난번|저번)\s*추천",
+        r"추천\s*(해준|했던|받은|해줬던|해\s*줬던)\s*(책|도서|작품|목록|이름|제목|뭐|알려|다시|기억)",
+        r"아까\s*(그\s*책|말한\s*책|추천)",
+        r"(추천한|추천해준)\s*거\s*(뭐|다시|알려)",
+        r"(추천한|추천해준)\s*책\s*(기억|뭐)",
+        # Strictly contextualized memory patterns requiring recommendation or book context
+        r"(추천|알려준|소개한|말한\s*책|그\s*책).*(기억나|기억해)",
+        r"(전에|이전에|아까)\s*(말한|이야기한)\s*(책|도서)",
+    ]
+    return any(re.search(p, msg) for p in recall_patterns)
+
+
+def check_new_recommendation_intent(message: str) -> bool:
+    """Return True if message asks for new book recommendation, exploration, or registration."""
+    if not message:
+        return False
+    msg = message.strip().lower()
+
+    # 1. Hybrid continuation / comparison keywords that explicitly request new/other books
+    hybrid_new_rec_patterns = [
+        r"말고\s*(다른|새로운|새|또|추천|골라|알려)",
+        r"(외에|이외에)\s*(다른|새로운|새|추천|골라)",
+        r"(비슷한|유사한)\s*(다른|새로운|책|도서|작품|추천|소설)",
+        r"대신\s*(다른|새로운|추천)",
+        r"말구\s*(다른|새로운)",
+        r"(그리고|그리구)\s*.*(비슷한|다른|새로운|추천|골라|알려)",
+    ]
+    if any(re.search(p, msg) for p in hybrid_new_rec_patterns):
+        return True
+
+    # 2. General recommendation keywords
+    recommend_keywords = [
+        "추천",
+        "골라줘",
+        "권해줘",
+        "어떤 책",
+        "읽을만한",
+        "책 찾아",
+        "뭘 읽",
+        "무슨 책",
+        "등록",
+        "결과로 보여",
+        "결과 보여",
+        "신간",
+        "최신 도서",
+        "읽고싶",
+        "읽고 싶",
+        "읽어보고싶",
+        "읽어보고 싶",
+        "읽어보려",
+        "읽어볼",
+        "읽어봐야",
+        "읽어봤으면",
+        "읽고파",
+        "책 좀",
+        "책 알려",
+        "뭐 읽",
+        "뭐 읽지",
+        "뭐 읽을",
+        "재밌는 책",
+        "좋은 책",
+        "재밌는거",
+        "흥미로운 책",
+        "괜찮은 책",
+    ]
+    has_kw = any(k in msg for k in recommend_keywords)
+    has_bracket = bool(re.search(r"[《〈「『](.*?)[》〉」』]", msg))
+
+    # Guard: If message contains a recall reference (e.g. "이전에 추천한 책 알려줘"),
+    # the word "추천" is part of the recall phrase, not a new recommendation request.
+    if has_kw and not has_bracket:
+        has_pure_recall = check_recall_intent(msg) and not any(
+            re.search(p, msg) for p in hybrid_new_rec_patterns
+        )
+        if has_pure_recall:
+            distinct_new_keywords = [
+                "골라줘",
+                "권해줘",
+                "어떤 책",
+                "읽을만한",
+                "책 찾아",
+                "뭘 읽",
+                "무슨 책",
+                "등록",
+                "신간",
+                "최신 도서",
+                "읽고싶",
+                "읽고 싶",
+                "재밌는",
+                "좋은 책",
+            ]
+            has_distinct_new = any(k in msg for k in distinct_new_keywords)
+            has_new_suffix = bool(re.search(r"(새로운|다른|하나\s*더|한\s*권\s*더|또\s*추천)", msg))
+            if not has_distinct_new and not has_new_suffix:
+                return False
+
+    return has_kw or has_bracket
+
+
+def is_recall_query(message: str) -> bool:
+    """Return True if message is a pure recall query without a new recommendation request."""
+    return check_recall_intent(message) and not check_new_recommendation_intent(message)
+
+
 class ResilientLLM:
     """Wrapper that tries candidates in sequence (Gemini Primary -> Gemini Secondary -> Light -> Gemma -> OpenAI -> Mock)."""
 
@@ -104,7 +221,7 @@ class ResilientLLM:
         system_text = "".join(str(m.content) for m in messages if isinstance(m, SystemMessage))
 
         # Check if bound tools contain routing tools and books are not yet curated in system_prompt
-        has_curated_books = "검증한 국립중앙도서관 실존 도서 목록" in system_text
+        has_curated_books = "실존 도서 목록" in system_text
         bound_tool_names = [getattr(t, "name", "") for t in self.bound_tools]
 
         # 1. Natural debate conclude trigger via tool call
@@ -126,10 +243,25 @@ class ResilientLLM:
                 ],
             )
 
+        # 1.5 Recall previously recommended books in mock mode
+        if is_recall_query(last_msg):
+            if "기록 없음" in system_text:
+                return AIMessage(
+                    content="이 대화에서는 이전 추천 기록을 확인할 수 없어요. 어떤 책을 찾으시는지 말씀해 주시면 새로 찾아드릴게요."
+                )
+            hist_matches = re.findall(r"- 《([^》]+)》", system_text)
+            if hist_matches:
+                books_str = ", ".join(f"《{t}》" for t in hist_matches)
+                return AIMessage(
+                    content=f"이 대화에서 제가 추천해 드렸던 도서는 {books_str}입니다."
+                )
+            return AIMessage(content="이 대화에서는 이전 추천 기록을 확인할 수 없어요.")
+
         # 2. Book curation request trigger via tool call
         if (
             "request_book_curation" in bound_tool_names
             and not has_curated_books
+            and not is_recall_query(last_msg)
             and any(
                 w in last_msg
                 for w in [
@@ -160,17 +292,36 @@ class ResilientLLM:
             )
 
         if has_curated_books:
-            titles = re.findall(r"- 《([^》]+)》", system_text)
+            prefix = ""
+            if "과거 추천 기록 (총" in system_text:
+                past_match = re.search(
+                    r"\[실제 이번 대화 과거 추천 기록.*?\]:\n((?:- 《[^》]+》\n?)+)",
+                    system_text,
+                )
+                if past_match:
+                    past_books = re.findall(r"- 《([^》]+)》", past_match.group(1))
+                    prefix = f"이전에 추천해 드린 도서는 {', '.join('《' + b + '》' for b in past_books)}였어요! "
+            elif "과거 기록 없음" in system_text:
+                prefix = "이 대화에서는 이전 추천 기록을 확인할 수 없지만, "
+
+            curated_section = (
+                system_text.split("[도서 큐레이터가 엄선 및 정식 서지 검증한 실존 도서 목록")[-1]
+                if "[도서 큐레이터가 엄선 및 정식 서지 검증한 실존 도서 목록" in system_text
+                else system_text
+            )
+            titles = re.findall(r"- 《([^》]+)》", curated_section)
             if len(titles) >= 4:
                 lines = [f"{i + 1}. 《{t}》" for i, t in enumerate(titles)]
                 return AIMessage(
-                    content="독자님의 마음에 닿을 수 있는 추천 도서 목록입니다:\n\n"
+                    content=prefix
+                    + "독자님의 마음에 닿을 수 있는 추천 도서 목록입니다:\n\n"
                     + "\n".join(lines)
                 )
             elif titles:
                 headings = [f"### 📖 {t}" for t in titles]
                 return AIMessage(
-                    content="독자님의 마음에 닿을 수 있는 책을 권해드립니다.\n\n"
+                    content=prefix
+                    + "독자님의 마음에 닿을 수 있는 책을 권해드립니다.\n\n"
                     + "\n\n".join(headings)
                 )
 
@@ -745,61 +896,40 @@ async def _run_persona_node(
             "is_concluded": True,
         }
 
+    # 1-0. Book Recall & Recommendation Intent Decomposition (Orthogonal States)
+    has_recall = not is_debate and check_recall_intent(last_user_msg)
+    has_new_rec = not is_debate and check_new_recommendation_intent(last_user_msg)
+    is_pure_recall = has_recall and not has_new_rec
+    is_hybrid = has_recall and has_new_rec
+
+    if is_pure_recall:
+        logger.info(
+            "Pure book recall intent detected in user message for persona %s. Bypassing curator_node pre-delegation.",
+            persona_id,
+        )
+
     # 1-1. Book Curation Pre-Delegation (Librarian mode: explicit recommendation/registration request)
-    # If user asks for book recommendation, registration, or result display and curated_books are not yet loaded,
+    # If user asks for new recommendation (pure new or hybrid) and curated_books are not yet loaded,
     # immediately delegate to curator_node to guarantee 100% verified National Library metadata.
-    # CRITICAL: If curator has already been attempted in this turn, NEVER re-delegate (prevents infinite loop).
+    # CRITICAL: Pure recall queries (is_pure_recall) NEVER delegate to curator_node.
     curator_attempted = bool(state.get("curator_attempted"))
-    if not is_debate and not state.get("curated_books") and not curator_attempted:
-        recommend_keywords = [
-            "추천",
-            "골라줘",
-            "권해줘",
-            "어떤 책",
-            "읽을만한",
-            "책 찾아",
-            "뭘 읽",
-            "무슨 책",
-            "등록",
-            "결과로 보여",
-            "결과 보여",
-            "신간",
-            "최신 도서",
-            # 독서 욕구 표현 (읽고 싶다 계열)
-            "읽고싶",
-            "읽고 싶",
-            "읽어보고싶",
-            "읽어보고 싶",
-            "읽어보려",
-            "읽어볼",
-            "읽어봐야",
-            "읽어봤으면",
-            "읽고파",
-            # 탐색/추천 요청
-            "책 좀",
-            "책 알려",
-            "뭐 읽",
-            "뭐 읽지",
-            "뭐 읽을",
-            "재밌는 책",
-            "좋은 책",
-            "재밌는거",
-            "흥미로운 책",
-            "괜찮은 책",
-        ]
-        has_recommend_intent = any(k in last_user_msg for k in recommend_keywords)
-        # Also check if user mentions specific book in brackets (e.g. 《프로젝트 헤일메리》 추천해줘)
-        has_bracket_book = bool(re.search(r"[《〈「『](.*?)[》〉」』]", last_user_msg))
-        if has_recommend_intent or has_bracket_book:
-            logger.info(
-                "Recommendation intent detected in user message for persona %s. Delegating to curator_node.",
-                persona_id,
-            )
-            return {
-                "active_persona": persona_id,
-                "curator_request": last_user_msg,
-                "target_unresolved": None,
-            }
+    if (
+        not is_debate
+        and not state.get("curated_books")
+        and not curator_attempted
+        and has_new_rec
+        and not is_pure_recall
+    ):
+        logger.info(
+            "Recommendation intent detected in user message for persona %s (hybrid=%s). Delegating to curator_node.",
+            persona_id,
+            is_hybrid,
+        )
+        return {
+            "active_persona": persona_id,
+            "curator_request": last_user_msg,
+            "target_unresolved": None,
+        }
 
     # Inject verified curated books if returned from curator_node
     curated_books = state.get("curated_books")
@@ -828,7 +958,7 @@ async def _run_persona_node(
             )
 
         system_prompt += (
-            f"\n\n[도서 큐레이터가 엄선 및 검증한 국립중앙도서관 실존 도서 목록 (총 {book_count}권)]\n"
+            f"\n\n[도서 큐레이터가 엄선 및 정식 서지 검증한 실존 도서 목록 (총 {book_count}권)]\n"
             f"{books_desc}\n\n"
             "지침: 위의 검증된 실존 도서를 당신 고유의 어조와 캐릭터 감성으로 독자에게 다정하게 소개해 주십시오.\n"
             "- [도서 추천 시 필수 출력 순서 및 구성 원칙 - 포맷 하이재킹 및 자판기식 출력 엄격 금지]:\n"
@@ -856,6 +986,66 @@ async def _run_persona_node(
             "국립중앙도서관 정식 서지 DB에서 정확히 확인하지 못했습니다. "
             f"답변 서두에 '말씀해주신 《{target_unresolved}》의 정식 서지 정보를 아쉽게도 찾지 못했어요'라는 취지의 다정한 안내를 전한 뒤, "
             "대신 엄선해 드린 위의 추천 도서를 소개하십시오."
+        )
+
+    # 1-2. Inject Recall Intent Instructions and Actual Recommended History Grounding
+    recommended_history = list(state.get("recommended_history") or [])
+    if is_pure_recall:
+        # Case A: Pure Recall Query (no new books requested, curator_node was bypassed)
+        if recommended_history:
+            history_list_str = "\n".join(f"- 《{title}》" for title in recommended_history)
+            system_prompt += (
+                f"\n\n[📢 사용자 발화 의도: 이전 추천 도서 순수 회상 질문]\n"
+                f"사용자가 이번 대화에서 이전에 추천받았던 도서를 묻고 있습니다.\n"
+                f"- [실제 이번 대화 추천 기록 (총 {len(recommended_history)}권)]:\n"
+                f"{history_list_str}\n"
+                f"- [답변 지침]:\n"
+                f"  * 반드시 위의 [실제 이번 대화 추천 기록]에 존재하는 도서만을 근거로 독자에게 다정하게 알려주십시오.\n"
+                f"  * 위 목록에 없는 도서(예: '모순', '데미안' 등)를 과거에 추천했던 것처럼 임의로 지어내거나 날조(환각)하지 마십시오.\n"
+                f"  * 새로운 책을 추천하려 하지 마시고, 이전에 추천했던 책을 상기시켜 주는 데 집중하십시오.\n"
+                f"  * 당신 고유의 캐릭터 어조와 온기를 담아 답변하십시오."
+            )
+        else:
+            system_prompt += (
+                "\n\n[📢 사용자 발화 의도: 이전 추천 도서 순수 회상 질문 - 기록 없음]\n"
+                "사용자가 이전에 추천받았던 도서를 묻고 있으나, **현재 대화 세션의 추천 기록(recommended_history)이 비어 있습니다**.\n"
+                "- [답변 지침]:\n"
+                "  * '이 대화에서는 이전 추천 기록을 확인할 수 없어요'라는 취지로 정직하고 솔직하게 안내하십시오.\n"
+                "  * 절대로 어떤 책(예: '모순', '데미안' 등)도 과거에 추천한 적이 있는 것처럼 지어내지 마십시오.\n"
+                "  * 새로운 대화 세션이 시작되었거나 이번 대화에서 아직 책을 추천해 드린 기록이 없음을 당신 고유의 캐릭터 어조로 친절하게 설명하십시오.\n"
+                "  * 사용자가 과거에 추천받은 적이 아예 없다고 단정하지 말고, '이 대화에서는 기록을 확인할 수 없다'는 사실만 정확히 전하십시오.\n"
+                "  * 원하신다면 새로운 책을 찾아드릴 수 있음을 덧붙여 대화를 부드럽게 이어가십시오."
+            )
+    elif is_hybrid:
+        # Case B: Hybrid Query (Recall past book + New book recommendation simultaneously)
+        if recommended_history:
+            history_list_str = "\n".join(f"- 《{title}》" for title in recommended_history)
+            system_prompt += (
+                f"\n\n[📢 사용자 발화 의도: 이전 추천 도서 회상 + 신규 추천 복합 질문]\n"
+                f"사용자가 '과거 추천 도서 회상'과 '새로운 도서 추천'을 동시에 요청했습니다.\n"
+                f"- [실제 이번 대화 과거 추천 기록 (총 {len(recommended_history)}권)]:\n"
+                f"{history_list_str}\n"
+                f"- [답변 지침 - 두 의도 엄격 분리]:\n"
+                f"  * 1) 과거 추천 회상: 위의 [실제 이번 대화 과거 추천 기록]에 있는 책을 독자에게 먼저 명확히 상기시켜 주십시오.\n"
+                f"  * 2) 신규 추천 소개: 그 후 큐레이터가 새로 엄선한 아래의 실존 추천 도서를 자연스럽게 연계하여 소개해 주십시오.\n"
+                f"  * [절대 금지]: 새로 엄선된 추천 도서를 예전에 추천했던 책으로 둔갑시키거나, 과거 목록에 없는 책을 예전에 추천했다고 날조하지 마십시오."
+            )
+        else:
+            system_prompt += (
+                "\n\n[📢 사용자 발화 의도: 이전 추천 도서 회상 + 신규 추천 복합 질문 - 과거 기록 없음]\n"
+                "사용자가 이전 추천 도서의 회상과 새로운 도서 추천을 함께 요청했으나, **현재 대화 세션의 이전 추천 기록(recommended_history)은 비어 있습니다**.\n"
+                "- [답변 지침]:\n"
+                "  * 1) 과거 기록 부재 고지: 답변 서두에 '이 대화에서는 이전 추천 기록을 확인할 수 없지만'이라는 사실을 정직하게 밝히십시오.\n"
+                "  * 2) 신규 추천 소개: 대신 독자님의 요청에 맞춰 이번에 새로 엄선한 아래의 실존 추천 도서를 소개해 주십시오.\n"
+                "  * [절대 금지]: 새로 추천하는 책을 마치 과거에 추천했던 책인 것처럼 말하거나, 없는 과거 책을 지어내지 마십시오."
+            )
+    elif recommended_history and not curated_books:
+        # Case C: General conversation with previous recommendation history
+        history_list_str = "\n".join(f"- 《{title}》" for title in recommended_history)
+        system_prompt += (
+            f"\n\n[참고: 이번 대화에서 이미 추천된 도서 목록]:\n"
+            f"{history_list_str}\n"
+            "위 도서들은 이번 대화에서 독자에게 이미 추천된 책들입니다. 대화 맥락 유지에 참고하십시오."
         )
 
     # 2. Inject finale & debate wrap-up instructions if concluding
@@ -896,6 +1086,8 @@ async def _run_persona_node(
             excluded_tools.update({"search_recent_books", "request_book_curation"})
         if curator_attempted:
             excluded_tools.add("request_book_curation")
+        if is_pure_recall:
+            excluded_tools.add("request_book_curation")
         if excluded_tools:
             active_tools = [t for t in base_tools if getattr(t, "name", "") not in excluded_tools]
 
@@ -924,7 +1116,12 @@ async def _run_persona_node(
                 "is_concluded": True,
             }
 
-        if call_name == "request_book_curation" and not curated_books and not curator_attempted:
+        if (
+            call_name == "request_book_curation"
+            and not curated_books
+            and not curator_attempted
+            and not is_pure_recall
+        ):
             curation_query = call_args.get("query") or last_user_msg
             logger.info(
                 "LLM invoked request_book_curation with query '%s'. Delegating to curator_node.",
@@ -938,7 +1135,12 @@ async def _run_persona_node(
 
     # Safety Net: If the LLM response contains an empty delay promise without curated books
     response_text = str(response.content) if response.content else ""
-    if not is_debate and not curated_books and _is_delayed_curation_promise(response_text):
+    if (
+        not is_debate
+        and not curated_books
+        and not is_pure_recall
+        and _is_delayed_curation_promise(response_text)
+    ):
         if curator_attempted:
             logger.info(
                 "Delayed curation promise detected after curator attempt for persona %s. Replacing promise sentence.",

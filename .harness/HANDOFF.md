@@ -2,39 +2,7 @@
 
 > 세션마다 무엇을 진행했고 다음 세션에서 무엇을 이어받아야 하는지 서술형으로 기록합니다.
 > **관리 규칙**: 본 문서에는 **최근 3~5개 세션만 유지**하며, 과거 세션 로그는 `.harness/archive/`에 보관합니다. 타 레포 내부 작업은 기록하지 않고 연동 링크만 참조합니다.
-> *(과거 세션 1~73 내역은 `.harness/archive/HANDOFF_2026-10.md` 참조)*
-
----
-
-## 세션 74 (2026-10-17)
-
-### 진행한 작업
-1. **Core API 응답 스키마 정규화 (`app/infrastructure/core_api_client.py`)**:
-   - `search_books` 메소드가 `items` 키를 올바르게 파싱하도록 수정하고, CamelCase(`coverUrl`, `totalPages` 등)를 snake_case(`cover_url`, `page_count` 등)로 정규화.
-   - 통신 장애/에러 시 가짜 목데이터 생성을 배제하고 정직한 빈 리스트(`[]`)를 반환하도록 안전화.
-2. **ISBN-10 / ISBN-13 체크디지트 검증 및 재계산 로직 신설 (`app/domain/graph/curator_node.py`)**:
-   - `validate_isbn10`: Modulo 11 체크디지트 알고리즘 검증.
-   - `calculate_isbn13_check_digit`: EAN-13 가중치(1, 3 교대) 기반 13번째 체크디지트 계산기 구현.
-   - `validate_isbn13`: 13자리 및 EAN-13 체크디지트 유효성 검증.
-   - `convert_isbn10_to_isbn13`: 유효한 ISBN-10 검증 후 앞 9자리에 `978`을 붙이고 EAN-13 가중치로 새로운 체크디지트를 산출하여 결합.
-   - `normalize_and_validate_isbn`: VALID_13, CONVERTED_10, INVALID, MISSING 4대 상태로 엄격 분류.
-3. **저자 성명 정규화 및 보수적 비교 (`app/domain/graph/curator_node.py`)**:
-   - `_extract_primary_author`: 쉼표/슬래시/역할표기 분리 및 번역자/일러스트레이터와 원작자 구분.
-   - `_is_matching_author`: 서양식 성·이름 반전(`George Orwell` <-> `Orwell, George`) 지원, 단순 글자 set 비교 원천 금지로 한글 성명 오탐(`김영하` != `김하영`) 차단, 빈 expected author는 도서명 단독 검색 허용.
-4. **판본 의도 추출 및 캐시 분리 (`app/domain/graph/curator_node.py`)**:
-   - `extract_edition_intent`: 일반(`GENERAL`), 만화(`COMICS`), 아동(`CHILDREN`), 원서(`ORIGINAL`), 출판사(`PUB:{name}`) 판본 태그 분리 및 상충/모호 요청 시 캐시 bypass(`None`).
-   - `get_biblio_cache_key`: SHA-256 기반 판본 격리 캐시 키 생성 및 서로 다른 판본 요청 간 캐시 오염 차단.
-5. **계층형 서지 검증 체인 구축 (`_verify_single_candidate`, `resolve_targeted`, `verify_candidates`)**:
-   - 1차 Core API(YES24, 2.5s) -> 2차 국립중앙도서관(3.5s) 무중단 폴백 체계 안착.
-   - Track A(ISBN 유효) 및 Track B(ISBN 누락 시 출판사/표지/쪽수 3대 조건 엄격 검증) 적용. INVALID ISBN 즉시 탈락.
-   - 구조화된 로그(`[BIBLIO_SUCCESS]`, `[BIBLIO_FALLBACK]`, `[BIBLIO_REJECT]`, `[BIBLIO_CACHE_HIT]`) 표준화.
-6. **단위 테스트 작성 및 품질 검증**:
-   - `tests/unit/test_hierarchical_curator_verification.py` 22종 신규 작성 (ISBN 검증/변환, 저자 정규화, 캐시 격리, 계층형 폴백, Track A/B 검증).
-   - 전체 284개 단위 회귀 100% 그린 (`284 passed in 46.68s`), ruff check & format 통과, mypy 통과, `check_harness.py` 통과.
-
-### 다음 세션에서 할 일
-- **Phase 69 Step 2 변경 사항 검토 보고 및 PR 생성**:
-  - 사용자에게 변경 사항 최종 보고 후 승인 하에 PR 생성.
+> *(과거 세션 1~74 내역은 `.harness/archive/HANDOFF_2026-10.md` 참조)*
 
 ---
 
@@ -111,8 +79,29 @@
    - 품질 검증 이력 (이전 세션 실측 기록): 단위 테스트 29개(0.50s), 전체 비통합 308개(63.24s) 100% 그린, Ruff, Mypy, 하네스 규격 통과 (커밋, 푸시, PR 미실행 상태).
 
 ### 다음 세션에서 할 일
-- **Phase 70-3 변경 사항 최종 검토 및 사용자 승인 후 커밋/PR 생성 (`feat/fix-core-api-genre-curation`)**.
+- **Phase 70-3 변경 사항 최종 검토 및 사용자 승인 후 커밋/PR 생성 (`feat/fix-core-api-genre-curation`)**: 완료 (PR #71 머지 완료, 커밋 `e29a390`).
 - **Milestone 4 남은 점검 항목 착수**:
-  - 추천 카드 마커 `### 📖 {도서명}` 및 카드 메타데이터의 프론트엔드 E2E 실연동 검증
-  - 서재 도서 조회 분기(`### 📚 {도서명}`, `library_books`) 검증
-  - 토론 모드 팩트 그라운딩 및 페르소나 전환 정합성 검증
+  - 추천 카드 마커 `### 📖 {도서명}` 및 카드 메타데이터의 프론트엔드 E2E 실연동 검증 (대기)
+
+---
+
+## 세션 79 (2026-10-24)
+
+### 진행한 작업
+1. **해외 도서 수용 및 다국어 서지 검증 체계 구축 (Phase 70-6)**:
+   - `core_api_client.py`: Core API 도서 검색 시 `data_source` 보존.
+   - `national_library_client.py`: 10대 표준 영문 카테고리 매핑 및 `map_english_category_to_genre` 구현.
+   - `curator_node.py`: 서양 인명 이니셜/미들네임 매칭 유연화(`_is_matching_author`), `ORIGINAL` 판본 영문 도서 수용 및 영문 장르 매핑 연동.
+   - `nodes.py`: 프롬프트 시스템 문구 및 헤딩 일관화.
+   - `tests/unit/test_global_curation.py`: 32개 단위 테스트 작성 및 전수 통과.
+2. **과거 추천 회상 질문 분기 및 허위 추천 차단 (Phase 71 Step 1)**:
+   - `nodes.py`: `is_recall_query` 의도 분류기 신설로 "이전에 추천한 도서", "아까 추천해준 책" 등 회상 질의 감지 시 `curator_node` 선위임 전면 차단.
+   - `state.recommended_history` 주입: 이전 추천 기록이 없을 때 가짜 책 날조 없이 정직한 멘트 반환, 기록이 있을 때 해당 도서만 정확히 답변.
+   - `tests/unit/test_recall_curation.py`: 18개 단위 테스트 작성 및 전수 통과.
+3. **Tier 1/2 정적 검사 및 품질 검증**:
+   - `test_recall_curation.py`의 미사용 import(Ruff 11건) 정리 및 `AgentState` TypedDict(Mypy 6건) 타입 검사 완전 해소.
+   - 전체 비통합 단위 테스트 358개 100% 그린 (`358 passed in 64.10s`), Ruff 린트/포맷 통과, Mypy 통과, `scripts/check_harness.py` 통과.
+
+### 다음 세션에서 할 일
+- **Phase 71 Step 2 착수**: 대화 세션 복원 및 소유권 검증 엔드포인트 (`GET /api/v1/chat/history`) 구현.
+- **Phase 70-5 (추천 카드 응답 계약 테스트)**: Core API 미국 도서(Google Books) 스키마 확정 시 재개.

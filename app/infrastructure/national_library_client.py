@@ -259,6 +259,151 @@ def map_kdc_to_genre(kdc: str = "", subject: str = "", title: str = "") -> str:
     return KDC_FIRST_CHAR_MAPPING.get(first_digit, "GENERAL")
 
 
+# 영문 카테고리(Google Books 등) 및 도서 메타데이터 표준 10대 장르 매핑 상수
+ENGLISH_CATEGORY_TO_GENRE: Dict[str, str] = {
+    # LITERATURE
+    "fiction": "LITERATURE",
+    "juvenile fiction": "LITERATURE",
+    "young adult fiction": "LITERATURE",
+    "literature": "LITERATURE",
+    "poetry": "LITERATURE",
+    "drama": "LITERATURE",
+    "comics & graphic novels": "LITERATURE",
+    "graphic novels": "LITERATURE",
+    "comics": "LITERATURE",
+    "literary collections": "LITERATURE",
+    "literary criticism": "LITERATURE",
+    "short stories": "LITERATURE",
+    "classics": "LITERATURE",
+    # PHILOSOPHY
+    "philosophy": "PHILOSOPHY",
+    "psychology": "PHILOSOPHY",
+    "self-help": "PHILOSOPHY",
+    "body, mind & spirit": "PHILOSOPHY",
+    "ethics": "PHILOSOPHY",
+    # RELIGION
+    "religion": "RELIGION",
+    "bibles": "RELIGION",
+    "theology": "RELIGION",
+    "spirituality": "RELIGION",
+    # SOCIAL_SCIENCE
+    "business & economics": "SOCIAL_SCIENCE",
+    "business": "SOCIAL_SCIENCE",
+    "economics": "SOCIAL_SCIENCE",
+    "social science": "SOCIAL_SCIENCE",
+    "political science": "SOCIAL_SCIENCE",
+    "law": "SOCIAL_SCIENCE",
+    "education": "SOCIAL_SCIENCE",
+    "finance": "SOCIAL_SCIENCE",
+    "sociology": "SOCIAL_SCIENCE",
+    # NATURAL_SCIENCE
+    "science": "NATURAL_SCIENCE",
+    "mathematics": "NATURAL_SCIENCE",
+    "physics": "NATURAL_SCIENCE",
+    "chemistry": "NATURAL_SCIENCE",
+    "biology": "NATURAL_SCIENCE",
+    "nature": "NATURAL_SCIENCE",
+    "astronomy": "NATURAL_SCIENCE",
+    # TECHNOLOGY
+    "computers": "TECHNOLOGY",
+    "technology & engineering": "TECHNOLOGY",
+    "technology": "TECHNOLOGY",
+    "engineering": "TECHNOLOGY",
+    "medical": "TECHNOLOGY",
+    "health & fitness": "TECHNOLOGY",
+    "programming": "TECHNOLOGY",
+    # ARTS
+    "art": "ARTS",
+    "arts": "ARTS",
+    "music": "ARTS",
+    "performing arts": "ARTS",
+    "photography": "ARTS",
+    "architecture": "ARTS",
+    "design": "ARTS",
+    # LANGUAGE
+    "foreign language study": "LANGUAGE",
+    "language arts & disciplines": "LANGUAGE",
+    "language": "LANGUAGE",
+    "linguistics": "LANGUAGE",
+    # HISTORY
+    "history": "HISTORY",
+    "biography & autobiography": "HISTORY",
+    "biography": "HISTORY",
+    "autobiography": "HISTORY",
+    # GENERAL
+    "reference": "GENERAL",
+    "general": "GENERAL",
+}
+
+
+def map_english_category_to_genre(
+    category: str = "",
+    title: str = "",
+    desc: str = "",
+) -> str:
+    """Map English category keywords, title, or description to standard genre Enum.
+
+    Returns:
+        Standard uppercase genre Enum (LITERATURE, PHILOSOPHY, SOCIAL_SCIENCE, etc.)
+    """
+    if category:
+        clean_cat = category.strip().lower()
+        if clean_cat in ENGLISH_CATEGORY_TO_GENRE:
+            return ENGLISH_CATEGORY_TO_GENRE[clean_cat]
+        for key, genre in ENGLISH_CATEGORY_TO_GENRE.items():
+            if key in clean_cat:
+                return genre
+
+    combined = f"{title} {desc}".lower()
+    keyword_rules = [
+        (
+            [
+                "programming",
+                "software",
+                "computer",
+                "python",
+                "javascript",
+                "algorithm",
+                "coding",
+                "machine learning",
+                "artificial intelligence",
+            ],
+            "TECHNOLOGY",
+        ),
+        (["novel", "fiction", "poems", "poetry", "stories", "drama", "classic"], "LITERATURE"),
+        (["philosophy", "psychology", "mindset", "stoic", "ethics", "mental"], "PHILOSOPHY"),
+        (
+            ["economy", "economics", "investing", "business", "money", "capitalism", "market"],
+            "SOCIAL_SCIENCE",
+        ),
+        (
+            [
+                "physics",
+                "quantum",
+                "biology",
+                "chemistry",
+                "cosmos",
+                "nature",
+                "universe",
+                "evolution",
+            ],
+            "NATURAL_SCIENCE",
+        ),
+        (
+            ["history", "biography", "memoir", "war", "revolution", "empire", "civilization"],
+            "HISTORY",
+        ),
+        (["art", "design", "music", "painting", "photography", "cinema"], "ARTS"),
+        (["language", "grammar", "linguistics", "vocabulary", "english"], "LANGUAGE"),
+        (["god", "religion", "spiritual", "bible", "buddha", "christian"], "RELIGION"),
+    ]
+    for keywords, mapped_genre in keyword_rules:
+        if any(re.search(rf"\b{re.escape(k)}\b", combined) for k in keywords):
+            return mapped_genre
+
+    return "GENERAL"
+
+
 # KDC 및 독서 큐레이션 목적에 부적합한 수험서/실무서/아동만화 제외 키워드 (단일 기준)
 NON_CURATABLE_KEYWORDS: List[str] = [
     # 수험/자격증/문제집 (KDC 370 계열 수험 및 공무원/기출)

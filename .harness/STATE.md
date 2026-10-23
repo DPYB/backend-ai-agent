@@ -35,10 +35,18 @@
 
 ### 📌 최근 마일스톤 완료 내역
 
-- [x] **Phase 70-3: Core API 추천 도서 서지 장르 누락 수정 (구현 완료, 커밋·푸시·PR 대기)**
+- [x] **Phase 71 Step 1: 회상 질문 분기 및 허위 추천 차단**
+  - `nodes.py`: `is_recall_query` 의도 분류기 신설로 과거 추천 회상 쿼리("이전에 추천한 책", "아까 추천해준 도서")와 신규 추천 요청 분리 및 `curator_node` 선위임 전면 차단.
+  - 세션 실제 추천 기록(`state.recommended_history`) 프롬프트 주입: 기록 부재 시 가짜 책 날조 없이 정직한 안내, 기록 존재 시 해당 도서만 정확히 답변.
+  - 신규 단위 테스트 18종(`test_recall_curation.py`) 작성 및 전체 단위 회귀 그린.
+- [x] **Phase 70-6: 해외 도서 수용 및 다국어 서지 검증 체계 구축 (2단계)**
+  - `core_api_client.py`에서 `data_source` 보존. `national_library_client.py`에 10대 영문 카테고리 매핑 테이블 및 `map_english_category_to_genre` 신설.
+  - `curator_node.py`: 서양 인명 이니셜/미들네임 매칭 유연화(`_is_matching_author`), `ORIGINAL` 판본 및 영문 장르 매핑 연동.
+  - 신규 단위 테스트 32종(`test_global_curation.py`) 작성 및 358개 단위 회귀 100% 그린.
+- [x] **Phase 70-3: Core API 추천 도서 서지 장르 누락 수정 (PR #71 머지 완료)**
   - `core_api_client.py`에서 `genre`, `kdc`, `subject` 딕셔너리 정규화 보존.
   - `curator_node.py`의 `_verify_single_candidate`에서 Core API 1차 검증 성공 시 표준 장르 정규화(`_normalize_to_core_genre`) 및 KDC 폴백(`map_kdc_to_genre`), 부재 시 `None` 유지 적용.
-  - 신규 단위 테스트 4종(`test_hierarchical_curator_verification.py`) 추가 (이전 실행 기준 비통합 308개 통과, Ruff·Mypy 통과). 커밋·푸시·PR 미실행.
+  - 신규 단위 테스트 4종(`test_hierarchical_curator_verification.py`) 추가, PR #71 머지 완료 (커밋 `e29a390`).
 - [x] **Phase 70-2: 도서 추천 카드 응답 규격 점검 (분석 완료, E2E 검증 미완료)**
   - 큐레이터 응답 ➔ 프론트엔드 카드 렌더링 ➔ 도서 등록 폼(`/register`) 전체 데이터 흐름 읽기 전용 점검 완료.
   - `### 📖 {도서명}`, `cover_url`, `page_count` 규격 일치 확인 및 Core API 1차 검증 경로 `genre` 누락 결함 식별.

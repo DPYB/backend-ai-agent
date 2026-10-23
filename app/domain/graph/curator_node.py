@@ -30,6 +30,7 @@ from app.infrastructure.national_library_client import (
     _normalize_to_core_genre,
     clean_book_title,
     get_national_library_client,
+    map_english_category_to_genre,
     map_kdc_to_genre,
 )
 from app.infrastructure.redis_session import get_redis_session_manager
@@ -255,14 +256,73 @@ def _extract_primary_author(raw_author: str) -> str:
     return cleaned
 
 
+def _is_matching_western_tokens(tokens_a: List[str], tokens_b: List[str]) -> bool:
+    """Check if two sets of western name tokens match.
+
+    Prevents single-surname false positives (requires len >= 2 on both sides).
+    Allows middle name omission and initial abbreviation (e.g. 'Robert C. Martin' <-> 'Robert Cecil Martin').
+    """
+    if len(tokens_a) < 2 or len(tokens_b) < 2:
+        return False
+
+    # Check if all tokens are ascii/alphanumeric
+    if not all(t.isascii() and t.isalnum() for t in tokens_a + tokens_b):
+        return False
+
+    used_b = set()
+    exact_matches = 0
+    initial_matches = 0
+    mismatched_a: List[str] = []
+
+    # 1. First pass: exact matches
+    for t_a in tokens_a:
+        matched_idx = None
+        for idx, t_b in enumerate(tokens_b):
+            if idx not in used_b and t_a == t_b:
+                matched_idx = idx
+                break
+        if matched_idx is not None:
+            used_b.add(matched_idx)
+            exact_matches += 1
+        else:
+            mismatched_a.append(t_a)
+
+    # 2. Second pass: initial matches for remaining tokens
+    remaining_b = [t for idx, t in enumerate(tokens_b) if idx not in used_b]
+    for t_a in mismatched_a:
+        matched_b_token = None
+        for t_b in remaining_b:
+            if (len(t_a) == 1 and len(t_b) > 1 and t_b.startswith(t_a)) or (
+                len(t_b) == 1 and len(t_a) > 1 and t_a.startswith(t_b)
+            ):
+                matched_b_token = t_b
+                break
+        if matched_b_token is not None:
+            remaining_b.remove(matched_b_token)
+            initial_matches += 1
+
+    # Validation criteria:
+    # 1) At least 2 exact matches (e.g. 'robert', 'martin')
+    # 2) OR at least 1 exact match (>=3 chars) + at least 1 initial match (e.g. 'rowling' + 'j' -> 'joanne')
+    if exact_matches >= 2:
+        return True
+    if exact_matches == 1 and initial_matches >= 1:
+        matched_exacts = [t_a for t_a in tokens_a if t_a in tokens_b and len(t_a) >= 3]
+        if matched_exacts:
+            return True
+
+    return False
+
+
 def _is_matching_author(expected_author: str, candidate_author: str) -> bool:
     """Conservatively check if candidate author matches expected author.
 
     - If expected_author is empty/unspecified, returns True (permits title-only lookup).
     - Distinguishes primary author from translator.
     - Supports western inverted name representations ('George Orwell' <-> 'Orwell, George').
+    - Supports western names with initials/middle names ('Robert C. Martin' <-> 'Robert Cecil Martin').
     - Strict avoidance of set-based false positives ('김영하' != '김하영').
-    - Rejects single-character surname matches.
+    - Rejects single-character or single-token surname matches.
     """
     if not expected_author or not expected_author.strip():
         return True
@@ -291,6 +351,10 @@ def _is_matching_author(expected_author: str, candidate_author: str) -> bool:
     if len(tokens_exp) == 2 and len(tokens_cand) == 2:
         if tokens_exp == tokens_cand or tokens_exp == tokens_cand[::-1]:
             return True
+
+    # Western name matching with initials/middle names (e.g. 'Robert C. Martin' <-> 'Robert Cecil Martin')
+    if _is_matching_western_tokens(tokens_exp, tokens_cand):
+        return True
 
     # Korean / Asian short names (<= 4 chars): Require exact normalized character match!
     # Explicitly do NOT use set matching to prevent '김영하' <-> '김하영' false positive.
@@ -927,6 +991,7 @@ async def _verify_single_candidate(
             desc = (item.get("description") or "").lower()
             title_lower = cand_title.lower()
             pub_lower = (item.get("publisher") or "").lower()
+            data_source = str(item.get("data_source") or "YES24").upper()
 
             if edition_intent == "COMICS":
                 if not any(k in title_lower or k in desc for k in ["만화", "웹툰", "코믹"]):
@@ -937,7 +1002,12 @@ async def _verify_single_candidate(
                 ):
                     continue
             elif edition_intent == "ORIGINAL":
-                if not any(k in title_lower or k in desc for k in ["원서", "영문", "영어판"]):
+                is_foreign_source = data_source == "GOOGLE"
+                has_original_kw = any(
+                    k in title_lower or k in desc for k in ["원서", "영문", "영어판"]
+                )
+                has_ascii_title = any(c.isascii() and c.isalpha() for c in cand_title)
+                if not (is_foreign_source or has_original_kw or has_ascii_title):
                     continue
             elif edition_intent and edition_intent.startswith("PUB:"):
                 target_pub = edition_intent.split(":", 1)[1].lower()
@@ -987,9 +1057,16 @@ async def _verify_single_candidate(
                         subject=str(item.get("subject") or ""),
                         title=clean_t,
                     )
+                elif data_source == "GOOGLE" or any(c.isascii() and c.isalpha() for c in clean_t):
+                    final_genre = map_english_category_to_genre(
+                        category=str(item.get("subject") or ""),
+                        title=clean_t,
+                        desc=str(item.get("description") or ""),
+                    )
                 else:
                     final_genre = cand.get("genre")
 
+                source_tag = "CORE_API_GOOGLE" if data_source == "GOOGLE" else "CORE_API"
                 verified_data = {
                     "title": item.get("title", clean_t),
                     "author": item.get("author", author or "저자 미상"),
@@ -1002,14 +1079,15 @@ async def _verify_single_candidate(
                     "reason": cand.get("reason", ""),
                     "era": cand.get("era", "classic"),
                     "verified": True,
-                    "source": "CORE_API",
+                    "source": source_tag,
                 }
                 if cache_key:
                     await set_cached_biblio(cache_key, verified_data)
                 logger.info(
-                    "[BIBLIO_SUCCESS] Core API verified '%s' (ISBN: %s, Source: CORE_API)",
+                    "[BIBLIO_SUCCESS] Core API verified '%s' (ISBN: %s, Source: %s)",
                     clean_t,
                     norm_isbn or "Track-B",
+                    source_tag,
                 )
                 return verified_data
     except Exception as e:
