@@ -35,14 +35,14 @@
 
 ### 📌 최근 마일스톤 완료 내역
 
-- [x] **Phase 71 Step 1: 회상 질문 분기 및 허위 추천 차단**
-  - `nodes.py`: `is_recall_query` 의도 분류기 신설로 과거 추천 회상 쿼리("이전에 추천한 책", "아까 추천해준 도서")와 신규 추천 요청 분리 및 `curator_node` 선위임 전면 차단.
+- [x] **Phase 71 Step 1: 회상 질문 분기 및 허위 추천 차단 (PR #72 머지 완료)**
+  - `nodes.py`: `check_recall_intent` 및 `check_new_recommendation_intent` 직교 의도 분해로 과거 추천 회상과 신규 추천 요청 분리 및 `curator_node` 선위임 전면 차단.
   - 세션 실제 추천 기록(`state.recommended_history`) 프롬프트 주입: 기록 부재 시 가짜 책 날조 없이 정직한 안내, 기록 존재 시 해당 도서만 정확히 답변.
-  - 신규 단위 테스트 18종(`test_recall_curation.py`) 작성 및 전체 단위 회귀 그린.
-- [x] **Phase 70-6: 해외 도서 수용 및 다국어 서지 검증 체계 구축 (2단계)**
+  - 신규 단위 테스트 20종(`test_recall_curation.py`) 작성 및 PR #72 머지 완료 (커밋 `94dccc1`).
+- [x] **Phase 70-6: 해외 도서 수용 및 다국어 서지 검증 체계 구축 (PR #72 머지 완료)**
   - `core_api_client.py`에서 `data_source` 보존. `national_library_client.py`에 10대 영문 카테고리 매핑 테이블 및 `map_english_category_to_genre` 신설.
   - `curator_node.py`: 서양 인명 이니셜/미들네임 매칭 유연화(`_is_matching_author`), `ORIGINAL` 판본 및 영문 장르 매핑 연동.
-  - 신규 단위 테스트 32종(`test_global_curation.py`) 작성 및 358개 단위 회귀 100% 그린.
+  - 신규 단위 테스트 32종(`test_global_curation.py`) 작성 및 366개 단위 회귀 100% 그린.
 - [x] **Phase 70-3: Core API 추천 도서 서지 장르 누락 수정 (PR #71 머지 완료)**
   - `core_api_client.py`에서 `genre`, `kdc`, `subject` 딕셔너리 정규화 보존.
   - `curator_node.py`의 `_verify_single_candidate`에서 Core API 1차 검증 성공 시 표준 장르 정규화(`_normalize_to_core_genre`) 및 KDC 폴백(`map_kdc_to_genre`), 부재 시 `None` 유지 적용.

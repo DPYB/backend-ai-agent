@@ -98,9 +98,12 @@
    - `nodes.py`: `is_recall_query` 의도 분류기 신설로 "이전에 추천한 도서", "아까 추천해준 책" 등 회상 질의 감지 시 `curator_node` 선위임 전면 차단.
    - `state.recommended_history` 주입: 이전 추천 기록이 없을 때 가짜 책 날조 없이 정직한 멘트 반환, 기록이 있을 때 해당 도서만 정확히 답변.
    - `tests/unit/test_recall_curation.py`: 18개 단위 테스트 작성 및 전수 통과.
-3. **Tier 1/2 정적 검사 및 품질 검증**:
-   - `test_recall_curation.py`의 미사용 import(Ruff 11건) 정리 및 `AgentState` TypedDict(Mypy 6건) 타입 검사 완전 해소.
-   - 전체 비통합 단위 테스트 358개 100% 그린 (`358 passed in 64.10s`), Ruff 린트/포맷 통과, Mypy 통과, `scripts/check_harness.py` 통과.
+3. **Tier 1/2 정적 검사 및 PR #72 머지 완료**:
+   - `test_recall_curation.py`의 미사용 import 정리 및 `AgentState` TypedDict 타입 검사 완전 해소.
+   - 의도 분해 로직(`check_recall_intent`, `check_new_recommendation_intent`) 직교 분리 및 Ruff 포맷 반영.
+   - 전체 비통합 단위 테스트 366개 100% 그린 (`366 passed in 21.19s`), Ruff 린트/포맷 통과, Mypy 통과, `scripts/check_harness.py` 통과.
+   - PR #72(`feat[curator]: 해외 도서 서지 검증 체계 구축 및 과거 추천 회상 질문 분기 구현`) 생성 및 `develop` 머지 완료 (커밋 `94dccc1`).
+   - 머지 완료 브랜치 `feat/recommendation-card-contract` 정리 완료.
 
 ### 다음 세션에서 할 일
 - **Phase 71 Step 2 착수**: 대화 세션 복원 및 소유권 검증 엔드포인트 (`GET /api/v1/chat/history`) 구현.
