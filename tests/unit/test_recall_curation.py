@@ -131,6 +131,10 @@ class TestIsRecallQuery:
             "너는 누구니?",
             "고양이야 안녕",
             "오늘 기분이 좀 그래",
+            "너 나 기억나?",
+            "내가 어제 한 말 기억나?",
+            "혹시 기억나?",
+            "내 이름 기억나?",
         ],
     )
     def test_general_chat_queries_return_false(self, query: str):
@@ -139,6 +143,33 @@ class TestIsRecallQuery:
     def test_empty_or_none_query(self):
         assert is_recall_query("") is False
         assert is_recall_query("   ") is False
+
+    def test_orthogonal_intent_decomposition(self):
+        """Verify check_recall_intent and check_new_recommendation_intent as independent orthogonal flags."""
+        from app.domain.graph.nodes import check_new_recommendation_intent, check_recall_intent
+
+        # 1. Pure recall: recall=True, new_rec=False
+        assert check_recall_intent("이전에 추천한 도서 알려줘") is True
+        assert check_new_recommendation_intent("이전에 추천한 도서 알려줘") is False
+
+        # 2. Pure new rec: recall=False, new_rec=True
+        assert check_recall_intent("비 오는 날 소설 추천해줘") is False
+        assert check_new_recommendation_intent("비 오는 날 소설 추천해줘") is True
+
+        # 3. Hybrid: recall=True, new_rec=True
+        hybrid_1 = "전에 추천한 책이 뭐였지? 그리고 비슷한 책도 추천해 줘"
+        assert check_recall_intent(hybrid_1) is True
+        assert check_new_recommendation_intent(hybrid_1) is True
+
+        hybrid_2 = "전에 추천한 책 말고 다른 책 추천해줘"
+        assert check_recall_intent(hybrid_2) is True
+        assert check_new_recommendation_intent(hybrid_2) is True
+
+        # 4. General chat: recall=False, new_rec=False (prevents broad '기억나?' false positive)
+        assert check_recall_intent("너 나 기억나?") is False
+        assert check_new_recommendation_intent("너 나 기억나?") is False
+        assert check_recall_intent("내가 어제 한 말 기억나?") is False
+        assert check_new_recommendation_intent("내가 어제 한 말 기억나?") is False
 
 
 # ==============================================================================
@@ -289,7 +320,9 @@ class TestHybridRecallAndRecommendation:
     async def test_hybrid_query_with_past_history_distinguishes_past_from_new(self):
         # 1. State with curated_books (newly fetched by curator) AND recommended_history (past book)
         state = {
-            "messages": [HumanMessage(content="전에 추천한 책이 뭐였지? 그리고 비슷한 책도 추천해 줘")],
+            "messages": [
+                HumanMessage(content="전에 추천한 책이 뭐였지? 그리고 비슷한 책도 추천해 줘")
+            ],
             "member_id": "test-user-uuid",
             "active_persona": "CAT",
             "librarian_name": None,
@@ -324,7 +357,9 @@ class TestHybridRecallAndRecommendation:
     async def test_hybrid_query_without_past_history_honestly_states_unconfirmed(self):
         # 2. State where user asks to recall and recommend, but past history is empty
         state = {
-            "messages": [HumanMessage(content="전에 추천한 책이 뭐였지? 그리고 비슷한 책도 추천해 줘")],
+            "messages": [
+                HumanMessage(content="전에 추천한 책이 뭐였지? 그리고 비슷한 책도 추천해 줘")
+            ],
             "member_id": "test-user-uuid",
             "active_persona": "CAT",
             "librarian_name": None,
@@ -354,4 +389,3 @@ class TestHybridRecallAndRecommendation:
         assert "### 📖 데미안" in ai_msg
         # Must NOT hallucinate '모순' as past book
         assert "모순" not in ai_msg
-
