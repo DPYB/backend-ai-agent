@@ -35,10 +35,10 @@
 
 ### 📌 최근 마일스톤 완료 내역
 
-- [x] **Phase 71 Step 1: 회상 질문 분기 및 허위 추천 차단 (PR #72 머지 완료)**
-  - `nodes.py`: `check_recall_intent` 및 `check_new_recommendation_intent` 직교 의도 분해로 과거 추천 회상과 신규 추천 요청 분리 및 `curator_node` 선위임 전면 차단.
-  - 세션 실제 추천 기록(`state.recommended_history`) 프롬프트 주입: 기록 부재 시 가짜 책 날조 없이 정직한 안내, 기록 존재 시 해당 도서만 정확히 답변.
-  - 신규 단위 테스트 20종(`test_recall_curation.py`) 작성 및 PR #72 머지 완료 (커밋 `94dccc1`).
+- [x] **Phase 71 Step 1: 회상 질문 분기 및 허위 추천 차단 (PR #72 머지 및 경계 사례 정밀화 완료)**
+  - `nodes.py`: `check_recall_intent` / `check_new_recommendation_intent` 직교 분해 및 경계 사례("책 추천해 줘. 그런데 너 나 기억나?") 정규식 정밀화로 일반 봇 기억 질의 오탐 원천 차단.
+  - 세션 실제 추천 기록(`state.recommended_history`) 프롬프트 주입: 기록 부재 시 가짜 책 날조 없이 정직한 안내, 기록 존재 시 해당 도서만 정확히 상기 및 신규 추천과 분리 소개.
+  - 단위 테스트 총 51종(`test_recall_curation.py`) 작성 및 369개 전체 단위 회귀 100% 그린 검증 완료.
 - [x] **Phase 70-6: 해외 도서 수용 및 다국어 서지 검증 체계 구축 (PR #72 머지 완료)**
   - `core_api_client.py`에서 `data_source` 보존. `national_library_client.py`에 10대 영문 카테고리 매핑 테이블 및 `map_english_category_to_genre` 신설.
   - `curator_node.py`: 서양 인명 이니셜/미들네임 매칭 유연화(`_is_matching_author`), `ORIGINAL` 판본 및 영문 장르 매핑 연동.

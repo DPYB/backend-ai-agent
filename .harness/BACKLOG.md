@@ -5,6 +5,9 @@
 ---
 
 ## 1. 지능형 기능 고도화 아이디어
+- [ ] **대화 세션 복원 엔드포인트 및 소유권 검증 (Phase 71 Step 2)**: 프론트엔드 연동과 함께 `GET /api/v1/chat/history?session_id=...` 엔드포인트 구축, 회원 JWT `sub` / 게스트 UUID 기반 IDOR 차단 및 Redis 메시지/`recommended_history` 복원 체계 고도화.
+- [ ] **분위기(Mood) 판정 개선 (Phase 71 Step 3)**: `_build_signals`의 하드코딩 if-else 키워드 매칭 규칙 걷어내고, LLM 자연스러운 대화 흐름에서 분위기 추출 및 근거 부재 시 `None`(중립) 반환.
+- [ ] **운영 폴백 하드코딩 도서 선별 제거 (Phase 71 Step 4)**: `curator_node` 비상 폴백 명작 및 `trending_books` 모순 등 임의 주입 제거, 빈 추천 시 사서 정직한 안내 및 테스트 fixture 카탈로그 격리.
 - [ ] **도서 추천 상세 메타데이터(대분류, 주제, 쪽수, 고화질 표지) 수집 및 프론트 서재 등록 자동화**: 프론트엔드 AWS 의존성 제거 및 리팩토링 완료 후 연동. 국립도서관 KDC 대분류, 세부 주제, PAGE 정규식 쪽수, 교보 CDN 고화질 표지(`cover_url`) 및 `ChatResponse.recommended_books` / SSE `event: books` 스키마 확장.
 - [ ] **신구(新舊) 하이브리드 도서 추천 & Brave Search Ad-hoc 연동**: 국립도서관 사서추천/신간 피드 + 교보문고 주간 베스트셀러 피드 캐싱(TTL 24h)으로 불멸의 명작 1권 + 최신 신간 1권 페어링, 초시의성 질문에 Brave Search 웹 검색 보강.
 - [ ] **멀티모달 책 표지 감성 분석**: 사용자가 찍은 책 표지 사진에서 색감/분위기를 추출하여 페르소나의 오프닝 멘트에 반영.

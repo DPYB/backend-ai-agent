@@ -171,6 +171,25 @@ class TestIsRecallQuery:
         assert check_recall_intent("내가 어제 한 말 기억나?") is False
         assert check_new_recommendation_intent("내가 어제 한 말 기억나?") is False
 
+        # 5. Boundary cases specifically requested:
+        # Case A: Pure recall context memory
+        case_a = "전에 추천한 책 기억나?"
+        assert check_recall_intent(case_a) is True
+        assert check_new_recommendation_intent(case_a) is False
+        assert is_recall_query(case_a) is True
+
+        # Case B: Recommendation request co-occurring with bot/user relationship memory inquiry
+        case_b = "책 추천해 줘. 그런데 너 나 기억나?"
+        assert check_recall_intent(case_b) is False
+        assert check_new_recommendation_intent(case_b) is True
+        assert is_recall_query(case_b) is False
+
+        # Case C: Hybrid recall + new recommendation
+        case_c = "전에 추천한 책 기억나? 그리고 다른 책도 추천해 줘"
+        assert check_recall_intent(case_c) is True
+        assert check_new_recommendation_intent(case_c) is True
+        assert is_recall_query(case_c) is False
+
 
 # ==============================================================================
 # 2. Routing Priority in Librarian Persona Nodes
@@ -212,6 +231,32 @@ class TestLibrarianRoutingWithRecall:
         res = await cat_node(state)
 
         assert res.get("curator_request") == "비 오는 날 읽을 소설 추천해줘"
+
+    @pytest.mark.asyncio
+    async def test_boundary_recommendation_with_user_memory_delegates_to_curator(self):
+        """'책 추천해 줘. 그런데 너 나 기억나?' must be treated as new recommendation, delegating to curator."""
+        msg = "책 추천해 줘. 그런데 너 나 기억나?"
+        state = _make_agent_state(
+            messages=[HumanMessage(content=msg)],
+            recommended_history=[],
+        )
+        res = await cat_node(state)
+        # Must delegate to curator since user explicitly asks for new recommendation!
+        assert res.get("curator_request") == msg
+
+    @pytest.mark.asyncio
+    async def test_boundary_pure_recall_with_memory_bypasses_curator(self):
+        """'전에 추천한 책 기억나?' must be treated as pure recall, bypassing curator."""
+        msg = "전에 추천한 책 기억나?"
+        state = _make_agent_state(
+            messages=[HumanMessage(content=msg)],
+            recommended_history=["데미안"],
+        )
+        res = await cat_node(state)
+        # Must bypass curator_node directly!
+        assert res.get("curator_request") is None
+        assert len(res.get("messages", [])) == 1
+        assert isinstance(res["messages"][0], AIMessage)
 
 
 # ==============================================================================
@@ -388,4 +433,40 @@ class TestHybridRecallAndRecommendation:
         assert "데미안" in ai_msg
         assert "### 📖 데미안" in ai_msg
         # Must NOT hallucinate '모순' as past book
+        assert "모순" not in ai_msg
+
+    @pytest.mark.asyncio
+    async def test_hybrid_boundary_recall_and_other_recommendation_with_history(self):
+        """'전에 추천한 책 기억나? 그리고 다른 책도 추천해 줘' with genuine past history."""
+        msg = "전에 추천한 책 기억나? 그리고 다른 책도 추천해 줘"
+        state = {
+            "messages": [HumanMessage(content=msg)],
+            "member_id": "test-user-uuid",
+            "active_persona": "CAT",
+            "librarian_name": None,
+            "mode": "LIBRARIAN",
+            "action": "chat",
+            "curator_request": None,
+            "curated_books": [
+                {
+                    "title": "동물농장",
+                    "author": "조지 오웰",
+                    "publisher": "민음사",
+                    "isbn": "9788937460050",
+                    "reason": "권력의 속성을 날카롭게 풍자한 고전",
+                }
+            ],
+            "curator_attempted": True,
+            "recommended_history": ["쇼코의 미소"],  # Past genuine recommendation
+            "target_unresolved": None,
+        }
+        res = await cat_node(cast(AgentState, state))
+        ai_msg = str(res["messages"][0].content)
+
+        # 1. Must recall genuine past book
+        assert "쇼코의 미소" in ai_msg
+        # 2. Must introduce newly curated book
+        assert "동물농장" in ai_msg
+        assert "### 📖 동물농장" in ai_msg
+        # 3. Must NOT hallucinate unrecommended books
         assert "모순" not in ai_msg
