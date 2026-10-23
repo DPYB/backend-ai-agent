@@ -97,6 +97,9 @@ class CoreApiClient:
                             "published_date": item.get("publishedDate")
                             or item.get("published_date"),
                             "star_score": item.get("starScore") or item.get("star_score"),
+                            "data_source": item.get("dataSource")
+                            or item.get("data_source")
+                            or "YES24",
                         }
                     )
                 return normalized_items
