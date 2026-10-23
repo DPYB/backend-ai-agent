@@ -60,8 +60,9 @@ def check_recall_intent(message: str) -> bool:
         r"아까\s*(그\s*책|말한\s*책|추천)",
         r"(추천한|추천해준)\s*거\s*(뭐|다시|알려)",
         r"(추천한|추천해준)\s*책\s*(기억|뭐)",
-        # Strictly contextualized memory patterns requiring recommendation or book context
-        r"(추천|알려준|소개한|말한\s*책|그\s*책).*(기억나|기억해)",
+        # Strictly contextualized memory patterns bound to past recommendation objects
+        r"(추천한|추천해\s*준|추천했던|알려준|소개한)\s*(책|도서|작품|거|것)?\s*(도|은|는|이|가)?\s*(기억나|기억해)",
+        r"(말한\s*책|그\s*책|그때\s*책)\s*(도|은|는|이|가)?\s*(기억나|기억해)",
         r"(전에|이전에|아까)\s*(말한|이야기한)\s*(책|도서)",
     ]
     return any(re.search(p, msg) for p in recall_patterns)
